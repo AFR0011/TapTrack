@@ -2,7 +2,12 @@ import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 import { getBalanceId } from '@/defaultData';
 import { TapTrackDatabase, ensureDatabaseSeeded } from '@/database';
 import type { TransactionDraft } from '@/types';
-import { InsufficientBalanceError, createTransaction } from './createTransaction';
+import {
+  InsufficientBalanceError,
+  createTransaction,
+  deleteTransaction,
+  updateTransaction,
+} from './createTransaction';
 
 let database: TapTrackDatabase;
 
@@ -62,6 +67,59 @@ describe('createTransaction', () => {
       InsufficientBalanceError
     );
 
+    expect(await database.transactions.count()).toBe(0);
+  });
+
+  it('updates a transaction by reversing the old balance effect first', async () => {
+    await database.balances.update(getBalanceId('TRY', 'cash'), { amount: 300 });
+    await database.balances.update(getBalanceId('TRY', 'card'), { amount: 100 });
+    const transaction = await createTransaction(baseExpense, database);
+
+    await updateTransaction(
+      transaction.id,
+      {
+        ...baseExpense,
+        amount: 50,
+        method: 'card',
+      },
+      database
+    );
+
+    const cashBalance = await database.balances.get(getBalanceId('TRY', 'cash'));
+    const cardBalance = await database.balances.get(getBalanceId('TRY', 'card'));
+
+    expect(cashBalance?.amount).toBe(300);
+    expect(cardBalance?.amount).toBe(50);
+  });
+
+  it('blocks edits that would make the destination balance negative', async () => {
+    await database.balances.update(getBalanceId('TRY', 'cash'), { amount: 300 });
+    const transaction = await createTransaction(baseExpense, database);
+
+    await expect(
+      updateTransaction(
+        transaction.id,
+        {
+          ...baseExpense,
+          amount: 50,
+          method: 'card',
+        },
+        database
+      )
+    ).rejects.toBeInstanceOf(InsufficientBalanceError);
+
+    const original = await database.transactions.get(transaction.id);
+    expect(original?.method).toBe('cash');
+  });
+
+  it('deletes a transaction and reverses its balance effect', async () => {
+    await database.balances.update(getBalanceId('TRY', 'cash'), { amount: 300 });
+    const transaction = await createTransaction(baseExpense, database);
+
+    await deleteTransaction(transaction.id, database);
+
+    const balance = await database.balances.get(getBalanceId('TRY', 'cash'));
+    expect(balance?.amount).toBe(300);
     expect(await database.transactions.count()).toBe(0);
   });
 });

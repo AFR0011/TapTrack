@@ -1,42 +1,49 @@
 # TapTrack Repo Map
 
-Last mapped: 2026-04-30
+Last mapped: 2026-05-05
 
 ## Overview
 
-TapTrack is a mobile-first, local-first personal income and expense tracker. The active stack follows `BLUEPRINT.md`: Next.js, React, TypeScript, Tailwind CSS, Dexie/IndexedDB, and small service modules for domain behavior.
+TapTrack is a mobile-first, local-first personal finance tracker using Next.js 14 App Router, React, TypeScript, Tailwind CSS, Dexie/IndexedDB, Recharts, PapaParse, and Vitest. `BLUEPRINT.md` remains the source of truth for V1 scope, non-goals, build order, and acceptance criteria.
 
-The repository is currently an initial scaffold with no committed history yet.
+The active architecture keeps persistence behind `src/database.ts` and service modules under `src/`. No cloud sync, backend, user accounts, bank import, exchange-rate API, or AI categorization has been added.
 
 ## Active Structure
 
 | Path | Role |
 | --- | --- |
-| `app/layout.tsx` | App Router root layout and provider wiring. |
-| `app/page.tsx` | Current single-screen dashboard shell. |
-| `app/providers/DatabaseProvider.tsx` | Seeds the local IndexedDB database on the client. |
-| `app/providers/ReactQueryProvider.tsx` | React Query provider, currently available but not central to the local Dexie flow. |
-| `app/globals.css` | Tailwind base styles and global color variables. |
-| `src/types.ts` | Shared domain types and supported enum-like constants. |
-| `src/database.ts` | Dexie database class, table declarations, and seed routine. |
-| `src/defaultData.ts` | Default categories, balances, settings, category suggestion helpers, and balance IDs. |
+| `app/layout.tsx` | Root layout, providers, setup gate, and shared app shell. |
+| `app/page.tsx` | Dashboard route with quick command, budget summary, balances, and recent transactions. |
+| `app/transactions/page.tsx` | Transactions workspace route. |
+| `app/budgets/page.tsx` | Budget workspace route. |
+| `app/recurring/page.tsx` | Recurring transactions route. |
+| `app/reports/page.tsx` | Reports and chart route. |
+| `app/settings/page.tsx` | Settings, balances, categories, export/import, reset route. |
+| `app/providers/DatabaseProvider.tsx` | Seeds IndexedDB and runs due recurring transaction checks on app open. |
+| `src/types.ts` | Shared domain types and enum-like constants. |
+| `src/database.ts` | Dexie database class, V1 table declarations, and seed routine. |
+| `src/defaultData.ts` | Default categories, balances, settings, and category suggestion helpers. |
+| `src/dates.ts` | Local date/month helpers and recurring frequency date increments. |
+| `src/format.ts` | Money formatting, amount parsing, and percent clamping helpers. |
 | `src/parser/parseCommand.ts` | Typed fast-command parser. |
-| `src/transactions/createTransaction.ts` | Atomic transaction creation, balance update, last-method update, and negative-balance blocking. |
-| `src/balances/balanceEffects.ts` | Balance delta helpers and insufficient-balance message. |
-| `src/components/CommandInput.tsx` | Command capture, preview, save, and save errors. |
-| `src/components/DashboardSummary.tsx` | Dashboard summary backed by Dexie live queries. |
-| `src/components/RecentTransactions.tsx` | Recent transaction list backed by Dexie live queries. |
-| `src/**/*.test.ts` | Vitest coverage for parser and transaction/database behavior. |
-| `.claude/` | Local companion workflow and agent notes, not runtime code. |
+| `src/transactions/createTransaction.ts` | Create, update, delete transaction logic with balance effects and negative-balance blocking. |
+| `src/setup/setupService.ts` | First-time setup persistence for balances, monthly budget, and settings. |
+| `src/budgets/budgetService.ts` | Monthly/category budget upsert, status, and rollover logic. |
+| `src/recurring/recurringService.ts` | Recurring CRUD, next-run dates, and due/missed app-open creation. |
+| `src/reports/reportService.ts` | Report aggregations for tests and exports. |
+| `src/reports/reportTransforms.ts` | Pure budget-performance transform used by reports UI and service. |
+| `src/exports/exportService.ts` | CSV, JSON backup/import, and simple PDF report export. |
+| `src/components/*.tsx` | Ledger Console shell, setup form, dashboard, and route workspaces. |
+| `src/**/*.test.ts` | Vitest coverage for parser, transactions, setup, budgets, recurring, reports, and exports. |
 
 ## Data Flow
 
-1. `DatabaseProvider` calls `ensureDatabaseSeeded()` on the client.
-2. `ensureDatabaseSeeded()` creates default categories, six zeroed balances, and default settings when missing.
-3. `CommandInput` reads categories and settings from Dexie live queries.
-4. `parseCommand()` converts a command such as `-120 coffee cash` into a `TransactionDraft`.
-5. `createTransaction()` saves the transaction inside a Dexie write transaction, updates the matching balance, blocks negative balances, and stores the last used method.
-6. `DashboardSummary` and `RecentTransactions` update from Dexie live queries after writes.
+1. `DatabaseProvider` calls `ensureDatabaseSeeded()` on the client, then `createDueRecurringTransactions()`.
+2. `SetupGate` reads `settings.setupCompleted`; first use shows `SetupForm` until balances and the monthly budget are saved.
+3. `CommandInput` parses commands with Dexie-backed categories and settings, previews the draft, then calls `createTransaction()`.
+4. Transaction create/update/delete operations apply balance effects atomically and reject negative resulting balances.
+5. Dashboard, transaction lists, budgets, recurring lists, reports, and settings read Dexie live queries so UI updates after local writes.
+6. Export/import flows read or restore all Dexie tables through `exportService`.
 
 ## Runtime And Build Signals
 
@@ -44,7 +51,9 @@ The repository is currently an initial scaffold with no committed history yet.
 - Runtime app: Next.js 14 App Router.
 - Styling: Tailwind CSS.
 - Persistence: Dexie/IndexedDB only.
-- Tests: Vitest with `fake-indexeddb` for database behavior.
+- Charts: Recharts on the reports route.
+- CSV: PapaParse.
+- Tests: Vitest with `fake-indexeddb`.
 - Lint: `next lint` with `eslint-config-next`.
 
 ## Verification Commands
@@ -58,11 +67,13 @@ npm.cmd run build
 
 `npm.cmd run check` runs the full ladder.
 
+Latest browser smoke command target: `http://127.0.0.1:3001`.
+
 ## Known Gaps
 
-- First-time setup screen is not implemented yet, so all seeded balances start at `0`.
-- Expense saves are correctly blocked when the selected balance is not funded.
-- PWA manifest/service worker setup is not implemented yet.
-- Monthly budget is still a dashboard constant, not persisted budget state.
-- Manual entry, recurring transactions, reports, exports, and JSON import are not implemented yet.
-- `npm audit --omit=dev` still reports Next/PostCSS advisories after updating to Next 14.2.35; the suggested automatic fix moves to Next 16 and should be handled as a separate framework upgrade.
+- The PDF report is functional but visually basic.
+- Category editing/deleting is not complete.
+- No service worker or install manifest polish yet.
+- No custom date-range/yearly reports yet.
+- No automatic currency conversion in reports by design for V1.
+- The existing port `3000` process may serve stale routes if it was started before the new route build; use a fresh dev server or restart that process when verifying routes.

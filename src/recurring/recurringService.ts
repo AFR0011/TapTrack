@@ -1,11 +1,22 @@
-import { db } from '@/database';
-import type { RecurringTransaction } from '@/types';
+import { db, ensureDatabaseSeeded, type TapTrackDatabase } from '@/database';
+import { addFrequency, formatLocalDate, parseLocalDate } from '@/dates';
 import { createTransaction } from '@/transactions/createTransaction';
-import { formatLocalDate } from '@/parser/parseCommand';
+import type { RecurringTransaction, TransactionDraft } from '@/types';
+
+export type RecurringInput = Omit<RecurringTransaction, 'id' | 'createdAt' | 'updatedAt'>;
+
+export type DueRecurringResult = {
+  created: number;
+  skipped: number;
+  failed: number;
+};
 
 export async function createRecurringTransaction(
-  recurring: Omit<RecurringTransaction, 'id' | 'createdAt' | 'updatedAt'>
+  recurring: RecurringInput,
+  database: TapTrackDatabase = db
 ): Promise<RecurringTransaction> {
+  await ensureDatabaseSeeded(database);
+
   const now = new Date().toISOString();
   const newRecurring: RecurringTransaction = {
     ...recurring,
@@ -14,139 +25,124 @@ export async function createRecurringTransaction(
     updatedAt: now,
   };
 
-  await db.recurringTransactions.add(newRecurring);
+  await database.recurringTransactions.add(newRecurring);
   return newRecurring;
 }
 
 export async function updateRecurringTransaction(
   id: string,
-  updates: Partial<RecurringTransaction>
+  updates: Partial<RecurringTransaction>,
+  database: TapTrackDatabase = db
 ): Promise<RecurringTransaction> {
+  await ensureDatabaseSeeded(database);
+
   const now = new Date().toISOString();
-  await db.recurringTransactions.update(id, {
+  await database.recurringTransactions.update(id, {
     ...updates,
     updatedAt: now,
   });
 
-  const updated = await db.recurringTransactions.get(id);
+  const updated = await database.recurringTransactions.get(id);
   if (!updated) {
     throw new Error('Recurring transaction not found');
   }
   return updated;
 }
 
-export async function getRecurringTransactions(): Promise<RecurringTransaction[]> {
-  return await db.recurringTransactions.toArray();
+export async function getRecurringTransactions(database: TapTrackDatabase = db) {
+  await ensureDatabaseSeeded(database);
+  return database.recurringTransactions.toArray();
 }
 
-export async function getActiveRecurringTransactions(): Promise<RecurringTransaction[]> {
-  return await db.recurringTransactions.where('isActive').equals(true).toArray();
+export async function getActiveRecurringTransactions(database: TapTrackDatabase = db) {
+  await ensureDatabaseSeeded(database);
+  return database.recurringTransactions.filter((item) => item.isActive).toArray();
 }
 
-export async function getRecurringTransaction(id: string): Promise<RecurringTransaction | null> {
-  return await db.recurringTransactions.get(id);
+export async function getRecurringTransaction(
+  id: string,
+  database: TapTrackDatabase = db
+): Promise<RecurringTransaction | null> {
+  await ensureDatabaseSeeded(database);
+  return (await database.recurringTransactions.get(id)) ?? null;
 }
 
-export async function deleteRecurringTransaction(id: string): Promise<void> {
-  await db.recurringTransactions.delete(id);
+export async function deleteRecurringTransaction(
+  id: string,
+  database: TapTrackDatabase = db
+): Promise<void> {
+  await ensureDatabaseSeeded(database);
+  await database.recurringTransactions.delete(id);
 }
 
-export async function calculateNextRunDate(
-  recurring: RecurringTransaction,
+export function getInitialNextRunDate(startDate: string, currentDate = new Date()) {
+  const today = formatLocalDate(currentDate);
+  return startDate >= today ? startDate : today;
+}
+
+export function calculateNextRunDate(
+  recurring: Pick<RecurringTransaction, 'frequency' | 'nextRunDate'>,
   currentDate: Date = new Date()
-): Promise<string> {
-  const startDate = new Date(recurring.startDate);
-  const currentDateObj = new Date(currentDate);
+): string {
+  const currentDay = parseLocalDate(formatLocalDate(currentDate));
+  let nextDate = parseLocalDate(recurring.nextRunDate);
 
-  // Reset time to midnight for date comparison
-  startDate.setHours(0, 0, 0, 0);
-  currentDateObj.setHours(0, 0, 0, 0);
-
-  // If the start date is in the future, use it
-  if (startDate > currentDateObj) {
-    return formatLocalDate(startDate);
-  }
-
-  // Calculate next run date based on frequency
-  let nextDate = new Date(startDate);
-
-  switch (recurring.frequency) {
-    case 'daily':
-      nextDate.setDate(startDate.getDate() + 1);
-      break;
-    case 'weekly':
-      nextDate.setDate(startDate.getDate() + 7);
-      break;
-    case 'monthly':
-      nextDate.setMonth(startDate.getMonth() + 1);
-      break;
-    case 'yearly':
-      nextDate.setFullYear(startDate.getFullYear() + 1);
-      break;
-  }
-
-  // Ensure the next date is not in the future
-  if (nextDate > currentDateObj) {
-    return formatLocalDate(nextDate);
-  }
-
-  // If we're past the next date, keep going until we find a future date
-  while (nextDate <= currentDateObj) {
-    switch (recurring.frequency) {
-      case 'daily':
-        nextDate.setDate(nextDate.getDate() + 1);
-        break;
-      case 'weekly':
-        nextDate.setDate(nextDate.getDate() + 7);
-        break;
-      case 'monthly':
-        nextDate.setMonth(nextDate.getMonth() + 1);
-        break;
-      case 'yearly':
-        nextDate.setFullYear(nextDate.getFullYear() + 1);
-        break;
-    }
-  }
+  do {
+    nextDate = addFrequency(nextDate, recurring.frequency);
+  } while (nextDate <= currentDay);
 
   return formatLocalDate(nextDate);
 }
 
-export async function createDueRecurringTransactions(currentDate: Date = new Date()): Promise<void> {
-  const activeRecurring = await getActiveRecurringTransactions();
+export async function createDueRecurringTransactions(
+  currentDate: Date = new Date(),
+  database: TapTrackDatabase = db
+): Promise<DueRecurringResult> {
+  await ensureDatabaseSeeded(database);
+
+  const activeRecurring = await getActiveRecurringTransactions(database);
   const today = formatLocalDate(currentDate);
+  const result: DueRecurringResult = { created: 0, skipped: 0, failed: 0 };
 
   for (const recurring of activeRecurring) {
-    // Check if this recurring transaction should run today
-    if (recurring.nextRunDate === today) {
-      // Check if we've already created this transaction for today
-      const existingTransaction = await db.transactions
+    let nextRunDate = recurring.nextRunDate;
+    let safety = 0;
+
+    while (nextRunDate <= today && safety < 366) {
+      const existingTransaction = await database.transactions
         .where('recurringSourceId')
         .equals(recurring.id)
-        .and(t => t.date === today)
+        .filter((transaction) => transaction.date === nextRunDate)
         .first();
 
-      if (!existingTransaction) {
-        // Create the transaction
+      if (existingTransaction) {
+        result.skipped += 1;
+      } else {
+        const transactionDraft: TransactionDraft = {
+          type: recurring.type,
+          amount: recurring.amount,
+          currency: recurring.currency,
+          title: recurring.title,
+          categoryId: recurring.categoryId,
+          method: recurring.method,
+          date: nextRunDate,
+          recurringSourceId: recurring.id,
+        };
+
         try {
-          const transactionDraft = {
-            type: recurring.type,
-            amount: recurring.amount,
-            currency: recurring.currency,
-            title: recurring.title,
-            categoryId: recurring.categoryId,
-            method: recurring.method,
-            date: today,
-          };
-
-          await createTransaction(transactionDraft);
-
-          // Update the recurring transaction's next run date
-          const nextRunDate = await calculateNextRunDate(recurring, currentDate);
-          await updateRecurringTransaction(recurring.id, { nextRunDate });
-        } catch (error) {
-          console.error(`Failed to create recurring transaction ${recurring.id}:`, error);
+          await createTransaction(transactionDraft, database);
+          result.created += 1;
+        } catch {
+          result.failed += 1;
+          break;
         }
       }
+
+      nextRunDate = formatLocalDate(addFrequency(parseLocalDate(nextRunDate), recurring.frequency));
+      await updateRecurringTransaction(recurring.id, { nextRunDate }, database);
+      safety += 1;
     }
   }
+
+  return result;
 }

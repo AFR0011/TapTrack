@@ -65,3 +65,130 @@ export async function createTransaction(
 
   return transaction;
 }
+
+export async function updateTransaction(
+  id: string,
+  input: TransactionDraft,
+  database: TapTrackDatabase = db
+): Promise<Transaction> {
+  await ensureDatabaseSeeded(database);
+
+  const now = new Date().toISOString();
+  let updatedTransaction: Transaction | null = null;
+
+  await database.transaction('rw', database.transactions, database.balances, database.settings, async () => {
+    const existingTransaction = await database.transactions.get(id);
+    if (!existingTransaction) {
+      throw new Error('Transaction not found');
+    }
+
+    const balanceUpdates = await calculateBalanceUpdates(existingTransaction, input, database, now);
+    balanceUpdates.forEach((balance) => {
+      if (balance.amount < 0) {
+        throw new InsufficientBalanceError(balance.currency, balance.method, balance.amount);
+      }
+    });
+
+    await Promise.all(balanceUpdates.map((balance) => database.balances.put(balance)));
+
+    updatedTransaction = {
+      ...input,
+      id,
+      createdAt: existingTransaction.createdAt,
+      updatedAt: now,
+    };
+
+    await database.transactions.put(updatedTransaction);
+
+    const settings = (await database.settings.get(DEFAULT_SETTINGS_ID)) ?? createDefaultSettings(now);
+    await database.settings.put({
+      ...settings,
+      lastUsedMethod: input.method,
+      updatedAt: now,
+    });
+  });
+
+  if (!updatedTransaction) {
+    throw new Error('Transaction was not updated');
+  }
+
+  return updatedTransaction;
+}
+
+export async function deleteTransaction(
+  id: string,
+  database: TapTrackDatabase = db
+): Promise<void> {
+  await ensureDatabaseSeeded(database);
+
+  const now = new Date().toISOString();
+
+  await database.transaction('rw', database.transactions, database.balances, async () => {
+    const transaction = await database.transactions.get(id);
+    if (!transaction) {
+      throw new Error('Transaction not found');
+    }
+
+    const balanceId = getBalanceId(transaction.currency, transaction.method);
+    const currentBalance =
+      (await database.balances.get(balanceId)) ??
+      ({
+        id: balanceId,
+        currency: transaction.currency,
+        method: transaction.method,
+        amount: 0,
+        updatedAt: now,
+      } satisfies Balance);
+    const nextAmount = currentBalance.amount - getTransactionBalanceDelta(transaction);
+
+    if (nextAmount < 0) {
+      throw new InsufficientBalanceError(transaction.currency, transaction.method, currentBalance.amount);
+    }
+
+    await database.balances.put({
+      ...currentBalance,
+      amount: nextAmount,
+      updatedAt: now,
+    });
+    await database.transactions.delete(id);
+  });
+}
+
+async function calculateBalanceUpdates(
+  existingTransaction: Transaction,
+  nextTransaction: TransactionDraft,
+  database: TapTrackDatabase,
+  now: string
+) {
+  const existingBalanceId = getBalanceId(existingTransaction.currency, existingTransaction.method);
+  const nextBalanceId = getBalanceId(nextTransaction.currency, nextTransaction.method);
+  const balanceIds = new Set([existingBalanceId, nextBalanceId]);
+  const balances = new Map<string, Balance>();
+
+  for (const balanceId of balanceIds) {
+    const [currency, method] = balanceId.split('-') as [TransactionDraft['currency'], TransactionDraft['method']];
+    balances.set(
+      balanceId,
+      (await database.balances.get(balanceId)) ?? {
+        id: balanceId,
+        currency,
+        method,
+        amount: 0,
+        updatedAt: now,
+      }
+    );
+  }
+
+  const existingBalance = balances.get(existingBalanceId);
+  const nextBalance = balances.get(nextBalanceId);
+  if (!existingBalance || !nextBalance) {
+    throw new Error('Balance lookup failed');
+  }
+
+  existingBalance.amount -= getTransactionBalanceDelta(existingTransaction);
+  existingBalance.updatedAt = now;
+  nextBalance.amount += getTransactionBalanceDelta(nextTransaction);
+  nextBalance.updatedAt = now;
+
+  return [...balances.values()];
+}

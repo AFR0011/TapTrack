@@ -15,19 +15,20 @@ export default function Home() {
   }, []);
 
   return (
-    <div className="min-h-screen bg-gray-50">
-      <div className="max-w-4xl mx-auto p-4">
-        <header className="mb-6">
-          <h1 className="text-2xl font-bold text-gray-900">TapTrack</h1>
-          <p className="text-gray-600">{currentMonth}</p>
-        </header>
+    <div className="space-y-5">
+      <header className="flex flex-col gap-1 md:flex-row md:items-end md:justify-between">
+        <div>
+          <h1 className="text-2xl font-semibold text-slate-950">Dashboard</h1>
+          <p className="text-sm font-medium text-slate-500">{currentMonth}</p>
+        </div>
+        <p className="max-w-lg text-sm leading-6 text-slate-500">
+          Command-first logging with live balances, budget status, and recent activity.
+        </p>
+      </header>
 
-        <CommandInput />
-
-        <DashboardSummary />
-
-        <RecentTransactions />
-      </div>
+      <CommandInput />
+      <DashboardSummary />
+      <RecentTransactions />
     </div>
   );
 }

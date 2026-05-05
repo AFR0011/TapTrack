@@ -1,4 +1,5 @@
 import { findCategoryForTransaction } from '@/defaultData';
+import { formatLocalDate } from '@/dates';
 import type { Category, Currency, Method, TransactionDraft, TransactionType } from '@/types';
 
 type ParseCommandOptions = {
@@ -88,11 +89,4 @@ export function parseCommand(command: string, options: ParseCommandOptions): Par
       date: formatLocalDate(options.today ?? new Date()),
     },
   };
-}
-
-function formatLocalDate(date: Date) {
-  const year = date.getFullYear();
-  const month = String(date.getMonth() + 1).padStart(2, '0');
-  const day = String(date.getDate()).padStart(2, '0');
-  return `${year}-${month}-${day}`;
 }

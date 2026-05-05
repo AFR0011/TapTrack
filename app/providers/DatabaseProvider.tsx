@@ -2,6 +2,7 @@
 
 import { useEffect, useState, type ReactNode } from 'react';
 import { ensureDatabaseSeeded } from '@/database';
+import { createDueRecurringTransactions } from '@/recurring/recurringService';
 
 export function DatabaseProvider({ children }: { children: ReactNode }) {
   const [error, setError] = useState('');
@@ -9,10 +10,12 @@ export function DatabaseProvider({ children }: { children: ReactNode }) {
   useEffect(() => {
     let mounted = true;
 
-    ensureDatabaseSeeded().catch((err: unknown) => {
-      if (!mounted) return;
-      setError(err instanceof Error ? err.message : 'Unknown database error');
-    });
+    ensureDatabaseSeeded()
+      .then(() => createDueRecurringTransactions())
+      .catch((err: unknown) => {
+        if (!mounted) return;
+        setError(err instanceof Error ? err.message : 'Unknown database error');
+      });
 
     return () => {
       mounted = false;

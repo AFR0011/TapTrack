@@ -1,25 +1,24 @@
 # TapTrack Project State
 
-Last updated: 2026-04-30
+Last updated: 2026-05-05
 
 ## Current Status
 
-TapTrack is in the initial scaffold stage, covering the start of `BLUEPRINT.md` Phase 1 and Phase 2:
+TapTrack now has a broad local-first V1 app surface in the Ledger Console direction:
 
-- Next.js App Router shell is present.
-- Tailwind is configured.
-- Dexie database schema exists for the planned V1 tables.
-- Default categories, settings, and six minimal balances are seeded locally.
-- Fast command parsing is implemented as a typed, tested module.
-- Transaction saves go through a Dexie-backed service that updates balances atomically and blocks negative balances.
-- Dashboard and recent transactions read from Dexie live queries.
-- Vitest, typecheck, lint, build, and aggregate `check` scripts are available.
+- Next.js App Router shell with shared dashboard, transactions, budgets, recurring, reports, and settings navigation.
+- First-time setup gate captures six starting balances, monthly TRY budget, and default payment method before normal use.
+- Fast command parsing, preview, save, balance update, negative-balance blocking, and live dashboard updates are implemented.
+- Manual transaction add/edit/delete is implemented with balance reversal validation.
+- Monthly TRY budget, total rollover calculation, category budgets, and budget usage display are implemented.
+- Recurring transaction CRUD and app-open due/missed transaction creation are implemented.
+- Reports cover category spending, spending over time, income vs expense, monthly comparison, budget performance, and detailed transaction lists.
+- Settings covers balance updates, default method, category creation, CSV export, JSON backup/import, PDF report export, and reset.
+- CSV export uses PapaParse; JSON backup covers all Dexie tables; PDF export generates a simple local PDF blob.
 
 ## Active Objective
 
-Get the local-first logging spine reliable before expanding to budgets, reports, recurring transactions, or exports.
-
-The next product step should be a minimal first-time setup or balance-adjustment path, because seeded balances start at `0` and expense transactions will be blocked until the chosen cash/card balance is funded.
+The local-first V1 acceptance surface is now usable enough for end-to-end daily logging and monthly review testing. The next product step should be tightening the user experience around transaction/category editing, export polish, and mobile navigation details after real usage.
 
 ## Verification State
 
@@ -32,12 +31,19 @@ npm.cmd run test
 npm.cmd run build
 ```
 
-Latest full verification: passed on 2026-04-30 with `npm.cmd run check`.
+Latest verification on 2026-05-05:
+
+- `npm.cmd run lint` passed.
+- `npm.cmd run typecheck` passed.
+- `npm.cmd run test` passed with 7 files and 20 tests.
+- `npm.cmd run build` passed with routes for dashboard, transactions, budgets, recurring, reports, and settings.
+- Browser smoke used Edge headless on `http://127.0.0.1:3001` because the existing port `3000` listener was serving an older route manifest.
 
 ## Remaining Risks And Assumptions
 
-- No committed baseline exists yet.
-- No setup flow means the app can record income immediately, but expense examples require funded balances.
-- Monthly budget is hardcoded at `20000 TRY`.
-- Local data migrations are not needed yet because this is schema version 1, but future Dexie schema edits must be versioned.
-- `npm audit --omit=dev` still reports Next/PostCSS advisories after updating to Next 14.2.35; npm's suggested automatic fix moves to Next 16 and needs a separate framework-upgrade decision.
+- The PDF report is intentionally simple and local; it is a valid downloadable PDF blob but not yet a polished pdfmake layout.
+- Reports are TRY-primary and do not convert USD/EUR, per V1 scope.
+- Recurring transactions run on app open only; there is no background execution or push notification.
+- Category management supports creation and display, but not full edit/delete controls yet.
+- PWA install/service-worker polish is still outside this implementation pass.
+- `npm audit --omit=dev` still reports Next/PostCSS advisories; moving to Next 16 remains a separate framework-upgrade decision.

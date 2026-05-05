@@ -1,8 +1,10 @@
 'use client';
 
 import { useMemo, useState } from 'react';
+import Link from 'next/link';
 import { useLiveQuery } from 'dexie-react-hooks';
 import { db } from '@/database';
+import { formatMoney } from '@/format';
 import type { Transaction } from '@/types';
 
 export default function RecentTransactions() {
@@ -11,9 +13,9 @@ export default function RecentTransactions() {
   const sortedTransactions = useMemo(
     () =>
       [...transactions].sort((a, b) => {
-        const dateDiff = new Date(b.date).getTime() - new Date(a.date).getTime();
+        const dateDiff = b.date.localeCompare(a.date);
         if (dateDiff !== 0) return dateDiff;
-        return new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime();
+        return b.createdAt.localeCompare(a.createdAt);
       }),
     [transactions]
   );
@@ -24,49 +26,59 @@ export default function RecentTransactions() {
   });
 
   return (
-    <div className="bg-white rounded-lg shadow mt-6">
-      <div className="p-4 border-b">
-        <h2 className="text-lg font-semibold">Recent Transactions</h2>
-      </div>
-      <div className="p-4">
-        <div className="flex gap-2 mb-4">
-          <button
-            onClick={() => setFilter('all')}
-            className={`px-3 py-1 rounded ${filter === 'all' ? 'bg-blue-500 text-white' : 'bg-gray-100'}`}
-          >
-            All
-          </button>
-          <button
-            onClick={() => setFilter('income')}
-            className={`px-3 py-1 rounded ${filter === 'income' ? 'bg-green-500 text-white' : 'bg-gray-100'}`}
-          >
-            Income
-          </button>
-          <button
-            onClick={() => setFilter('expense')}
-            className={`px-3 py-1 rounded ${filter === 'expense' ? 'bg-red-500 text-white' : 'bg-gray-100'}`}
-          >
-            Expense
-          </button>
+    <section className="rounded-lg border border-slate-200 bg-white shadow-sm">
+      <div className="flex flex-col gap-3 border-b border-slate-200 p-4 md:flex-row md:items-center md:justify-between">
+        <div>
+          <h2 className="text-base font-semibold text-slate-950">Recent transactions</h2>
+          <p className="text-sm text-slate-500">Latest local activity across all currencies.</p>
         </div>
-        <div className="space-y-2">
-          {filteredTransactions.length === 0 ? (
-            <p className="text-gray-500 text-center py-4">No transactions yet</p>
-          ) : (
-            filteredTransactions.slice(0, 10).map((t) => (
-              <div key={t.id} className="flex justify-between items-center py-2 border-b last:border-0">
-                <div>
-                  <p className={`font-medium ${t.type === 'income' ? 'text-green-600' : 'text-red-600'}`}>
-                    {t.type === 'income' ? '+' : '-'}{t.amount} {t.currency}
-                  </p>
-                  <p className="text-sm text-gray-600">{t.title}</p>
-                </div>
-                <span className="text-sm text-gray-500">{t.date}</span>
+        <div className="flex gap-1">
+          {(['all', 'income', 'expense'] as const).map((option) => (
+            <button
+              key={option}
+              onClick={() => setFilter(option)}
+              className={`rounded-md px-3 py-2 text-sm font-semibold capitalize transition ${
+                filter === option
+                  ? 'bg-slate-950 text-white'
+                  : 'bg-slate-100 text-slate-600 hover:bg-slate-200'
+              }`}
+            >
+              {option}
+            </button>
+          ))}
+        </div>
+      </div>
+      <div className="divide-y divide-slate-100">
+        {filteredTransactions.length === 0 ? (
+          <div className="p-6 text-center">
+            <p className="text-sm font-medium text-slate-500">No transactions yet.</p>
+          </div>
+        ) : (
+          filteredTransactions.slice(0, 10).map((transaction) => (
+            <div key={transaction.id} className="grid grid-cols-[1fr_auto] gap-3 px-4 py-3">
+              <div>
+                <p className="text-sm font-semibold text-slate-950">{transaction.title}</p>
+                <p className="mt-1 text-xs font-medium uppercase tracking-normal text-slate-500">
+                  {transaction.date} / {transaction.method} / {transaction.categoryId}
+                </p>
               </div>
-            ))
-          )}
-        </div>
+              <p
+                className={`text-right text-sm font-semibold ${
+                  transaction.type === 'income' ? 'text-emerald-600' : 'text-red-600'
+                }`}
+              >
+                {transaction.type === 'income' ? '+' : '-'}
+                {formatMoney(transaction.amount, transaction.currency)}
+              </p>
+            </div>
+          ))
+        )}
       </div>
-    </div>
+      <div className="border-t border-slate-200 p-4">
+        <Link href="/transactions" className="text-sm font-semibold text-blue-600 hover:text-blue-700">
+          Open transactions
+        </Link>
+      </div>
+    </section>
   );
 }

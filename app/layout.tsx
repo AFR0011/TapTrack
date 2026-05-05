@@ -1,6 +1,8 @@
 import type { Metadata } from "next";
 import { Inter } from "next/font/google";
 import "./globals.css";
+import AppShell from "@/components/AppShell";
+import SetupGate from "@/components/SetupGate";
 import { DatabaseProvider } from "./providers/DatabaseProvider";
 import { ReactQueryProvider } from "./providers/ReactQueryProvider";
 
@@ -20,7 +22,11 @@ export default function RootLayout({
     <html lang="en">
       <body className={inter.className}>
         <ReactQueryProvider>
-          <DatabaseProvider>{children}</DatabaseProvider>
+          <DatabaseProvider>
+            <SetupGate>
+              <AppShell>{children}</AppShell>
+            </SetupGate>
+          </DatabaseProvider>
         </ReactQueryProvider>
       </body>
     </html>
