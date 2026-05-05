@@ -43,6 +43,7 @@ export async function createTransaction(
       } satisfies Balance);
 
     const nextAmount = currentBalance.amount + getTransactionBalanceDelta(input);
+
     if (nextAmount < 0) {
       throw new InsufficientBalanceError(input.currency, input.method, currentBalance.amount);
     }

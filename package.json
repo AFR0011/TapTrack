@@ -16,6 +16,7 @@
     "autoprefixer": "^10.4.20",
     "class-variance-authority": "^0.7.0",
     "clsx": "^2.1.1",
+    "csv-writer": "^1.6.0",
     "dexie": "^4.0.8",
     "dexie-react-hooks": "^1.1.7",
     "js-base64": "^3.7.7",

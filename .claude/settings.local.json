@@ -5,7 +5,10 @@
       "Bash(npm install *)",
       "Bash(git init *)",
       "Bash(git config *)",
-      "Bash(npm run *)"
+      "Bash(npm run *)",
+      "Bash(npm test *)",
+      "Bash(npx tsx *)",
+      "Bash(npx vitest *)"
     ]
   }
 }
