@@ -66,8 +66,8 @@ export default function AppShell({ children }: { children: ReactNode }) {
       <main className="mx-auto max-w-7xl px-4 py-5 md:py-7">{children}</main>
 
       {/* Mobile bottom nav */}
-      <nav className="fixed bottom-0 inset-x-0 z-20 md:hidden" aria-label="Mobile">
-        <div className="flex items-stretch justify-between border-t border-slate-200 bg-white/95 px-2 pt-2 pb-[calc(0.25rem + env(safe-area-inset-bottom, 0px))] backdrop-blur">
+      <nav className="fixed bottom-2 inset-x-2 z-20 md:hidden" aria-label="Mobile">
+        <div className="flex items-stretch justify-between rounded-t-2xl border border-slate-200 bg-white/95 px-3 pt-2 pb-[calc(0.25rem + env(safe-area-inset-bottom, 0px))] backdrop-blur shadow-lg shadow-slate-200/50">
           {NAV_ITEMS.map((item) => {
             const active = item.href === '/' ? pathname === '/' : pathname.startsWith(item.href);
             return (
