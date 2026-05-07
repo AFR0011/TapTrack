@@ -85,7 +85,7 @@ export default function BudgetsWorkspace() {
       </header>
 
       <section className="grid gap-4 lg:grid-cols-[0.9fr_1.1fr]">
-        <div className="rounded-lg border border-slate-200 bg-white p-4 shadow-sm">
+        <div className="rounded-2xl border border-slate-200 bg-white p-5 shadow-xs shadow-slate-200/50 transition-all hover:shadow-md">
           <h2 className="text-base font-semibold text-slate-950">Monthly total</h2>
           <div className="mt-4 grid gap-3 sm:grid-cols-[1fr_auto]">
             <input
@@ -114,7 +114,7 @@ export default function BudgetsWorkspace() {
           <ProgressBar percent={totalPercent} />
         </div>
 
-        <div className="rounded-lg border border-slate-200 bg-white p-4 shadow-sm">
+        <div className="rounded-2xl border border-slate-200 bg-white p-5 shadow-xs shadow-slate-200/50 transition-all hover:shadow-md">
           <h2 className="text-base font-semibold text-slate-950">Category budgets</h2>
           <div className="mt-4 divide-y divide-slate-100">
             {categories.map((category) => {

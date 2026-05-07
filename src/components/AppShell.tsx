@@ -5,6 +5,13 @@ import { usePathname } from 'next/navigation';
 import type { ReactNode } from 'react';
 
 const NAV_ITEMS = [
+  { href: '/', label: 'Home', icon: 'M3 12l2-2m0 0l7-7 7 7M5 10v10a1 1 0 001 1h3m10-11l2 2m-2-2v10a1 1 0 01-1 1h-3m-6 0a1 1 0 001-1v-4a1 1 0 011-1h2a1 1 0 011 1v4a1 1 0 001 1m-6 0h6' },
+  { href: '/transactions', label: 'History', icon: 'M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2' },
+  { href: '/budgets', label: 'Budgets', icon: 'M12 8c-1.657 0-3 .895-3 2s1.343 2 3 2 3 .895 3 2-1.343 2-3 2m0-8c1.11 0 2.08.402 2.599 1M12 8V7m0 1v8m0 0v1m0-1c-1.11 0-2.08-.402-2.599-1M21 12a9 9 0 11-18 0 9 9 0 0118 0z' },
+  { href: '/reports', label: 'Reports', icon: 'M9 19v-6a2 2 0 00-2-2H5a2 2 0 00-2 2v6a2 2 0 002 2h2a2 2 0 002-2zm0 0V9a2 2 0 012-2h2a2 2 0 012 2v10m-6 0a2 2 0 002 2h2a2 2 0 002-2m0 0V5a2 2 0 012-2h2a2 2 0 012 2v14a2 2 0 01-2 2h-2a2 2 0 01-2-2z' },
+];
+
+const HEADER_NAV = [
   { href: '/', label: 'Dashboard' },
   { href: '/transactions', label: 'Transactions' },
   { href: '/budgets', label: 'Budgets' },
@@ -13,12 +20,21 @@ const NAV_ITEMS = [
   { href: '/settings', label: 'Settings' },
 ];
 
+function Icon({ d, className }: { d: string; className?: string }) {
+  return (
+    <svg className={className} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={1.5} strokeLinecap="round" strokeLinejoin="round">
+      <path d={d} />
+    </svg>
+  );
+}
+
 export default function AppShell({ children }: { children: ReactNode }) {
   const pathname = usePathname();
 
   return (
-    <div className="min-h-screen bg-slate-50 text-slate-950">
-      <header className="sticky top-0 z-20 border-b border-slate-200 bg-white/95 backdrop-blur">
+    <div className="min-h-screen bg-slate-50 text-slate-950" style={{ paddingBottom: 'env(safe-area-inset-bottom, 0px)' }}>
+      {/* Desktop header */}
+      <header className="sticky top-0 z-20 hidden border-b border-slate-200 bg-white/95 backdrop-blur md:block">
         <div className="mx-auto flex max-w-7xl flex-col gap-3 px-4 py-3 md:flex-row md:items-center md:justify-between">
           <div>
             <Link href="/" className="text-xl font-semibold tracking-normal text-slate-950">
@@ -27,13 +43,13 @@ export default function AppShell({ children }: { children: ReactNode }) {
             <p className="text-xs font-medium text-slate-500">Local-first finance console</p>
           </div>
           <nav className="flex gap-1 overflow-x-auto pb-1 md:pb-0" aria-label="Primary">
-            {NAV_ITEMS.map((item) => {
+            {HEADER_NAV.map((item) => {
               const active = item.href === '/' ? pathname === '/' : pathname.startsWith(item.href);
               return (
                 <Link
                   key={item.href}
                   href={item.href}
-                  className={`whitespace-nowrap rounded-md px-3 py-2 text-sm font-medium transition ${
+                  className={`whitespace-nowrap rounded-lg px-3 py-2 text-sm font-medium transition-all ${
                     active
                       ? 'bg-slate-950 text-white'
                       : 'text-slate-600 hover:bg-slate-100 hover:text-slate-950'
@@ -46,7 +62,41 @@ export default function AppShell({ children }: { children: ReactNode }) {
           </nav>
         </div>
       </header>
+
       <main className="mx-auto max-w-7xl px-4 py-5 md:py-7">{children}</main>
+
+      {/* Mobile bottom nav */}
+      <nav className="fixed bottom-0 inset-x-0 z-20 md:hidden" aria-label="Mobile">
+        <div className="flex items-stretch justify-between border-t border-slate-200 bg-white/95 px-2 pt-2 pb-[calc(0.25rem + env(safe-area-inset-bottom, 0px))] backdrop-blur">
+          {NAV_ITEMS.map((item) => {
+            const active = item.href === '/' ? pathname === '/' : pathname.startsWith(item.href);
+            return (
+              <Link
+                key={item.href}
+                href={item.href}
+                className={`flex flex-col items-center justify-center gap-0.5 rounded-xl px-3 py-1.5 text-[10px] font-medium transition-all ${
+                  active
+                    ? 'text-slate-950'
+                    : 'text-slate-400 hover:text-slate-600'
+                }`}
+              >
+                <Icon d={item.icon} className={`h-5 w-5 ${active ? 'stroke-[2]' : 'stroke-[1.5]'}`} />
+                <span>{item.label}</span>
+              </Link>
+            );
+          })}
+          {/* FAB for quick-log */}
+          <Link
+            href="/"
+            aria-label="Quick log"
+            className="relative -mt-5 flex items-center justify-center rounded-full bg-slate-950 px-4 py-4 shadow-lg shadow-slate-950/20 transition-all hover:bg-slate-800 active:scale-95"
+          >
+            <svg className="h-6 w-6 text-white" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2.5} strokeLinecap="round">
+              <path d="M12 5v14M5 12h14" />
+            </svg>
+          </Link>
+        </div>
+      </nav>
     </div>
   );
 }

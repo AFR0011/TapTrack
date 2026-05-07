@@ -33,7 +33,7 @@ export default function DashboardSummary() {
 
   return (
     <section className="grid gap-4 lg:grid-cols-[1.3fr_0.7fr]">
-      <div className="rounded-lg border border-slate-200 bg-white p-4 shadow-sm">
+      <div className="rounded-2xl border border-slate-200 bg-white p-5 shadow-xs shadow-slate-200/50 transition-shadow hover:shadow-md">
         <div className="flex items-start justify-between gap-4">
           <div>
             <h2 className="text-sm font-semibold text-slate-500">Month status</h2>
@@ -41,13 +41,16 @@ export default function DashboardSummary() {
           </div>
           <div className="text-right">
             <p className="text-xs font-medium text-slate-500">Remaining</p>
-            <p className={`mt-1 text-lg font-semibold ${remaining >= 0 ? 'text-emerald-600' : 'text-red-600'}`}>
+            <p className={`mt-1 text-lg font-semibold transition-colors ${remaining >= 0 ? 'text-emerald-600' : 'text-red-600'}`}>
               {formatMoney(remaining)}
             </p>
           </div>
         </div>
         <div className="mt-4 h-2 overflow-hidden rounded-full bg-slate-100">
-          <div className="h-full rounded-full bg-blue-500" style={{ width: `${budgetUsed}%` }} />
+          <div
+            className={`h-full rounded-full transition-all duration-500 ease-out ${budgetUsed > 100 ? 'bg-red-500' : 'bg-blue-500'}`}
+            style={{ width: `${Math.min(budgetUsed, 100)}%` }}
+          />
         </div>
         <div className="mt-3 flex justify-between text-xs font-medium text-slate-500">
           <span>Today: {formatMoney(todaySpending)}</span>
@@ -55,11 +58,11 @@ export default function DashboardSummary() {
         </div>
       </div>
 
-      <div className="rounded-lg border border-slate-200 bg-white p-4 shadow-sm">
+      <div className="rounded-2xl border border-slate-200 bg-white p-5 shadow-xs shadow-slate-200/50 transition-shadow hover:shadow-md">
         <h2 className="text-sm font-semibold text-slate-500">Balances</h2>
         <div className="mt-3 grid grid-cols-2 gap-2">
           {balances.map((balance) => (
-            <div key={balance.id} className="rounded-md border border-slate-100 bg-slate-50 px-3 py-2">
+            <div key={balance.id} className="rounded-lg bg-slate-50 px-3 py-2 transition-colors hover:bg-slate-100">
               <p className="text-xs font-medium uppercase tracking-normal text-slate-500">
                 {balance.currency} {balance.method}
               </p>

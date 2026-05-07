@@ -5,6 +5,7 @@ import AppShell from "@/components/AppShell";
 import SetupGate from "@/components/SetupGate";
 import { DatabaseProvider } from "./providers/DatabaseProvider";
 import { ReactQueryProvider } from "./providers/ReactQueryProvider";
+import { ToastProvider } from "@/components/ToastProvider";
 
 const inter = Inter({ subsets: ["latin"] });
 
@@ -22,11 +23,13 @@ export default function RootLayout({
     <html lang="en">
       <body className={inter.className}>
         <ReactQueryProvider>
-          <DatabaseProvider>
-            <SetupGate>
-              <AppShell>{children}</AppShell>
-            </SetupGate>
-          </DatabaseProvider>
+          <ToastProvider>
+            <DatabaseProvider>
+              <SetupGate>
+                <AppShell>{children}</AppShell>
+              </SetupGate>
+            </DatabaseProvider>
+          </ToastProvider>
         </ReactQueryProvider>
       </body>
     </html>

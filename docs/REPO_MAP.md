@@ -1,12 +1,12 @@
 # TapTrack Repo Map
 
-Last mapped: 2026-05-05
+Last mapped: 2026-05-07
 
 ## Overview
 
 TapTrack is a mobile-first, local-first personal finance tracker using Next.js 14 App Router, React, TypeScript, Tailwind CSS, Dexie/IndexedDB, Recharts, PapaParse, and Vitest. `BLUEPRINT.md` remains the source of truth for V1 scope, non-goals, build order, and acceptance criteria.
 
-The active architecture keeps persistence behind `src/database.ts` and service modules under `src/`. No cloud sync, backend, user accounts, bank import, exchange-rate API, or AI categorization has been added.
+The active architecture keeps persistence behind `src/database.ts` and service modules under `src/`. No cloud sync, backend, user accounts, bank/institution import, receipt/photo scanning or attachments, exchange-rate API, or AI categorization has been added. Bank/institution imports and receipt/photo scanning are not in the current V1.5/V2 roadmap unless explicitly re-scoped.
 
 ## Active Structure
 

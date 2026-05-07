@@ -22,6 +22,8 @@ import {
   type TransactionDraft,
   type TransactionType,
 } from '@/types';
+import { ConfirmDialog } from './ConfirmDialog';
+import { toast } from 'sonner';
 
 type TransactionFormState = {
   type: TransactionType;
@@ -41,9 +43,11 @@ export default function TransactionsWorkspace() {
   const [typeFilter, setTypeFilter] = useState<'all' | TransactionType>('all');
   const [methodFilter, setMethodFilter] = useState<'all' | Method>('all');
   const [categoryFilter, setCategoryFilter] = useState('all');
+  const [searchQuery, setSearchQuery] = useState('');
   const [editing, setEditing] = useState<Transaction | null>(null);
   const [showForm, setShowForm] = useState(false);
   const [error, setError] = useState('');
+  const [confirmDelete, setConfirmDelete] = useState<Transaction | null>(null);
 
   const categoryById = useMemo(
     () => new Map(categories.map((category) => [category.id, category])),
@@ -56,31 +60,46 @@ export default function TransactionsWorkspace() {
         .filter((transaction) => typeFilter === 'all' || transaction.type === typeFilter)
         .filter((transaction) => methodFilter === 'all' || transaction.method === methodFilter)
         .filter((transaction) => categoryFilter === 'all' || transaction.categoryId === categoryFilter)
+        .filter((transaction) => {
+          if (!searchQuery.trim()) return true;
+          const q = searchQuery.toLowerCase();
+          return (
+            transaction.title.toLowerCase().includes(q) ||
+            (transaction.note ?? '').toLowerCase().includes(q) ||
+            (categoryById.get(transaction.categoryId)?.name ?? '').toLowerCase().includes(q)
+          );
+        })
         .sort((a, b) => {
           const dateDiff = b.date.localeCompare(a.date);
           if (dateDiff !== 0) return dateDiff;
           return b.createdAt.localeCompare(a.createdAt);
         }),
-    [categoryFilter, methodFilter, month, transactions, typeFilter]
+    [categoryFilter, categoryById, methodFilter, month, searchQuery, transactions, typeFilter]
   );
 
   const handleCreate = async (draft: TransactionDraft) => {
     await createTransaction(draft);
     setShowForm(false);
+    toast.success('Transaction saved.');
   };
 
   const handleUpdate = async (draft: TransactionDraft) => {
     if (!editing) return;
     await updateTransaction(editing.id, draft);
     setEditing(null);
+    toast.success('Transaction updated.');
   };
 
   const handleDelete = async (transaction: Transaction) => {
     setError('');
     try {
       await deleteTransaction(transaction.id);
+      setConfirmDelete(null);
+      toast.success('Transaction deleted.');
     } catch (err) {
-      setError(err instanceof InsufficientBalanceError ? err.message : 'Could not delete transaction.');
+      const msg = err instanceof InsufficientBalanceError ? err.message : 'Could not delete transaction.';
+      setError(msg);
+      toast.error(msg);
     }
   };
 
@@ -89,7 +108,7 @@ export default function TransactionsWorkspace() {
       <header className="flex flex-col gap-3 md:flex-row md:items-end md:justify-between">
         <div>
           <h1 className="text-2xl font-semibold text-slate-950">Transactions</h1>
-          <p className="text-sm font-medium text-slate-500">Search, filter, add, edit, delete, and backdate local records.</p>
+          <p className="text-sm font-medium text-slate-500">Filter, search, add, edit, delete, and backdate local records.</p>
         </div>
         <button
           type="button"
@@ -118,8 +137,18 @@ export default function TransactionsWorkspace() {
         />
       )}
 
-      <section className="rounded-lg border border-slate-200 bg-white p-4 shadow-sm">
-        <div className="grid gap-3 md:grid-cols-4">
+      <section className="rounded-2xl border border-slate-200 bg-white p-5 shadow-xs shadow-slate-200/50 transition-all hover:shadow-md">
+        <div className="grid gap-3 md:grid-cols-5">
+          <label className="grid gap-1 text-xs font-medium uppercase tracking-normal text-slate-500">
+            Search
+            <input
+              type="text"
+              value={searchQuery}
+              onChange={(event) => setSearchQuery(event.target.value)}
+              placeholder="Title, note, or category"
+              className="rounded-md border border-slate-300 px-3 py-2 text-sm font-medium text-slate-950 outline-none focus:border-blue-500"
+            />
+          </label>
           <label className="grid gap-1 text-xs font-medium uppercase tracking-normal text-slate-500">
             Month
             <input
@@ -160,7 +189,7 @@ export default function TransactionsWorkspace() {
         {error ? <p className="mt-3 text-sm font-medium text-red-600">{error}</p> : null}
       </section>
 
-      <section className="overflow-hidden rounded-lg border border-slate-200 bg-white shadow-sm">
+      <section className="overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-xs shadow-slate-200/50 transition-all hover:shadow-md">
         {filteredTransactions.length === 0 ? (
           <div className="p-8 text-center text-sm font-medium text-slate-500">No transactions match these filters.</div>
         ) : (
@@ -181,7 +210,7 @@ export default function TransactionsWorkspace() {
                   <button type="button" onClick={() => { setEditing(transaction); setShowForm(false); }} className="rounded-md border border-slate-300 px-3 py-2 text-sm font-semibold text-slate-700 hover:bg-slate-100">
                     Edit
                   </button>
-                  <button type="button" onClick={() => handleDelete(transaction)} className="rounded-md px-3 py-2 text-sm font-semibold text-red-600 hover:bg-red-50">
+                  <button type="button" onClick={() => setConfirmDelete(transaction)} className="rounded-md px-3 py-2 text-sm font-semibold text-red-600 hover:bg-red-50">
                     Delete
                   </button>
                 </div>
@@ -190,6 +219,16 @@ export default function TransactionsWorkspace() {
           </div>
         )}
       </section>
+
+      <ConfirmDialog
+        open={confirmDelete !== null}
+        title="Delete transaction"
+        message={`Delete "${confirmDelete?.title ?? ''}"? This cannot be undone.`}
+        confirmLabel="Delete"
+        confirmVariant="danger"
+        onConfirm={() => confirmDelete && handleDelete(confirmDelete)}
+        onCancel={() => setConfirmDelete(null)}
+      />
     </div>
   );
 }
@@ -258,7 +297,7 @@ function TransactionForm({
   };
 
   return (
-    <section className="rounded-lg border border-slate-200 bg-white p-4 shadow-sm">
+    <section className="rounded-2xl border border-slate-200 bg-white p-5 shadow-xs shadow-slate-200/50 transition-all hover:shadow-md">
       <h2 className="text-base font-semibold text-slate-950">{transaction ? 'Edit transaction' : 'Add transaction'}</h2>
       <div className="mt-4 grid gap-3 md:grid-cols-4">
         <FormSelect label="Type" value={form.type} onChange={(value) => setType(value as TransactionType)} options={TRANSACTION_TYPES} />

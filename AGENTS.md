@@ -17,7 +17,7 @@
 
 ## Working Rules
 
-- Keep V1 local-first. Do not add cloud sync, user accounts, backend servers, Supabase, Firebase, bank imports, or AI categorization unless explicitly requested.
+- Keep V1 local-first. Do not add cloud sync, user accounts, backend servers, Supabase, Firebase, bank/institution imports, receipt/photo scanning or attachments, or AI categorization unless explicitly requested.
 - Prefer small diffs that advance the current build phase in `BLUEPRINT.md`.
 - Shared domain types belong in `src/types.ts`.
 - Canonical persistence should flow through `src/database.ts` and service modules under `src/`; avoid parallel client-only transaction stores unless the persistence boundary is made explicit.

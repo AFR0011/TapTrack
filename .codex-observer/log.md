@@ -11,3 +11,17 @@
 **Evidence:** Repo mapping and scaffold continuation completed before `.codex-observer/log.md` existed.  
 **Risk if ignored:** Future sessions may claim task-observer was active while leaving no durable observation trail for review.  
 **Next action:** discuss with user
+
+### Observation 002: Roadmap lists need a separate excluded-scope lane
+
+**Status:** RESOLVED
+**Date:** 2026-05-07
+**Type:** agents-md
+**Scope:** repo
+**Target:** BLUEPRINT.md, AGENTS.md, docs/PROJECT_STATE.md, docs/REPO_MAP.md
+**Trigger:** The user asked to remove bank imports and photo scanning from scope after QA surfaced them as possible later additions.
+**Issue:** The blueprint mixed normal V1 non-goals with ideas that should not remain in the V1.5/V2 candidate roadmap.
+**Suggested improvement:** Keep a dedicated out-of-product-scope list for ideas that should not be treated as future candidates unless explicitly re-scoped.
+**Evidence:** `BLUEPRINT.md` previously listed bank import and receipt/photo attachments in Future Features while repo guidance only blocked bank imports in V1.
+**Risk if ignored:** Future planning passes may keep reintroducing excluded features as "later" roadmap items.
+**Next action:** keep resolved unless this pattern appears in other repos or skills

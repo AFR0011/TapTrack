@@ -1,6 +1,6 @@
 # TapTrack Project State
 
-Last updated: 2026-05-05
+Last updated: 2026-05-07
 
 ## Current Status
 
@@ -19,6 +19,8 @@ TapTrack now has a broad local-first V1 app surface in the Ledger Console direct
 ## Active Objective
 
 The local-first V1 acceptance surface is now usable enough for end-to-end daily logging and monthly review testing. The next product step should be tightening the user experience around transaction/category editing, export polish, and mobile navigation details after real usage.
+
+Bank/institution imports and receipt/photo scanning or attachments are out of current product scope, including the V1.5/V2 roadmap unless explicitly re-scoped.
 
 ## Verification State
 

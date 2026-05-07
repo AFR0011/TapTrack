@@ -144,7 +144,7 @@ export default function ReportsWorkspace() {
           </ResponsiveContainer>
         </ChartPanel>
 
-        <div className="rounded-lg border border-slate-200 bg-white p-4 shadow-sm">
+        <div className="rounded-2xl border border-slate-200 bg-white p-5 shadow-xs shadow-slate-200/50 transition-all hover:shadow-md">
           <h2 className="text-base font-semibold text-slate-950">Budget performance</h2>
           <div className="mt-4 h-2 overflow-hidden rounded-full bg-slate-100">
             <div className="h-full rounded-full bg-blue-500" style={{ width: `${budgetPercent}%` }} />
@@ -174,7 +174,7 @@ export default function ReportsWorkspace() {
 
 function Metric({ label, value, tone }: { label: string; value: string; tone: 'good' | 'bad' }) {
   return (
-    <div className="rounded-lg border border-slate-200 bg-white p-4 shadow-sm">
+    <div className="rounded-2xl border border-slate-200 bg-white p-5 shadow-xs shadow-slate-200/50 transition-all hover:shadow-md">
       <p className="text-sm font-semibold text-slate-500">{label}</p>
       <p className={`mt-2 text-2xl font-semibold ${tone === 'good' ? 'text-emerald-600' : 'text-red-600'}`}>{value}</p>
     </div>
@@ -183,7 +183,7 @@ function Metric({ label, value, tone }: { label: string; value: string; tone: 'g
 
 function ChartPanel({ title, empty, children }: { title: string; empty: boolean; children: ReactNode }) {
   return (
-    <div className="rounded-lg border border-slate-200 bg-white p-4 shadow-sm">
+    <div className="rounded-2xl border border-slate-200 bg-white p-5 shadow-xs shadow-slate-200/50 transition-all hover:shadow-md">
       <h2 className="text-base font-semibold text-slate-950">{title}</h2>
       {empty ? <p className="mt-6 text-center text-sm font-medium text-slate-500">No data for this month.</p> : <div className="mt-4">{children}</div>}
     </div>

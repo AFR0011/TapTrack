@@ -26,8 +26,8 @@ export default function RecentTransactions() {
   });
 
   return (
-    <section className="rounded-lg border border-slate-200 bg-white shadow-sm">
-      <div className="flex flex-col gap-3 border-b border-slate-200 p-4 md:flex-row md:items-center md:justify-between">
+    <section className="rounded-2xl border border-slate-200 bg-white shadow-xs shadow-slate-200/50 transition-shadow hover:shadow-md">
+      <div className="flex flex-col gap-3 border-b border-slate-100 p-4 md:flex-row md:items-center md:justify-between">
         <div>
           <h2 className="text-base font-semibold text-slate-950">Recent transactions</h2>
           <p className="text-sm text-slate-500">Latest local activity across all currencies.</p>
@@ -37,7 +37,7 @@ export default function RecentTransactions() {
             <button
               key={option}
               onClick={() => setFilter(option)}
-              className={`rounded-md px-3 py-2 text-sm font-semibold capitalize transition ${
+              className={`rounded-lg px-3 py-2 text-sm font-semibold capitalize transition-all ${
                 filter === option
                   ? 'bg-slate-950 text-white'
                   : 'bg-slate-100 text-slate-600 hover:bg-slate-200'
@@ -48,14 +48,14 @@ export default function RecentTransactions() {
           ))}
         </div>
       </div>
-      <div className="divide-y divide-slate-100">
+      <div className="divide-y divide-slate-50">
         {filteredTransactions.length === 0 ? (
           <div className="p-6 text-center">
             <p className="text-sm font-medium text-slate-500">No transactions yet.</p>
           </div>
         ) : (
           filteredTransactions.slice(0, 10).map((transaction) => (
-            <div key={transaction.id} className="grid grid-cols-[1fr_auto] gap-3 px-4 py-3">
+            <div key={transaction.id} className="grid grid-cols-[1fr_auto] gap-3 px-4 py-3 transition-colors hover:bg-slate-50/50">
               <div>
                 <p className="text-sm font-semibold text-slate-950">{transaction.title}</p>
                 <p className="mt-1 text-xs font-medium uppercase tracking-normal text-slate-500">
@@ -63,7 +63,7 @@ export default function RecentTransactions() {
                 </p>
               </div>
               <p
-                className={`text-right text-sm font-semibold ${
+                className={`text-right text-sm font-semibold transition-colors ${
                   transaction.type === 'income' ? 'text-emerald-600' : 'text-red-600'
                 }`}
               >
@@ -74,8 +74,8 @@ export default function RecentTransactions() {
           ))
         )}
       </div>
-      <div className="border-t border-slate-200 p-4">
-        <Link href="/transactions" className="text-sm font-semibold text-blue-600 hover:text-blue-700">
+      <div className="border-t border-slate-100 p-4">
+        <Link href="/transactions" className="text-sm font-semibold text-blue-600 transition-colors hover:text-blue-700">
           Open transactions
         </Link>
       </div>

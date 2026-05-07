@@ -7,7 +7,9 @@ import { DEFAULT_SETTINGS_ID } from '@/defaultData';
 import { getCurrentMonth } from '@/dates';
 import { formatMoney, parseAmountInput } from '@/format';
 import { exportCSV, exportJSON, exportPDF, importJSON } from '@/exports/exportService';
-import { SUPPORTED_METHODS, type Method, type TransactionType } from '@/types';
+import { SUPPORTED_METHODS, type Category, type Method, type TransactionType } from '@/types';
+import { ConfirmDialog } from './ConfirmDialog';
+import { toast } from 'sonner';
 
 export default function SettingsWorkspace() {
   const balances = useLiveQuery(() => db.balances.toArray(), [], []);
@@ -19,11 +21,8 @@ export default function SettingsWorkspace() {
   const [categoryName, setCategoryName] = useState('');
   const [categoryType, setCategoryType] = useState<TransactionType>('expense');
   const [categoryColor, setCategoryColor] = useState('#2563eb');
-
-  const updateDefaultMethod = async (method: Method) => {
-    if (!settings) return;
-    await db.settings.put({ ...settings, lastUsedMethod: method, updatedAt: new Date().toISOString() });
-  };
+  const [showResetConfirm, setShowResetConfirm] = useState(false);
+  const [categoryDeleteConfirm, setCategoryDeleteConfirm] = useState<Category | null>(null);
 
   const updateBalance = async (id: string, value: string) => {
     await db.balances.update(id, { amount: parseAmountInput(value), updatedAt: new Date().toISOString() });
@@ -43,27 +42,33 @@ export default function SettingsWorkspace() {
       updatedAt: now,
     });
     setCategoryName('');
+    toast.success('Category added.');
+  };
+
+  const deleteCategory = async (id: string) => {
+    await db.categories.delete(id);
+    toast.success('Category deleted.');
   };
 
   const handleExportCSV = async () => {
     downloadText('taptrack-transactions.csv', await exportCSV(), 'text/csv');
-    setStatus('CSV export created.');
+    toast.success('CSV export created.');
   };
 
   const handleExportJSON = async () => {
     downloadText('taptrack-backup.json', await exportJSON(), 'application/json');
-    setStatus('JSON backup created.');
+    toast.success('JSON backup created.');
   };
 
   const handleExportPDF = async () => {
     downloadBlob(`taptrack-${month}-report.pdf`, await exportPDF(month));
-    setStatus('PDF report created.');
+    toast.success('PDF report created.');
   };
 
   const handleImportFile = async (file: File | undefined) => {
     if (!file) return;
     await importJSON(await file.text());
-    setStatus('JSON backup imported.');
+    toast.success('JSON backup imported.');
   };
 
   const resetAppData = async () => {
@@ -93,7 +98,13 @@ export default function SettingsWorkspace() {
       }
     );
     await ensureDatabaseSeeded();
-    setStatus('App data reset. Setup will show again.');
+    toast.success('App data reset. Setup will show again.');
+  };
+
+  const handleChangeDefaultMethod = async (method: Method) => {
+    if (!settings) return;
+    await db.settings.put({ ...settings, lastUsedMethod: method, updatedAt: new Date().toISOString() });
+    toast.success('Default method updated.');
   };
 
   return (
@@ -104,7 +115,7 @@ export default function SettingsWorkspace() {
       </header>
 
       <section className="grid gap-4 lg:grid-cols-2">
-        <div className="rounded-lg border border-slate-200 bg-white p-4 shadow-sm">
+        <div className="rounded-2xl border border-slate-200 bg-white p-5 shadow-xs shadow-slate-200/50 transition-all hover:shadow-md">
           <h2 className="text-base font-semibold text-slate-950">Balances</h2>
           <div className="mt-4 grid gap-3">
             {balances.map((balance) => (
@@ -113,11 +124,11 @@ export default function SettingsWorkspace() {
           </div>
         </div>
 
-        <div className="rounded-lg border border-slate-200 bg-white p-4 shadow-sm">
+        <div className="rounded-2xl border border-slate-200 bg-white p-5 shadow-xs shadow-slate-200/50 transition-all hover:shadow-md">
           <h2 className="text-base font-semibold text-slate-950">Defaults</h2>
           <label className="mt-4 grid gap-1 text-xs font-medium uppercase tracking-normal text-slate-500">
             Last-used method fallback
-            <select value={settings?.lastUsedMethod ?? 'card'} onChange={(event) => updateDefaultMethod(event.target.value as Method)} className="rounded-md border border-slate-300 px-3 py-2 text-sm font-medium normal-case text-slate-950 outline-none focus:border-blue-500">
+            <select value={settings?.lastUsedMethod ?? 'card'} onChange={(event) => handleChangeDefaultMethod(event.target.value as Method)} className="rounded-md border border-slate-300 px-3 py-2 text-sm font-medium normal-case text-slate-950 outline-none focus:border-blue-500">
               {SUPPORTED_METHODS.map((method) => <option key={method} value={method}>{method}</option>)}
             </select>
           </label>
@@ -127,7 +138,7 @@ export default function SettingsWorkspace() {
         </div>
       </section>
 
-      <section className="rounded-lg border border-slate-200 bg-white p-4 shadow-sm">
+      <section className="rounded-2xl border border-slate-200 bg-white p-5 shadow-xs shadow-slate-200/50 transition-all hover:shadow-md">
         <h2 className="text-base font-semibold text-slate-950">Categories</h2>
         <div className="mt-4 grid gap-3 md:grid-cols-[1fr_160px_120px_auto]">
           <input value={categoryName} onChange={(event) => setCategoryName(event.target.value)} placeholder="Category name" className="rounded-md border border-slate-300 px-3 py-2 text-sm font-medium text-slate-950 outline-none focus:border-blue-500" />
@@ -145,13 +156,20 @@ export default function SettingsWorkspace() {
                 <span className="h-3 w-3 rounded-full" style={{ background: category.color ?? '#64748b' }} />
                 <span className="text-sm font-semibold text-slate-950">{category.name}</span>
               </div>
-              <span className="text-xs font-medium uppercase tracking-normal text-slate-500">{category.type}</span>
+              <div className="flex items-center gap-2">
+                <span className="text-xs font-medium uppercase tracking-normal text-slate-500">{category.type}</span>
+                {category.isDefault ? null : (
+                  <button type="button" onClick={() => setCategoryDeleteConfirm(category)} className="text-xs font-semibold text-red-500 hover:text-red-700">
+                    Delete
+                  </button>
+                )}
+              </div>
             </div>
           ))}
         </div>
       </section>
 
-      <section className="rounded-lg border border-slate-200 bg-white p-4 shadow-sm">
+      <section className="rounded-2xl border border-slate-200 bg-white p-5 shadow-xs shadow-slate-200/50 transition-all hover:shadow-md">
         <h2 className="text-base font-semibold text-slate-950">Exports and backup</h2>
         <div className="mt-4 grid gap-3 md:grid-cols-[160px_1fr] md:items-end">
           <label className="grid gap-1 text-xs font-medium uppercase tracking-normal text-slate-500">
@@ -163,12 +181,38 @@ export default function SettingsWorkspace() {
             <button type="button" onClick={handleExportJSON} className="rounded-md border border-slate-300 px-3 py-2 text-sm font-semibold text-slate-700 hover:bg-slate-100">Export JSON</button>
             <button type="button" onClick={() => importInputRef.current?.click()} className="rounded-md border border-slate-300 px-3 py-2 text-sm font-semibold text-slate-700 hover:bg-slate-100">Import JSON</button>
             <button type="button" onClick={handleExportPDF} className="rounded-md border border-slate-300 px-3 py-2 text-sm font-semibold text-slate-700 hover:bg-slate-100">Export PDF</button>
-            <button type="button" onClick={resetAppData} className="rounded-md px-3 py-2 text-sm font-semibold text-red-600 hover:bg-red-50">Reset data</button>
+            <button type="button" onClick={() => setShowResetConfirm(true)} className="rounded-md px-3 py-2 text-sm font-semibold text-red-600 hover:bg-red-50">Reset data</button>
           </div>
         </div>
         <input ref={importInputRef} type="file" accept="application/json" className="hidden" onChange={(event) => handleImportFile(event.target.files?.[0])} />
         {status ? <p className="mt-3 text-sm font-medium text-slate-600">{status}</p> : null}
       </section>
+
+      <ConfirmDialog
+        open={showResetConfirm}
+        title="Reset all app data"
+        message="This will permanently erase all transactions, balances, budgets, categories, and settings. This cannot be undone."
+        confirmLabel="Reset everything"
+        confirmVariant="danger"
+        onConfirm={() => {
+          setShowResetConfirm(false);
+          resetAppData();
+        }}
+        onCancel={() => setShowResetConfirm(false)}
+      />
+
+      <ConfirmDialog
+        open={categoryDeleteConfirm !== null}
+        title="Delete category"
+        message={`Delete "${categoryDeleteConfirm?.name}"? Transactions using this category will be unassigned.`}
+        confirmLabel="Delete"
+        confirmVariant="danger"
+        onConfirm={() => {
+          if (categoryDeleteConfirm) deleteCategory(categoryDeleteConfirm.id);
+          setCategoryDeleteConfirm(null);
+        }}
+        onCancel={() => setCategoryDeleteConfirm(null)}
+      />
     </div>
   );
 }

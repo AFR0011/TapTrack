@@ -4,7 +4,7 @@
 
 **TapTrack** is a mobile-first, local-first personal income and expense tracker designed to replace messy spreadsheet/note-based tracking with fast daily logging, simple monthly budgeting, minimal balance tracking, and clear reports.
 
-The product is for **one personal user first**. It is not a general accounting system, business finance system, tax tool, family budgeting app, or bank-sync platform.
+The product is for **one personal user first**. It is not a general accounting system, business finance system, tax tool, family budgeting app, or financial data aggregation platform.
 
 The core value is:
 
@@ -74,7 +74,7 @@ Do not optimize V1 for:
 * accountants
 * tax reporting
 * shared wallets
-* bank-import users
+* users who require automatic financial institution data ingestion
 * multi-user households
 
 ---
@@ -105,15 +105,13 @@ Do not optimize V1 for:
 
 ---
 
-## 6. Explicit Non-Goals for V1
+## 6. Explicit Non-Goals and Out-of-Scope Features
 
 Do **not** build these in V1:
 
 * cloud sync
 * multi-device sync
 * real Telegram bot
-* receipt/photo scanning
-* bank import
 * AI categorization
 * user accounts/login
 * full wallet/accounting system
@@ -127,7 +125,12 @@ Do **not** build these in V1:
 * push notifications
 * app-store native deployment
 
-These can be considered later, but only after the local MVP is proven useful.
+Most V1 non-goals can be considered later, but only after the local MVP is proven useful.
+
+Out of current product scope, including the V1.5/V2 roadmap unless explicitly re-scoped:
+
+* bank/institution imports or sync
+* receipt/photo scanning, OCR, or attachments
 
 ---
 
@@ -171,7 +174,6 @@ Flutter
 Backend server
 Real Telegram bot
 External AI APIs
-Banking APIs
 ```
 
 Supabase can be added later for optional sync.
@@ -1557,9 +1559,7 @@ Optional Supabase sync
 Real Telegram bot
 Multi-device support
 Encrypted backups
-Receipt/photo attachments
 AI categorization
-Bank import
 Exchange-rate handling
 Currency-converted reports
 Advanced recurring reminders
@@ -1582,9 +1582,7 @@ TapTrack V1 exists to replace spreadsheet/note-based personal tracking with fast
 Do not add:
 - cloud sync
 - Telegram bot
-- bank import
 - AI categorization
-- receipt scanning
 - full accounting
 - multi-user support
 
