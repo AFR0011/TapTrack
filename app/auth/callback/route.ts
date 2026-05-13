@@ -1,18 +1,10 @@
 import { type NextRequest, NextResponse } from 'next/server';
-import { createSupabaseServerClient } from '@/lib/supabase-server';
 
+/**
+ * Kept for backward compatibility (e.g. Supabase email-confirmation links).
+ * With email+password auth the browser never lands here during normal sign-in.
+ */
 export async function GET(request: NextRequest) {
-  const { searchParams, origin } = new URL(request.url);
-  const code = searchParams.get('code');
-  const next = searchParams.get('next') ?? '/';
-
-  if (code) {
-    const supabase = await createSupabaseServerClient();
-    const { error } = await supabase.auth.exchangeCodeForSession(code);
-    if (!error) {
-      return NextResponse.redirect(`${origin}${next}`);
-    }
-  }
-
-  return NextResponse.redirect(`${origin}/login?error=auth_failed`);
+  const { origin } = new URL(request.url);
+  return NextResponse.redirect(`${origin}/`);
 }

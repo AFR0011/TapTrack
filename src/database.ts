@@ -38,6 +38,11 @@ export class TapTrackDatabase extends Dexie {
       conversions: 'id, date, fromCurrency, toCurrency',
       settings: 'id',
     });
+    // Version 2: conversions gain fromMethod + toMethod (replaces single method field).
+    // No index change needed; Dexie will keep existing records as-is.
+    this.version(2).stores({
+      conversions: 'id, date, fromCurrency, toCurrency, fromMethod, toMethod',
+    });
   }
 }
 

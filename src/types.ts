@@ -85,13 +85,17 @@ export interface Conversion {
   id: string;
   fromCurrency: Currency;
   toCurrency: Currency;
+  fromMethod: Method;
+  toMethod: Method;
   fromAmount: number;
   toAmount: number;
-  method: Method;
   date: string;
   note?: string;
   createdAt: string;
 }
+
+/** Discriminated kind: 'exchange' = currency swap, 'transfer' = same-currency method swap */
+export type ConversionKind = 'exchange' | 'transfer';
 
 export interface Settings {
   id: string;
