@@ -98,6 +98,13 @@ export interface Settings {
   defaultCurrency: 'TRY';
   lastUsedMethod: Method;
   setupCompleted: boolean;
+  aiCategorizationEnabled?: boolean;
   createdAt: string;
   updatedAt: string;
 }
+
+/** Live exchange rates: values are "1 unit of currency = X TRY" */
+export type ExchangeRates = {
+  USD: number;
+  EUR: number;
+};

@@ -107,6 +107,13 @@ export default function SettingsWorkspace() {
     toast.success('Default method updated.');
   };
 
+  const handleToggleAI = async () => {
+    if (!settings) return;
+    const next = !settings.aiCategorizationEnabled;
+    await db.settings.put({ ...settings, aiCategorizationEnabled: next, updatedAt: new Date().toISOString() });
+    toast.success(next ? 'AI categorization enabled.' : 'AI categorization disabled.');
+  };
+
   return (
     <div className="space-y-5">
       <header>
@@ -135,6 +142,38 @@ export default function SettingsWorkspace() {
           <div className="mt-5 rounded-md bg-slate-50 p-3 text-sm font-medium text-slate-600">
             Default currency is TRY for V1. USD/EUR are tracked as separate balances without conversion.
           </div>
+        </div>
+
+        <div className="rounded-2xl border border-slate-200 bg-white p-5 shadow-xs shadow-slate-200/50 transition-all hover:shadow-md">
+          <h2 className="text-base font-semibold text-slate-950">AI categorization</h2>
+          <p className="mt-1 text-sm text-slate-500">
+            When enabled, the preview card sends the transaction title to a local Ollama model and suggests a category. Falls back to keyword rules if unreachable.
+          </p>
+          <div className="mt-4 flex items-center justify-between gap-4">
+            <span className="text-sm font-semibold text-slate-700">
+              {settings?.aiCategorizationEnabled ? 'Enabled' : 'Disabled'}
+            </span>
+            <button
+              type="button"
+              onClick={handleToggleAI}
+              className={`relative inline-flex h-6 w-11 shrink-0 cursor-pointer rounded-full border-2 border-transparent transition-colors focus:outline-none focus:ring-2 focus:ring-violet-500 focus:ring-offset-2 ${
+                settings?.aiCategorizationEnabled ? 'bg-violet-600' : 'bg-slate-200'
+              }`}
+              role="switch"
+              aria-checked={settings?.aiCategorizationEnabled ?? false}
+            >
+              <span
+                className={`pointer-events-none inline-block h-5 w-5 rounded-full bg-white shadow ring-0 transition-transform ${
+                  settings?.aiCategorizationEnabled ? 'translate-x-5' : 'translate-x-0'
+                }`}
+              />
+            </button>
+          </div>
+          {settings?.aiCategorizationEnabled && (
+            <p className="mt-3 rounded-md bg-violet-50 px-3 py-2 text-xs font-medium text-violet-700">
+              Set <code className="font-mono">OLLAMA_BASE_URL</code> and <code className="font-mono">OLLAMA_MODEL</code> in your environment. Model recommendation: <code className="font-mono">qwen2.5:1.5b</code> or <code className="font-mono">llama3.2:1b</code>.
+            </p>
+          )}
         </div>
       </section>
 

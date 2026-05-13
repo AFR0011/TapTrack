@@ -54,6 +54,7 @@ export function createDefaultSettings(now = new Date().toISOString()): Settings 
     defaultCurrency: 'TRY',
     lastUsedMethod: 'card',
     setupCompleted: false,
+    aiCategorizationEnabled: false,
     createdAt: now,
     updatedAt: now,
   };

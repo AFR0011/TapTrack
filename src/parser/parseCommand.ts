@@ -8,12 +8,12 @@ type ParseCommandOptions = {
   today?: Date;
 };
 
-type ParseCommandSuccess = {
+export type ParseCommandSuccess = {
   ok: true;
   transaction: TransactionDraft;
 };
 
-type ParseCommandFailure = {
+export type ParseCommandFailure = {
   ok: false;
   message: string;
 };
@@ -89,4 +89,23 @@ export function parseCommand(command: string, options: ParseCommandOptions): Par
       date: formatLocalDate(options.today ?? new Date()),
     },
   };
+}
+
+/**
+ * Splits an input string containing one or more command entries (e.g.
+ * "-250 dinner -500 lunch +300 loan") and parses each one individually.
+ * A single-entry input returns a one-element array, preserving full
+ * backward compatibility with callers that do `parseCommands(input)[0]`.
+ */
+export function parseCommands(input: string, options: ParseCommandOptions): ParseCommandResult[] {
+  const trimmed = input.trim();
+  if (!trimmed) {
+    return [{ ok: false, message: 'Enter a transaction command.' }];
+  }
+  // Split before every +/- followed immediately by a digit, except at position 0
+  const segments = trimmed
+    .split(/\s+(?=[-+]\d)/)
+    .map((s) => s.trim())
+    .filter(Boolean);
+  return segments.map((segment) => parseCommand(segment, options));
 }

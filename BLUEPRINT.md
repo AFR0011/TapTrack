@@ -110,25 +110,26 @@ Do not optimize V1 for:
 Do **not** build these in V1:
 
 * cloud sync
+* currency-to-currency and card-to-cash conversions (e.g., exchange 40 USD to TL based on api-fetched exchange rate OR custom given rate)
+* more flexible entries (e.g., multiple entry parsing like -250 dinner -500 lunch +300 loan in one line instead of one by one)
 * multi-device sync
 * real Telegram bot
 * AI categorization
-* user accounts/login
 * full wallet/accounting system
-* multiple custom bank accounts
-* tax reports
 * debt/loan tracking
 * family/team sharing
 * advanced investment tracking
 * automatic currency conversion in reports
 * exchange-rate API
 * push notifications
-* app-store native deployment
+* user accounts/login
+* cooler design (animations, textures, gradients, etc.)
 
 Most V1 non-goals can be considered later, but only after the local MVP is proven useful.
 
 Out of current product scope, including the V1.5/V2 roadmap unless explicitly re-scoped:
 
+* app-store native deployment
 * bank/institution imports or sync
 * receipt/photo scanning, OCR, or attachments
 

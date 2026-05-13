@@ -12,12 +12,15 @@
     "check": "npm run lint && npm run typecheck && npm run test && npm run build"
   },
   "dependencies": {
+    "@supabase/ssr": "^0.10.3",
+    "@supabase/supabase-js": "^2.105.4",
     "@tanstack/react-query": "^5.100.6",
     "autoprefixer": "^10.4.20",
     "class-variance-authority": "^0.7.0",
     "clsx": "^2.1.1",
     "dexie": "^4.0.8",
     "dexie-react-hooks": "^1.1.7",
+    "framer-motion": "^12.38.0",
     "js-base64": "^3.7.7",
     "next": "^14.2.35",
     "papaparse": "^5.4.1",
@@ -28,6 +31,7 @@
     "recharts": "^2.13.0",
     "sonner": "^2.0.7",
     "tailwindcss": "^3.4.11",
+    "tailwindcss-animate": "^1.0.7",
     "typescript": "^5.5.4",
     "zustand": "^4.5.5"
   },

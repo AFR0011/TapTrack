@@ -1,6 +1,7 @@
 import { db, ensureDatabaseSeeded, type TapTrackDatabase } from '@/database';
 import { getPreviousMonth } from '@/dates';
 import type { CategoryBudget, MonthlyBudget } from '@/types';
+import { pushRecord } from '@/sync/syncService';
 
 export type MonthlyBudgetInput = {
   month: string;
@@ -65,6 +66,7 @@ export async function upsertMonthlyBudget(
   };
 
   await database.monthlyBudgets.put(budget);
+  void pushRecord('monthlyBudgets', budget as unknown as Record<string, unknown>);
   return budget;
 }
 
@@ -102,6 +104,7 @@ export async function upsertCategoryBudget(
   };
 
   await database.categoryBudgets.put(budget);
+  void pushRecord('categoryBudgets', budget as unknown as Record<string, unknown>);
   return budget;
 }
 

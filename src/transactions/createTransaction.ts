@@ -1,7 +1,8 @@
 import { DEFAULT_SETTINGS_ID, createDefaultSettings, getBalanceId } from '@/defaultData';
 import { db, ensureDatabaseSeeded, type TapTrackDatabase } from '@/database';
 import { getInsufficientBalanceMessage, getTransactionBalanceDelta } from '@/balances/balanceEffects';
-import type { Balance, Transaction, TransactionDraft } from '@/types';
+import type { Balance, Currency, Method, Transaction, TransactionDraft } from '@/types';
+import { pushRecord } from '@/sync/syncService';
 
 export class InsufficientBalanceError extends Error {
   readonly code = 'INSUFFICIENT_BALANCE';
@@ -63,6 +64,7 @@ export async function createTransaction(
     });
   });
 
+  void pushRecord('transactions', transaction as unknown as Record<string, unknown>);
   return transaction;
 }
 
@@ -112,6 +114,7 @@ export async function updateTransaction(
     throw new Error('Transaction was not updated');
   }
 
+  void pushRecord('transactions', updatedTransaction as unknown as Record<string, unknown>);
   return updatedTransaction;
 }
 
@@ -152,6 +155,81 @@ export async function deleteTransaction(
     });
     await database.transactions.delete(id);
   });
+}
+
+/**
+ * Creates multiple transactions atomically. Validates cumulative balance
+ * effects so that if any transaction in the batch would cause a negative
+ * balance the entire batch is rejected together.
+ */
+export async function createTransactions(
+  inputs: TransactionDraft[],
+  database: TapTrackDatabase = db
+): Promise<Transaction[]> {
+  if (inputs.length === 0) return [];
+  if (inputs.length === 1) return [await createTransaction(inputs[0]!, database)];
+
+  await ensureDatabaseSeeded(database);
+
+  const now = new Date().toISOString();
+  const transactions: Transaction[] = inputs.map((input) => ({
+    ...input,
+    id: crypto.randomUUID(),
+    createdAt: now,
+    updatedAt: now,
+  }));
+
+  await database.transaction('rw', database.transactions, database.balances, database.settings, async () => {
+    // Collect every unique balance row this batch touches
+    const balanceIds = [...new Set(inputs.map((input) => getBalanceId(input.currency, input.method)))];
+    const balanceMap = new Map<string, Balance>();
+
+    for (const balanceId of balanceIds) {
+      const [currency, method] = balanceId.split('-') as [Currency, Method];
+      balanceMap.set(
+        balanceId,
+        (await database.balances.get(balanceId)) ?? {
+          id: balanceId,
+          currency,
+          method,
+          amount: 0,
+          updatedAt: now,
+        }
+      );
+    }
+
+    // Simulate cumulative deltas in order; reject the whole batch on first shortfall
+    for (const input of inputs) {
+      const balanceId = getBalanceId(input.currency, input.method);
+      const balance = balanceMap.get(balanceId)!;
+      const nextAmount = balance.amount + getTransactionBalanceDelta(input);
+      if (nextAmount < 0) {
+        throw new InsufficientBalanceError(input.currency, input.method, balance.amount);
+      }
+      balance.amount = nextAmount;
+      balance.updatedAt = now;
+    }
+
+    for (const balance of balanceMap.values()) {
+      await database.balances.put(balance);
+    }
+    for (const transaction of transactions) {
+      await database.transactions.add(transaction);
+    }
+
+    const lastInput = inputs.at(-1)!;
+    const settings = (await database.settings.get(DEFAULT_SETTINGS_ID)) ?? createDefaultSettings(now);
+    await database.settings.put({
+      ...settings,
+      lastUsedMethod: lastInput.method,
+      updatedAt: now,
+    });
+  });
+
+  for (const t of transactions) {
+    void pushRecord('transactions', t as unknown as Record<string, unknown>);
+  }
+  return transactions;
 }
 
 async function calculateBalanceUpdates(

@@ -3,6 +3,7 @@
 import Link from 'next/link';
 import { usePathname } from 'next/navigation';
 import type { ReactNode } from 'react';
+import { AnimatePresence, motion } from 'framer-motion';
 
 const NAV_ITEMS = [
   { href: '/', label: 'Home', icon: 'M3 12l2-2m0 0l7-7 7 7M5 10v10a1 1 0 001 1h3m10-11l2 2m-2-2v10a1 1 0 01-1 1h-3m-6 0a1 1 0 001-1v-4a1 1 0 011-1h2a1 1 0 011 1v4a1 1 0 001 1m-6 0h6' },
@@ -20,6 +21,12 @@ const HEADER_NAV = [
   { href: '/settings', label: 'Settings' },
 ];
 
+const pageVariants = {
+  initial: { opacity: 0, y: 8 },
+  animate: { opacity: 1, y: 0 },
+  exit: { opacity: 0, y: -8 },
+};
+
 function Icon({ d, className }: { d: string; className?: string }) {
   return (
     <svg className={className} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={1.5} strokeLinecap="round" strokeLinejoin="round">
@@ -33,11 +40,11 @@ export default function AppShell({ children }: { children: ReactNode }) {
 
   return (
     <div className="min-h-screen bg-slate-50 text-slate-950" style={{ paddingBottom: 'env(safe-area-inset-bottom, 0px)' }}>
-      {/* Desktop header */}
-      <header className="sticky top-0 z-20 hidden border-b border-slate-200 bg-white/95 backdrop-blur md:block">
+      {/* Desktop header — glassmorphism */}
+      <header className="sticky top-0 z-20 hidden border-b border-white/60 bg-white/80 shadow-sm shadow-slate-200/30 backdrop-blur-md md:block">
         <div className="mx-auto flex max-w-7xl flex-col gap-3 px-4 py-3 md:flex-row md:items-center md:justify-between">
           <div>
-            <Link href="/" className="text-xl font-semibold tracking-normal text-slate-950">
+            <Link href="/" className="bg-gradient-to-r from-blue-600 to-violet-600 bg-clip-text text-xl font-bold tracking-tight text-transparent">
               TapTrack
             </Link>
             <p className="text-xs font-medium text-slate-500">Local-first finance console</p>
@@ -49,9 +56,9 @@ export default function AppShell({ children }: { children: ReactNode }) {
                 <Link
                   key={item.href}
                   href={item.href}
-                  className={`whitespace-nowrap rounded-lg px-3 py-2 text-sm font-medium transition-all ${
+                  className={`relative whitespace-nowrap rounded-lg px-3 py-2 text-sm font-medium transition-all ${
                     active
-                      ? 'bg-slate-950 text-white'
+                      ? 'bg-gradient-to-r from-blue-600 to-violet-600 text-white shadow-sm shadow-blue-500/20'
                       : 'text-slate-600 hover:bg-slate-100 hover:text-slate-950'
                   }`}
                 >
@@ -63,25 +70,43 @@ export default function AppShell({ children }: { children: ReactNode }) {
         </div>
       </header>
 
-      <main className="mx-auto max-w-7xl px-4 py-5 md:py-7">{children}</main>
+      {/* Page content with transition */}
+      <AnimatePresence mode="wait" initial={false}>
+        <motion.main
+          key={pathname}
+          variants={pageVariants}
+          initial="initial"
+          animate="animate"
+          exit="exit"
+          transition={{ duration: 0.18, ease: 'easeOut' }}
+          className="mx-auto max-w-7xl px-4 py-5 md:py-7"
+        >
+          {children}
+        </motion.main>
+      </AnimatePresence>
 
-      {/* Mobile bottom nav */}
-      <nav className="fixed bottom-2 inset-x-2 z-20 md:hidden" aria-label="Mobile">
-        <div className="flex items-stretch justify-between rounded-t-2xl border border-slate-200 bg-white/95 px-3 pt-2 pb-[calc(0.25rem + env(safe-area-inset-bottom, 0px))] backdrop-blur shadow-lg shadow-slate-200/50">
+      {/* Mobile bottom nav — glassmorphism + gradient pill */}
+      <nav className="fixed inset-x-2 bottom-2 z-20 md:hidden" aria-label="Mobile">
+        <div className="flex items-stretch justify-between rounded-2xl border border-white/60 bg-white/90 px-3 pt-2 pb-[calc(0.25rem+env(safe-area-inset-bottom,0px))] shadow-glass backdrop-blur-md">
           {NAV_ITEMS.map((item) => {
             const active = item.href === '/' ? pathname === '/' : pathname.startsWith(item.href);
             return (
               <Link
                 key={item.href}
                 href={item.href}
-                className={`flex flex-col items-center justify-center gap-0.5 rounded-xl px-3 py-1.5 text-[10px] font-medium transition-all ${
-                  active
-                    ? 'text-slate-950'
-                    : 'text-slate-400 hover:text-slate-600'
+                className={`relative flex flex-col items-center justify-center gap-0.5 rounded-xl px-3 py-1.5 text-[10px] font-medium transition-all ${
+                  active ? 'text-white' : 'text-slate-400 hover:text-slate-600'
                 }`}
               >
-                <Icon d={item.icon} className={`h-5 w-5 ${active ? 'stroke-[2]' : 'stroke-[1.5]'}`} />
-                <span>{item.label}</span>
+                {active && (
+                  <motion.span
+                    layoutId="mobile-pill"
+                    className="absolute inset-0 rounded-xl bg-gradient-to-br from-blue-600 to-violet-600"
+                    transition={{ type: 'spring', stiffness: 500, damping: 35 }}
+                  />
+                )}
+                <Icon d={item.icon} className={`relative z-10 h-5 w-5 ${active ? 'stroke-[2]' : 'stroke-[1.5]'}`} />
+                <span className="relative z-10">{item.label}</span>
               </Link>
             );
           })}
@@ -89,7 +114,7 @@ export default function AppShell({ children }: { children: ReactNode }) {
           <Link
             href="/"
             aria-label="Quick log"
-            className="relative -mt-5 flex items-center justify-center rounded-full bg-slate-950 px-4 py-4 shadow-lg shadow-slate-950/20 transition-all hover:bg-slate-800 active:scale-95"
+            className="relative -mt-5 flex items-center justify-center rounded-full bg-gradient-to-br from-blue-600 to-violet-600 px-4 py-4 shadow-lg shadow-blue-500/30 transition-all hover:opacity-90 active:scale-95"
           >
             <svg className="h-6 w-6 text-white" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2.5} strokeLinecap="round">
               <path d="M12 5v14M5 12h14" />
