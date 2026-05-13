@@ -89,14 +89,14 @@ export default function AppShell({ children }: { children: ReactNode }) {
 
       {/* Mobile bottom nav — glassmorphism + gradient pill */}
       <nav className="fixed inset-x-2 bottom-2 z-20 md:hidden" aria-label="Mobile">
-        <div className="flex items-stretch justify-between rounded-2xl border border-white/60 bg-white/90 px-3 pt-2 pb-[calc(0.25rem+env(safe-area-inset-bottom,0px))] shadow-glass backdrop-blur-md">
+        <div className="grid grid-cols-[repeat(5,minmax(0,1fr))_3rem] items-stretch gap-1 overflow-hidden rounded-2xl border border-white/60 bg-white/90 px-2 pt-2 pb-[calc(0.25rem+env(safe-area-inset-bottom,0px))] shadow-glass backdrop-blur-md">
           {NAV_ITEMS.map((item) => {
             const active = item.href === '/' ? pathname === '/' : pathname.startsWith(item.href);
             return (
               <Link
                 key={item.href}
                 href={item.href}
-                className={`relative flex flex-col items-center justify-center gap-0.5 rounded-xl px-3 py-1.5 text-[10px] font-medium transition-all ${
+                className={`relative flex min-w-0 flex-col items-center justify-center gap-0.5 rounded-xl px-1 py-1.5 text-[9px] font-medium transition-all ${
                   active ? 'text-white' : 'text-slate-400 hover:text-slate-600'
                 }`}
               >
@@ -108,7 +108,7 @@ export default function AppShell({ children }: { children: ReactNode }) {
                   />
                 )}
                 <Icon d={item.icon} className={`relative z-10 h-5 w-5 ${active ? 'stroke-[2]' : 'stroke-[1.5]'}`} />
-                <span className="relative z-10">{item.label}</span>
+                <span className="relative z-10 max-w-full truncate">{item.label}</span>
               </Link>
             );
           })}
@@ -116,7 +116,7 @@ export default function AppShell({ children }: { children: ReactNode }) {
           <Link
             href="/"
             aria-label="Quick log"
-            className="relative -mt-5 flex items-center justify-center rounded-full bg-gradient-to-br from-blue-600 to-violet-600 px-4 py-4 shadow-lg shadow-blue-500/30 transition-all hover:opacity-90 active:scale-95"
+            className="relative -mt-5 flex h-12 w-12 items-center justify-center justify-self-center rounded-full bg-gradient-to-br from-blue-600 to-violet-600 shadow-lg shadow-blue-500/30 transition-all hover:opacity-90 active:scale-95"
           >
             <svg className="h-6 w-6 text-white" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2.5} strokeLinecap="round">
               <path d="M12 5v14M5 12h14" />

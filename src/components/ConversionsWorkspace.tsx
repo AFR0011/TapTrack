@@ -110,9 +110,9 @@ export default function ConversionsWorkspace() {
         </p>
       </header>
 
-      <section className="grid gap-4 lg:grid-cols-[1fr_1fr]">
+      <section className="grid gap-4 lg:grid-cols-[minmax(0,1fr)_minmax(0,1fr)]">
         {/* New operation form */}
-        <div className="rounded-2xl border border-white/60 bg-white/90 p-5 shadow-glass backdrop-blur-sm">
+        <div className="min-w-0 rounded-2xl border border-white/60 bg-white/90 p-4 shadow-glass backdrop-blur-sm sm:p-5">
           <h2 className="text-base font-semibold text-slate-950">
             {kindLabel({ fromCurrency, toCurrency, fromMethod, toMethod })}
           </h2>
@@ -121,24 +121,21 @@ export default function ConversionsWorkspace() {
             {/* FROM */}
             <fieldset className="space-y-2">
               <legend className="text-xs font-semibold uppercase tracking-wider text-slate-400">From</legend>
-              <div className="grid grid-cols-[1fr_110px_110px] gap-2">
+              <div className="grid grid-cols-2 gap-2 sm:grid-cols-[minmax(0,1fr)_96px_96px]">
                 <input
-                  type="number"
                   inputMode="decimal"
-                  min="0.01"
-                  step="any"
                   value={fromAmountRaw}
                   onChange={(e) => setFromAmountRaw(e.target.value)}
                   placeholder="Amount"
                   required
                   disabled={saving}
-                  className="rounded-lg border border-slate-300 px-3 py-2 text-sm font-medium text-slate-950 outline-none placeholder:text-slate-400 focus:border-blue-500 focus:ring-2 focus:ring-blue-100/50 disabled:opacity-60"
+                  className="col-span-2 min-w-0 rounded-lg border border-slate-300 px-3 py-2 text-sm font-medium text-slate-950 outline-none placeholder:text-slate-400 focus:border-blue-500 focus:ring-2 focus:ring-blue-100/50 disabled:opacity-60 sm:col-span-1"
                 />
                 <select
                   value={fromCurrency}
                   onChange={(e) => setFromCurrency(e.target.value as Currency)}
                   disabled={saving}
-                  className="rounded-lg border border-slate-300 px-2 py-2 text-sm font-medium text-slate-950 outline-none focus:border-blue-500 disabled:opacity-60"
+                  className="min-w-0 rounded-lg border border-slate-300 px-2 py-2 text-sm font-medium text-slate-950 outline-none focus:border-blue-500 disabled:opacity-60"
                 >
                   {SUPPORTED_CURRENCIES.map((c) => <option key={c} value={c}>{c}</option>)}
                 </select>
@@ -146,7 +143,7 @@ export default function ConversionsWorkspace() {
                   value={fromMethod}
                   onChange={(e) => setFromMethod(e.target.value as Method)}
                   disabled={saving}
-                  className="rounded-lg border border-slate-300 px-2 py-2 text-sm font-medium text-slate-950 outline-none focus:border-blue-500 disabled:opacity-60"
+                  className="min-w-0 rounded-lg border border-slate-300 px-2 py-2 text-sm font-medium text-slate-950 outline-none focus:border-blue-500 disabled:opacity-60"
                 >
                   {SUPPORTED_METHODS.map((m) => <option key={m} value={m}>{m}</option>)}
                 </select>
@@ -166,24 +163,21 @@ export default function ConversionsWorkspace() {
             {/* TO */}
             <fieldset className="space-y-2">
               <legend className="text-xs font-semibold uppercase tracking-wider text-slate-400">To</legend>
-              <div className="grid grid-cols-[1fr_110px_110px] gap-2">
+              <div className="grid grid-cols-2 gap-2 sm:grid-cols-[minmax(0,1fr)_96px_96px]">
                 <input
-                  type="number"
                   inputMode="decimal"
-                  min="0.01"
-                  step="any"
                   value={toAmountRaw}
                   onChange={(e) => setToAmountRaw(e.target.value)}
                   placeholder="Amount"
                   required
                   disabled={saving}
-                  className="rounded-lg border border-slate-300 px-3 py-2 text-sm font-medium text-slate-950 outline-none placeholder:text-slate-400 focus:border-blue-500 focus:ring-2 focus:ring-blue-100/50 disabled:opacity-60"
+                  className="col-span-2 min-w-0 rounded-lg border border-slate-300 px-3 py-2 text-sm font-medium text-slate-950 outline-none placeholder:text-slate-400 focus:border-blue-500 focus:ring-2 focus:ring-blue-100/50 disabled:opacity-60 sm:col-span-1"
                 />
                 <select
                   value={toCurrency}
                   onChange={(e) => setToCurrency(e.target.value as Currency)}
                   disabled={saving}
-                  className="rounded-lg border border-slate-300 px-2 py-2 text-sm font-medium text-slate-950 outline-none focus:border-blue-500 disabled:opacity-60"
+                  className="min-w-0 rounded-lg border border-slate-300 px-2 py-2 text-sm font-medium text-slate-950 outline-none focus:border-blue-500 disabled:opacity-60"
                 >
                   {SUPPORTED_CURRENCIES.map((c) => <option key={c} value={c}>{c}</option>)}
                 </select>
@@ -191,7 +185,7 @@ export default function ConversionsWorkspace() {
                   value={toMethod}
                   onChange={(e) => setToMethod(e.target.value as Method)}
                   disabled={saving}
-                  className="rounded-lg border border-slate-300 px-2 py-2 text-sm font-medium text-slate-950 outline-none focus:border-blue-500 disabled:opacity-60"
+                  className="min-w-0 rounded-lg border border-slate-300 px-2 py-2 text-sm font-medium text-slate-950 outline-none focus:border-blue-500 disabled:opacity-60"
                 >
                   {SUPPORTED_METHODS.map((m) => <option key={m} value={m}>{m}</option>)}
                 </select>
@@ -204,7 +198,7 @@ export default function ConversionsWorkspace() {
             </fieldset>
 
             {/* Date + note */}
-            <div className="grid grid-cols-2 gap-2">
+            <div className="grid gap-2 sm:grid-cols-2">
               <div>
                 <label className="mb-1 block text-xs font-semibold uppercase tracking-wider text-slate-400">Date</label>
                 <input
@@ -213,7 +207,7 @@ export default function ConversionsWorkspace() {
                   onChange={(e) => setDate(e.target.value)}
                   required
                   disabled={saving}
-                  className="w-full rounded-lg border border-slate-300 px-3 py-2 text-sm font-medium text-slate-950 outline-none focus:border-blue-500 disabled:opacity-60"
+                  className="w-full min-w-0 rounded-lg border border-slate-300 px-3 py-2 text-sm font-medium text-slate-950 outline-none focus:border-blue-500 disabled:opacity-60"
                 />
               </div>
               <div>
@@ -224,7 +218,7 @@ export default function ConversionsWorkspace() {
                   onChange={(e) => setNote(e.target.value)}
                   placeholder="ATM, Papara…"
                   disabled={saving}
-                  className="w-full rounded-lg border border-slate-300 px-3 py-2 text-sm font-medium text-slate-950 outline-none placeholder:text-slate-400 focus:border-blue-500 disabled:opacity-60"
+                  className="w-full min-w-0 rounded-lg border border-slate-300 px-3 py-2 text-sm font-medium text-slate-950 outline-none placeholder:text-slate-400 focus:border-blue-500 disabled:opacity-60"
                 />
               </div>
             </div>
@@ -245,7 +239,7 @@ export default function ConversionsWorkspace() {
             <button
               type="submit"
               disabled={saving || fromAmount <= 0 || toAmount <= 0}
-              className="w-full rounded-lg bg-gradient-to-r from-blue-600 to-violet-600 py-2.5 text-sm font-semibold text-white transition-all hover:opacity-90 disabled:opacity-60"
+              className="min-h-11 w-full rounded-lg bg-gradient-to-r from-blue-600 to-violet-600 px-3 py-2.5 text-sm font-semibold leading-tight text-white transition-all hover:opacity-90 disabled:opacity-60"
             >
               {saving
                 ? 'Saving…'
@@ -257,13 +251,13 @@ export default function ConversionsWorkspace() {
         </div>
 
         {/* Balances quick-view */}
-        <div className="rounded-2xl border border-white/60 bg-white/90 p-5 shadow-glass backdrop-blur-sm">
+        <div className="min-w-0 rounded-2xl border border-white/60 bg-white/90 p-4 shadow-glass backdrop-blur-sm sm:p-5">
           <h2 className="text-base font-semibold text-slate-950">Current balances</h2>
-          <div className="mt-4 grid grid-cols-2 gap-2">
+          <div className="mt-4 grid gap-2 sm:grid-cols-2">
             {balances.map((b) => (
               <div
                 key={b.id}
-                className={`rounded-xl px-3 py-2.5 transition-all ${
+                className={`min-w-0 rounded-xl px-3 py-2.5 transition-all ${
                   b.id === fromBalanceId
                     ? 'border-2 border-blue-400 bg-blue-50'
                     : b.id === toBalanceId
@@ -271,10 +265,10 @@ export default function ConversionsWorkspace() {
                       : 'border border-slate-100 bg-slate-50'
                 }`}
               >
-                <p className="text-xs font-semibold uppercase tracking-wider text-slate-400">
+                <p className="truncate text-xs font-semibold uppercase tracking-wider text-slate-400">
                   {b.currency} {b.method}
                 </p>
-                <p className="mt-1 text-sm font-bold text-slate-950">
+                <p className="mt-1 break-words text-sm font-bold text-slate-950">
                   {formatMoney(b.amount, b.currency)}
                 </p>
               </div>
@@ -288,8 +282,8 @@ export default function ConversionsWorkspace() {
       </section>
 
       {/* History */}
-      <section className="rounded-2xl border border-white/60 bg-white/90 shadow-glass backdrop-blur-sm">
-        <div className="border-b border-slate-100 px-5 py-4">
+      <section className="min-w-0 overflow-hidden rounded-2xl border border-white/60 bg-white/90 shadow-glass backdrop-blur-sm">
+        <div className="border-b border-slate-100 px-4 py-4 sm:px-5">
           <h2 className="text-base font-semibold text-slate-950">Recent transfers &amp; exchanges</h2>
         </div>
         <div className="divide-y divide-slate-50">
@@ -307,25 +301,25 @@ export default function ConversionsWorkspace() {
                     animate={{ opacity: 1, x: 0 }}
                     exit={{ opacity: 0, x: 8 }}
                     transition={{ duration: 0.2, ease: 'easeOut' as const }}
-                    className="grid grid-cols-[1fr_auto] gap-3 px-5 py-3"
+                    className="grid min-w-0 gap-2 px-4 py-3 sm:grid-cols-[minmax(0,1fr)_auto] sm:gap-3 sm:px-5"
                   >
-                    <div>
-                      <p className="text-sm font-semibold text-slate-950">
+                    <div className="min-w-0">
+                      <p className="break-words text-sm font-semibold text-slate-950">
                         {isSameCurrency
                           ? `${c.fromMethod} → ${c.toMethod} transfer`
                           : `${c.fromCurrency} → ${c.toCurrency} exchange`}
                       </p>
-                      <p className="mt-0.5 text-xs font-medium text-slate-400">
+                      <p className="mt-0.5 break-words text-xs font-medium text-slate-400">
                         {c.date}
                         {c.note ? ` · ${c.note}` : ''}
                       </p>
                     </div>
-                    <div className="text-right">
-                      <p className="text-sm font-bold text-red-500">
+                    <div className="min-w-0 sm:text-right">
+                      <p className="break-words text-sm font-bold text-red-500">
                         −{formatMoney(c.fromAmount, c.fromCurrency)}
                         <span className="font-medium text-slate-400"> {c.fromMethod}</span>
                       </p>
-                      <p className="text-sm font-bold text-emerald-600">
+                      <p className="break-words text-sm font-bold text-emerald-600">
                         +{formatMoney(c.toAmount, c.toCurrency)}
                         <span className="font-medium text-slate-400"> {c.toMethod}</span>
                       </p>
