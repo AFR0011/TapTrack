@@ -210,14 +210,16 @@ export default function ReportsWorkspace() {
         </ChartPanel>
 
         <ChartPanel title="Spending over time" empty={spendingOverTime.length === 0}>
-          <ResponsiveContainer width="100%" height={260}>
-            <LineChart data={spendingOverTime}>
-              <XAxis dataKey="date" tickLine={false} axisLine={false} />
-              <YAxis tickLine={false} axisLine={false} width={48} />
-              <Tooltip formatter={(value) => formatMoney(Number(value))} />
-              <Line type="monotone" dataKey="amount" stroke="#2563eb" strokeWidth={3} dot={false} />
-            </LineChart>
-          </ResponsiveContainer>
+          <div className="overflow-x-auto">
+            <ResponsiveContainer width="100%" height={260}>
+              <LineChart data={spendingOverTime}>
+                <XAxis dataKey="date" tickLine={false} axisLine={false} />
+                <YAxis tickLine={false} axisLine={false} width={48} />
+                <Tooltip formatter={(value) => formatMoney(Number(value))} />
+                <Line type="monotone" dataKey="amount" stroke="#2563eb" strokeWidth={3} dot={false} />
+              </LineChart>
+            </ResponsiveContainer>
+          </div>
         </ChartPanel>
 
         <ChartPanel

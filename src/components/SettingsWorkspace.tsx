@@ -7,6 +7,7 @@ import { DEFAULT_SETTINGS_ID } from '@/defaultData';
 import { getCurrentMonth } from '@/dates';
 import { formatMoney, parseAmountInput } from '@/format';
 import { exportCSV, exportJSON, exportPDF, importJSON } from '@/exports/exportService';
+import { deleteCategory } from '@/budgets/budgetService';
 import { SUPPORTED_METHODS, type Category, type Method, type TransactionType } from '@/types';
 import { ConfirmDialog } from './ConfirmDialog';
 import { toast } from 'sonner';
@@ -45,8 +46,8 @@ export default function SettingsWorkspace() {
     toast.success('Category added.');
   };
 
-  const deleteCategory = async (id: string) => {
-    await db.categories.delete(id);
+  const handleDeleteCategory = async (id: string) => {
+    await deleteCategory(id);
     toast.success('Category deleted.');
   };
 
@@ -180,12 +181,12 @@ export default function SettingsWorkspace() {
       <section className="rounded-2xl border border-slate-200 bg-white p-5 shadow-xs shadow-slate-200/50 transition-all hover:shadow-md">
         <h2 className="text-base font-semibold text-slate-950">Categories</h2>
         <div className="mt-4 grid gap-3 md:grid-cols-[1fr_160px_120px_auto]">
-          <input value={categoryName} onChange={(event) => setCategoryName(event.target.value)} placeholder="Category name" className="rounded-md border border-slate-300 px-3 py-2 text-sm font-medium text-slate-950 outline-none focus:border-blue-500" />
-          <select value={categoryType} onChange={(event) => setCategoryType(event.target.value as TransactionType)} className="rounded-md border border-slate-300 px-3 py-2 text-sm font-medium text-slate-950 outline-none focus:border-blue-500">
+          <input value={categoryName} onChange={(event) => setCategoryName(event.target.value)} placeholder="Category name" className="w-full rounded-md border border-slate-300 px-3 py-2 text-sm font-medium text-slate-950 outline-none focus:border-blue-500" />
+          <select value={categoryType} onChange={(event) => setCategoryType(event.target.value as TransactionType)} className="w-full rounded-md border border-slate-300 px-3 py-2 text-sm font-medium text-slate-950 outline-none focus:border-blue-500">
             <option value="expense">expense</option>
             <option value="income">income</option>
           </select>
-          <input type="color" value={categoryColor} onChange={(event) => setCategoryColor(event.target.value)} className="h-10 rounded-md border border-slate-300 bg-white px-2 py-1" />
+          <input type="color" value={categoryColor} onChange={(event) => setCategoryColor(event.target.value)} className="h-10 w-full rounded-md border border-slate-300 bg-white px-2 py-1" />
           <button type="button" onClick={addCategory} className="rounded-md bg-blue-500 px-4 py-2 text-sm font-semibold text-white hover:bg-blue-600">Add</button>
         </div>
         <div className="mt-4 grid gap-2 md:grid-cols-2">

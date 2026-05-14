@@ -119,4 +119,41 @@ describe('parseCommands', () => {
     const singleResult = parseCommand('-120 coffee cash', { categories, today });
     expect(multiResult[0]).toEqual(singleResult);
   });
+
+  it('handles multi-command with mixed currencies', () => {
+    const results = parseCommands('-120 coffee +50 usd lunch', { categories, today });
+    expect(results).toHaveLength(2);
+    if (results[0]?.ok) {
+      expect(results[0].transaction.currency).toBe('TRY');
+      expect(results[0].transaction.amount).toBe(120);
+    }
+    if (results[1]?.ok) {
+      expect(results[1].transaction.currency).toBe('USD');
+      expect(results[1].transaction.amount).toBe(50);
+      expect(results[1].transaction.title).toBe('lunch');
+    }
+  });
+
+  it('handles amounts without leading zero', () => {
+    const results = parseCommands('-.5 coffee', { categories, today });
+    expect(results).toHaveLength(1);
+    if (results[0]?.ok) {
+      expect(results[0].transaction.amount).toBe(0.5);
+    }
+  });
+
+  it('rejects malformed multi-command with missing title', () => {
+    const results = parseCommands('-250 dinner -500', { categories, today });
+    expect(results).toHaveLength(2);
+    expect(results[0]?.ok).toBe(true);
+    expect(results[1]?.ok).toBe(false);
+  });
+
+  it('handles whitespace variants', () => {
+    const results = parseCommands('- 120   coffee   cash', { categories, today });
+    expect(results).toHaveLength(1);
+    if (results[0]?.ok) {
+      expect(results[0].transaction.amount).toBe(120);
+    }
+  });
 });

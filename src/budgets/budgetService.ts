@@ -1,6 +1,6 @@
 import { db, ensureDatabaseSeeded, type TapTrackDatabase } from '@/database';
 import { getPreviousMonth } from '@/dates';
-import type { CategoryBudget, MonthlyBudget } from '@/types';
+import type { Category, CategoryBudget, MonthlyBudget } from '@/types';
 import { pushRecord } from '@/sync/syncService';
 
 export type MonthlyBudgetInput = {
@@ -197,4 +197,22 @@ async function getCategorySpentForMonth(
         transaction.categoryId === categoryId
     )
     .reduce((sum, transaction) => sum + transaction.amount, 0);
+}
+
+export async function deleteCategory(
+  categoryId: string,
+  database: TapTrackDatabase = db
+): Promise<void> {
+  await ensureDatabaseSeeded(database);
+
+  await database.transaction('rw', database.categories, database.categoryBudgets, async () => {
+    // Delete all category budgets for this category
+    await database.categoryBudgets
+      .where('categoryId')
+      .equals(categoryId)
+      .delete();
+
+    // Delete the category itself
+    await database.categories.delete(categoryId);
+  });
 }

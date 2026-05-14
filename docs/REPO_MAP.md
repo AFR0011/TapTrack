@@ -1,12 +1,28 @@
 # TapTrack Repo Map
 
-Last mapped: 2026-05-07
+Last mapped: 2026-05-14
 
 ## Overview
 
-TapTrack is a mobile-first, local-first personal finance tracker using Next.js 14 App Router, React, TypeScript, Tailwind CSS, Dexie/IndexedDB, Recharts, PapaParse, and Vitest. `BLUEPRINT.md` remains the source of truth for V1 scope, non-goals, build order, and acceptance criteria.
+TapTrack is a mobile-first personal finance tracker using Next.js 14 App Router, React, TypeScript, Tailwind CSS, Dexie/IndexedDB, Recharts, PapaParse, and Vitest. `BLUEPRINT.md` defines the original V1 scope and non-goals; this repo map documents the current V2 implementation.
 
-The active architecture keeps persistence behind `src/database.ts` and service modules under `src/`. No cloud sync, backend, user accounts, bank/institution import, receipt/photo scanning or attachments, exchange-rate API, or AI categorization has been added. Bank/institution imports and receipt/photo scanning are not in the current V1.5/V2 roadmap unless explicitly re-scoped.
+### V2 Features Implemented
+- Multi-entry command parsing (e.g., `-250 dinner -500 lunch +300 loan`)
+- Supabase cloud sync (fire-and-forget push, pull on app open)
+- Telegram bot webhook for logging transactions from Telegram
+- Exchange rate API (open.er-api.com, cached 1h) with TRY-unified reports toggle
+- Local AI categorization (Ollama fallback to keyword rules)
+- Framer Motion + glassmorphism design polish
+
+### V1 Foundation (unchanged)
+- Next.js App Router shell with shared dashboard, transactions, budgets, recurring, reports, and settings navigation.
+- First-time setup gate captures six starting balances, monthly TRY budget, and default payment method.
+- Fast command parsing, preview, save, balance update, negative-balance blocking, and live dashboard updates.
+- Manual transaction add/edit/delete with balance reversal validation.
+- Monthly TRY budget, rollover calculation, category budgets, and budget usage display.
+- Recurring transaction CRUD and app-open due/missed transaction creation.
+- Reports cover category spending, spending over time, income vs expense, monthly comparison, and budget performance.
+- Settings covers balance updates, default method, category CRUD, CSV/JSON/PDF export and import, and reset.
 
 ## Active Structure
 

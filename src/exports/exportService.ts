@@ -118,28 +118,38 @@ export async function exportPDF(month: string, database: TapTrackDatabase = db):
 
   const lines = [
     `TapTrack Monthly Report - ${formatDisplayMonth(month)}`,
+    '================================================================================',
     `Generated: ${new Date().toISOString()}`,
     '',
-    `Total income: ${incomeVsExpense.income} TRY`,
-    `Total expenses: ${incomeVsExpense.expense} TRY`,
-    `Net: ${incomeVsExpense.net} TRY`,
+    'FINANCIAL SUMMARY',
+    '--------------------------------------------------------------------------------',
+    `Total income:    ${incomeVsExpense.income} TRY`,
+    `Total expenses:  ${incomeVsExpense.expense} TRY`,
+    `Net:             ${incomeVsExpense.net} TRY`,
     '',
-    `Budget: ${budgetPerformance.available} TRY`,
-    `Budget spent: ${budgetPerformance.totalSpent} TRY`,
-    `Budget remaining: ${budgetPerformance.remaining} TRY`,
+    'BUDGET SUMMARY',
+    '--------------------------------------------------------------------------------',
+    `Budget available:   ${budgetPerformance.available} TRY`,
+    `Budget spent:       ${budgetPerformance.totalSpent} TRY`,
+    `Budget remaining:   ${budgetPerformance.remaining} TRY`,
     '',
-    'Category spending:',
+    'CATEGORY SPENDING',
+    '--------------------------------------------------------------------------------',
     ...(categorySpending.length
       ? categorySpending.map((item) => `${item.categoryId}: ${item.amount} TRY`)
       : ['No TRY expense categories this month.']),
     '',
-    'Transactions:',
+    'TRANSACTIONS',
+    '================================================================================',
     ...(transactions.length
       ? transactions.map(
           (transaction) =>
-            `${transaction.date} ${transaction.type === 'income' ? '+' : '-'}${transaction.amount} ${transaction.currency} ${transaction.method} - ${transaction.title}`
+            `${transaction.date} | ${transaction.type === 'income' ? '+' : '-'}${transaction.amount} ${transaction.currency} | ${transaction.method} | ${transaction.title} | ${transaction.categoryId}`
         )
       : ['No transactions this month.']),
+    '',
+    '================================================================================',
+    `End of report - Page 1 of 1`,
   ];
 
   return createSimplePdf(lines);

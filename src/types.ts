@@ -103,6 +103,7 @@ export interface Settings {
   lastUsedMethod: Method;
   setupCompleted: boolean;
   aiCategorizationEnabled?: boolean;
+  lastSyncAt?: string;
   createdAt: string;
   updatedAt: string;
 }

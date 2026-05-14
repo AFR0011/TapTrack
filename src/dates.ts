@@ -7,6 +7,13 @@ export function formatLocalDate(date: Date) {
   return `${year}-${month}-${day}`;
 }
 
+export function formatUtcDate(date: Date) {
+  const year = date.getUTCFullYear();
+  const month = String(date.getUTCMonth() + 1).padStart(2, '0');
+  const day = String(date.getUTCDate()).padStart(2, '0');
+  return `${year}-${month}-${day}`;
+}
+
 export function getCurrentMonth(date = new Date()) {
   return formatLocalDate(date).slice(0, 7);
 }

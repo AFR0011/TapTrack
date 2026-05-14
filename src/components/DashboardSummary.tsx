@@ -65,7 +65,7 @@ export default function DashboardSummary() {
         {/* Budget progress bar */}
         <div className="relative mt-4 h-2 overflow-hidden rounded-full bg-slate-100">
           <motion.div
-            className={`absolute inset-y-0 left-0 rounded-full ${budgetUsed > 100 ? 'bg-red-500' : 'bg-gradient-to-r from-blue-500 to-violet-500'}`}
+            className={`absolute inset-y-0 left-0 rounded-full ${budgetUsed >= 100 ? 'bg-red-500' : 'bg-gradient-to-r from-blue-500 to-violet-500'}`}
             initial={{ width: 0 }}
             animate={{ width: `${Math.min(budgetUsed, 100)}%` }}
             transition={{ duration: 0.6, ease: 'easeOut', delay: 0.15 }}
