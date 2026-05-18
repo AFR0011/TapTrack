@@ -109,7 +109,7 @@ export default function AppShell({ children }: { children: ReactNode }) {
 
       {/* Mobile bottom nav — glassmorphism + gradient pill */}
       <nav className="fixed inset-x-1 bottom-2 z-40 md:hidden" aria-label="Mobile">
-        <div className="grid grid-cols-[repeat(5,minmax(0,1fr))_3rem] items-stretch gap-1 overflow-hidden rounded-2xl border border-white/60 bg-white/95 px-2 pt-2 pb-[calc(0.25rem+env(safe-area-inset-bottom,0px))] shadow-glass backdrop-blur-md">
+        <div className="grid grid-cols-[repeat(5,minmax(0,1fr))_3rem] items-stretch gap-1 overflow-visible rounded-2xl border border-white/60 bg-white/95 px-2 pt-2 pb-[calc(0.25rem+env(safe-area-inset-bottom,0px))] shadow-glass backdrop-blur-md">
           {NAV_ITEMS.slice(0, 5).map((item) => {
             const active = item.href === '/app' ? pathname === '/app' : pathname.startsWith(item.href);
             return (
@@ -133,10 +133,10 @@ export default function AppShell({ children }: { children: ReactNode }) {
             );
           })}
           {/* Overflow dropdown for remaining items */}
-          <div className="relative flex items-center justify-center">
-            <details className="group">
-              <summary className="flex flex-col items-center justify-center gap-0.5 rounded-xl px-1 py-1.5 text-xs leading-none cursor-pointer text-slate-400 hover:text-slate-600 select-none">
-                <Icon d="M4 6h16M4 12h16M4 18h16" />
+          <div className="relative flex items-center justify-center overflow-visible">
+            <details className="group relative">
+              <summary className="flex cursor-pointer list-none flex-col items-center justify-center gap-0.5 rounded-xl px-1 py-1.5 text-xs leading-none text-slate-400 select-none hover:text-slate-600 [&::-webkit-details-marker]:hidden">
+                <Icon d="M4 6h16M4 12h16M4 18h16" className="h-5 w-5" />
                 <span className="relative z-10 truncate">More</span>
                 <motion.svg
                   className="h-3 w-3 transition-transform group-open:rotate-180"
@@ -148,15 +148,19 @@ export default function AppShell({ children }: { children: ReactNode }) {
                   <path d="M6 9l6 6 6-6" />
                 </motion.svg>
               </summary>
-              <div className="absolute bottom-full left-1/2 -translate-x-1/2 mb-2 w-32 overflow-hidden rounded-xl border border-slate-200 bg-white shadow-xl">
+
+              <div className="absolute right-0 bottom-full z-50 mb-3 w-40 overflow-hidden rounded-xl border border-slate-200 bg-white shadow-xl">
                 {NAV_ITEMS.slice(5).map((item) => {
                   const active = item.href === '/app' ? pathname === '/app' : pathname.startsWith(item.href);
+
                   return (
                     <Link
                       key={item.href}
                       href={item.href}
-                      className={`flex flex-col items-center justify-center gap-1 px-3 py-2 text-xs font-medium transition-colors ${
-                        active ? 'bg-gradient-to-r from-blue-600 to-violet-600 text-white' : 'text-slate-700 hover:bg-slate-50'
+                      className={`flex items-center gap-2 px-3 py-2 text-xs font-medium transition-colors ${
+                        active
+                          ? 'bg-gradient-to-r from-blue-600 to-violet-600 text-white'
+                          : 'text-slate-700 hover:bg-slate-50'
                       }`}
                     >
                       <Icon d={item.icon} className="h-4 w-4" />
