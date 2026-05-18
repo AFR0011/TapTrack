@@ -278,7 +278,7 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
     if (balanceRows.length > 0) {
       const { error: upsertBalanceError } = await supabase
         .from('balances')
-        .upsert(balanceRows, { onConflict: 'id' });
+        .upsert(balanceRows, { onConflict: 'user_id,id' });
 
       if (upsertBalanceError) {
         if (insertedTransactionIds.length > 0) {
@@ -303,7 +303,7 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
         );
 
         if (rollbackUpserts.length > 0) {
-          await supabase.from('balances').upsert(rollbackUpserts, { onConflict: 'id' });
+          await supabase.from('balances').upsert(rollbackUpserts, { onConflict: 'user_id,id' });
         }
         if (rollbackDeletes.length > 0) {
           await supabase.from('balances').delete().in('id', rollbackDeletes).eq('user_id', ownerId);

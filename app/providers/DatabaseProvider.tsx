@@ -3,7 +3,7 @@
 import { useEffect, useState, type ReactNode } from 'react';
 import { ensureDatabaseSeeded } from '@/database';
 import { createDueRecurringTransactions } from '@/recurring/recurringService';
-import { syncNow } from '@/sync/syncService';
+import { pullUpdates, syncNow } from '@/sync/syncService';
 
 const AUTO_SYNC_INTERVAL_MS = 60_000;
 
@@ -30,6 +30,10 @@ export function DatabaseProvider({ children }: { children: ReactNode }) {
 
     const bootstrap = async () => {
       try {
+        // Pull remote rows before local seeding. Otherwise a fresh device can
+        // create newer zero balances/default categories and block older real
+        // remote records from being applied.
+        await pullUpdates();
         await ensureDatabaseSeeded();
         await createDueRecurringTransactions();
         await runSync();

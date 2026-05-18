@@ -138,6 +138,18 @@ create table if not exists public.sync_tombstones (
   primary key (user_id, table_name, record_id)
 );
 
+-- Existing projects may already have tables whose primary key is only id.
+-- The sync client uses onConflict: 'user_id,id', so these unique indexes are
+-- required even when the tables were created before this migration existed.
+create unique index if not exists transactions_user_id_id_uq on public.transactions (user_id, id);
+create unique index if not exists balances_user_id_id_uq on public.balances (user_id, id);
+create unique index if not exists categories_user_id_id_uq on public.categories (user_id, id);
+create unique index if not exists monthly_budgets_user_id_id_uq on public.monthly_budgets (user_id, id);
+create unique index if not exists category_budgets_user_id_id_uq on public.category_budgets (user_id, id);
+create unique index if not exists recurring_transactions_user_id_id_uq on public.recurring_transactions (user_id, id);
+create unique index if not exists conversions_user_id_id_uq on public.conversions (user_id, id);
+create unique index if not exists settings_user_id_id_uq on public.settings (user_id, id);
+
 create index if not exists transactions_user_updated_idx on public.transactions (user_id, updated_at);
 create index if not exists balances_user_updated_idx on public.balances (user_id, updated_at);
 create index if not exists categories_user_updated_idx on public.categories (user_id, updated_at);

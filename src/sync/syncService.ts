@@ -34,6 +34,7 @@ const SYNC_TOMBSTONES_TABLE = 'sync_tombstones';
 const LEGACY_LAST_SYNC_KEY = 'taptrack_last_sync_at';
 const LEGACY_RETRY_QUEUE_KEY = 'taptrack_retry_queue';
 const SYNC_CURSOR_PREFIX = 'taptrack_sync_cursor:';
+const PUSH_CURSOR_PREFIX = 'taptrack_push_cursor:';
 const RETRY_QUEUE_PREFIX = 'taptrack_retry_queue:';
 const MAX_RETRY_ATTEMPTS = 10;
 const RETRY_DELAY_MS = 5000;
@@ -155,6 +156,14 @@ function getSyncCursor(userId: string): string {
 
 function setSyncCursor(userId: string, timestamp: string): void {
   writeStorage(getUserScopedStorageKey(SYNC_CURSOR_PREFIX, userId), timestamp);
+}
+
+function getPushCursor(userId: string): string {
+  return readStorage(getUserScopedStorageKey(PUSH_CURSOR_PREFIX, userId)) ?? '1970-01-01T00:00:00.000Z';
+}
+
+function setPushCursor(userId: string, timestamp: string): void {
+  writeStorage(getUserScopedStorageKey(PUSH_CURSOR_PREFIX, userId), timestamp);
 }
 
 function getRetryQueue(userId: string): RetryItem[] {
@@ -377,8 +386,79 @@ export async function syncAllLocalData(database: TapTrackDatabase = db): Promise
  * account-sensitive operations.
  */
 export async function syncNow(database: TapTrackDatabase = db): Promise<void> {
+  // Order matters. Pull first so a fresh device does not push seeded zero/default
+  // rows over real remote data, then push any local rows that were created
+  // before sync existed or while offline, then pull again to normalize server
+  // timestamps and pick up tombstones written during the push window.
   await processRetryQueue();
   await pullUpdates(database);
+  await pushLocalChanges(database);
+  await pullUpdates(database);
+}
+
+/**
+ * Backfills local IndexedDB rows to Supabase. This is what makes old local
+ * transactions/categories/conversions sync even if they were created before
+ * the current sync layer existed. Each row is filtered by a per-user push
+ * cursor so normal interval sync does not upload the full app forever.
+ */
+export async function pushLocalChanges(database: TapTrackDatabase = db): Promise<void> {
+  const supabase = createSupabaseBrowserClient();
+  const {
+    data: { user },
+  } = await supabase.auth.getUser();
+  if (!user) return;
+
+  const lastPushAt = getPushCursor(user.id);
+  let latestPushedTimestamp = lastPushAt;
+  let allTablesSuccess = true;
+
+  const tablesToSync = Object.entries(DEXIE_TO_SUPABASE) as [DexieTableName, string][];
+
+  for (const [dexieTable, supabaseTable] of tablesToSync) {
+    const rows = await getDexieTableRows(database, dexieTable);
+    const changedRows = rows.filter((row) => getLocalUpdatedAt(row) > lastPushAt);
+
+    if (changedRows.length === 0) continue;
+
+    const serializedRows = changedRows.map((row) => serializeForSupabase(row, user.id));
+    const { error } = await supabase
+      .from(supabaseTable)
+      .upsert(serializedRows, { onConflict: 'user_id,id' });
+
+    if (error) {
+      allTablesSuccess = false;
+      for (const row of changedRows) {
+        const recordId = getRecordId(row);
+        if (!recordId) continue;
+        queueRetry(user.id, {
+          tableName: dexieTable,
+          operation: 'upsert',
+          recordId,
+          record: row,
+          attempts: 0,
+          lastAttempt: Date.now(),
+        });
+      }
+      continue;
+    }
+
+    for (const row of changedRows) {
+      const rowTimestamp = getLocalUpdatedAt(row);
+      if (rowTimestamp > latestPushedTimestamp) {
+        latestPushedTimestamp = rowTimestamp;
+      }
+
+      const recordId = getRecordId(row);
+      if (recordId) {
+        removeFromRetryQueue(user.id, dexieTable, recordId, 'upsert');
+      }
+    }
+  }
+
+  if (allTablesSuccess && latestPushedTimestamp > lastPushAt) {
+    setPushCursor(user.id, latestPushedTimestamp);
+  }
 }
 
 /**
