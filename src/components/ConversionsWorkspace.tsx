@@ -8,6 +8,7 @@ import { formatLocalDate } from '@/dates';
 import { formatMoney, parseAmountInput } from '@/format';
 import {
   createConversion,
+  InvalidConversionError,
   InsufficientConversionBalanceError,
   type ConversionDraft,
 } from '@/conversions/conversionService';
@@ -62,6 +63,10 @@ export default function ConversionsWorkspace() {
       setError('Source and destination method must differ for a transfer (e.g. card → cash).');
       return;
     }
+    if (opKind === 'transfer' && Math.abs(fromAmount - toAmount) > 0.000001) {
+      setError('For same-currency transfers, "from" and "to" amounts must match.');
+      return;
+    }
 
     const draft: ConversionDraft = {
       fromCurrency,
@@ -83,7 +88,7 @@ export default function ConversionsWorkspace() {
       setNote('');
     } catch (err) {
       setError(
-        err instanceof InsufficientConversionBalanceError
+        err instanceof InsufficientConversionBalanceError || err instanceof InvalidConversionError
           ? err.message
           : 'Could not save. Please try again.'
       );

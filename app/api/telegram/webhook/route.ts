@@ -44,6 +44,10 @@ function formatAmount(amount: number, currency: string): string {
   return `${symbol}${Number(amount).toLocaleString('en-US', { minimumFractionDigits: 0, maximumFractionDigits: 2 })}`;
 }
 
+function getBalanceId(currency: string, method: string): string {
+  return `${currency}-${method}`;
+}
+
 // ---------------------------------------------------------------------------
 // POST handler — receives Telegram webhook updates
 // ---------------------------------------------------------------------------
@@ -123,11 +127,15 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
     } else {
       if (expenses.length > 0) {
         lines.push('\n<b>Expenses:</b>');
-        for (const t of expenses) lines.push(`  ${formatAmount(t.amount, t.currency)} ${t.currency} ${t.method} · ${t.title}`);
+        for (const t of expenses) {
+          lines.push(`  -${formatAmount(t.amount, t.currency)} ${t.method} · ${t.title}`);
+        }
       }
       if (income.length > 0) {
         lines.push('\n<b>Income:</b>');
-        for (const t of income) lines.push(`  ${formatAmount(t.amount, t.currency)} ${t.currency} ${t.method} · ${t.title}`);
+        for (const t of income) {
+          lines.push(`  +${formatAmount(t.amount, t.currency)} ${t.method} · ${t.title}`);
+        }
       }
     }
     await sendMessage(chatId, lines.join('\n'));
@@ -190,10 +198,40 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
     const now = new Date().toISOString();
     const today = now.slice(0, 10);
     const savedLines: string[] = [];
+    const drafts = results.filter((result) => result.ok).map((result) => result.transaction);
+    const { data: existingBalances, error: balancesReadError } = await supabase
+      .from('balances')
+      .select('id, amount')
+      .eq('user_id', ownerId);
+    if (balancesReadError) {
+      await sendMessage(chatId, `❌ Failed to load balances: ${balancesReadError.message}`);
+      return NextResponse.json({ ok: true });
+    }
 
-    for (const result of results) {
-      if (!result.ok) continue;
-      const draft = result.transaction;
+    const originalBalances = new Map(
+      (existingBalances ?? []).map((balance) => [balance.id as string, Number(balance.amount) || 0])
+    );
+    const nextBalances = new Map(originalBalances);
+    const touchedBalanceIds = new Set<string>();
+
+    for (const draft of drafts) {
+      const balanceId = getBalanceId(draft.currency, draft.method);
+      const currentAmount = nextBalances.get(balanceId) ?? 0;
+      const delta = draft.type === 'expense' ? -draft.amount : draft.amount;
+      const nextAmount = currentAmount + delta;
+      if (nextAmount < 0) {
+        await sendMessage(
+          chatId,
+          `❌ ${draft.type === 'expense' ? 'Expense' : 'Income'} blocked: not enough ${draft.currency} ${draft.method} balance (${formatAmount(currentAmount, draft.currency)} available).`
+        );
+        return NextResponse.json({ ok: true });
+      }
+      nextBalances.set(balanceId, nextAmount);
+      touchedBalanceIds.add(balanceId);
+    }
+
+    const insertedTransactionIds: string[] = [];
+    for (const draft of drafts) {
       const id = crypto.randomUUID();
       const row = {
         id,
@@ -211,42 +249,69 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
         updated_at: now,
       };
 
-      const { error } = await supabase.from('transactions').insert(row);
-      if (error) {
-        await sendMessage(chatId, `❌ Failed to save "${draft.title}": ${error.message}`);
+      const { error: insertError } = await supabase.from('transactions').insert(row);
+      if (insertError) {
+        if (insertedTransactionIds.length > 0) {
+          await supabase.from('transactions').delete().in('id', insertedTransactionIds);
+        }
+        await sendMessage(chatId, `❌ Failed to save "${draft.title}": ${insertError.message}`);
         return NextResponse.json({ ok: true });
       }
 
-      // Update balance
-      const balanceId = `${draft.currency}-${draft.method}`;
-      const delta = draft.type === 'expense' ? -draft.amount : draft.amount;
-      const { data: currentBalance } = await supabase
-        .from('balances')
-        .select('amount')
-        .eq('id', balanceId)
-        .eq('user_id', ownerId)
-        .single();
-
-      const newAmount = (Number(currentBalance?.amount) || 0) + delta;
-      if (newAmount < 0) {
-        // Roll back the transaction just inserted
-        await supabase.from('transactions').delete().eq('id', id);
-        const typeStr = draft.type === 'expense' ? 'Expense' : 'Income';
-        await sendMessage(
-          chatId,
-          `❌ ${typeStr} blocked: not enough ${draft.currency} ${draft.method} balance (${formatAmount(Math.abs(Number(currentBalance?.amount) || 0), draft.currency)} available).`
-        );
-        return NextResponse.json({ ok: true });
-      }
-
-      await supabase
-        .from('balances')
-        .update({ amount: newAmount, updated_at: now })
-        .eq('id', balanceId)
-        .eq('user_id', ownerId);
-
+      insertedTransactionIds.push(id);
       const sign = draft.type === 'income' ? '+' : '-';
-      savedLines.push(`${sign}${formatAmount(draft.amount, draft.currency)} ${draft.currency} · ${draft.title} · ${draft.method}`);
+      savedLines.push(`${sign}${formatAmount(draft.amount, draft.currency)} · ${draft.title} · ${draft.method}`);
+    }
+
+    const balanceRows = [...touchedBalanceIds].map((balanceId) => {
+      const [currency, method] = balanceId.split('-');
+      return {
+        id: balanceId,
+        user_id: ownerId,
+        currency,
+        method,
+        amount: nextBalances.get(balanceId) ?? 0,
+        updated_at: now,
+      };
+    });
+
+    if (balanceRows.length > 0) {
+      const { error: upsertBalanceError } = await supabase
+        .from('balances')
+        .upsert(balanceRows, { onConflict: 'id' });
+
+      if (upsertBalanceError) {
+        if (insertedTransactionIds.length > 0) {
+          await supabase.from('transactions').delete().in('id', insertedTransactionIds);
+        }
+
+        const rollbackUpserts = [...touchedBalanceIds]
+          .filter((balanceId) => originalBalances.has(balanceId))
+          .map((balanceId) => {
+            const [currency, method] = balanceId.split('-');
+            return {
+              id: balanceId,
+              user_id: ownerId,
+              currency,
+              method,
+              amount: originalBalances.get(balanceId) ?? 0,
+              updated_at: now,
+            };
+          });
+        const rollbackDeletes = [...touchedBalanceIds].filter(
+          (balanceId) => !originalBalances.has(balanceId)
+        );
+
+        if (rollbackUpserts.length > 0) {
+          await supabase.from('balances').upsert(rollbackUpserts, { onConflict: 'id' });
+        }
+        if (rollbackDeletes.length > 0) {
+          await supabase.from('balances').delete().in('id', rollbackDeletes).eq('user_id', ownerId);
+        }
+
+        await sendMessage(chatId, `❌ Failed to update balances: ${upsertBalanceError.message}`);
+        return NextResponse.json({ ok: true });
+      }
     }
 
     const header = savedLines.length === 1 ? '✅ Saved' : `✅ Saved ${savedLines.length} transactions`;

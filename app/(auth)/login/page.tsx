@@ -34,7 +34,7 @@ export default function LoginPage() {
       if (signInError) {
         setError(signInError.message);
       } else {
-        router.replace('/');
+        router.replace('/app');
         router.refresh();
       }
     }

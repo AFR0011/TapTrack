@@ -116,7 +116,7 @@ export default function RecurringWorkspace() {
         frequency: form.frequency,
         startDate: form.startDate,
         endDate: form.endDate || undefined,
-        nextRunDate: getInitialNextRunDate(form.startDate),
+        nextRunDate: editing.nextRunDate,
       });
       setForm({
         type: 'expense',

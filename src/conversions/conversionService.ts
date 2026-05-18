@@ -21,6 +21,13 @@ export class InsufficientConversionBalanceError extends Error {
   }
 }
 
+export class InvalidConversionError extends Error {
+  constructor(message: string) {
+    super(message);
+    this.name = 'InvalidConversionError';
+  }
+}
+
 /**
  * Creates a currency exchange or card-to-cash transfer record atomically.
  *
@@ -32,6 +39,21 @@ export async function createConversion(
   draft: ConversionDraft,
   database: TapTrackDatabase = db
 ): Promise<Conversion> {
+  if (draft.fromAmount <= 0 || draft.toAmount <= 0) {
+    throw new InvalidConversionError('Conversion amounts must be greater than zero.');
+  }
+
+  const isTransfer = draft.fromCurrency === draft.toCurrency;
+  if (isTransfer && draft.fromMethod === draft.toMethod) {
+    throw new InvalidConversionError('Source and destination method must differ for a transfer.');
+  }
+
+  if (isTransfer && Math.abs(draft.fromAmount - draft.toAmount) > 0.000001) {
+    throw new InvalidConversionError(
+      'For same-currency transfers, source and destination amounts must match.'
+    );
+  }
+
   const now = new Date().toISOString();
 
   const conversion: Conversion = {
@@ -65,35 +87,44 @@ export async function createConversion(
       );
     }
 
-    await database.balances.put({
+    const updatedFromBalance = {
       ...fromBalance,
       amount: fromBalance.amount - draft.fromAmount,
       updatedAt: now,
-    });
+    };
+    await database.balances.put(updatedFromBalance);
 
+    let updatedToBalance: {
+      id: string;
+      currency: Currency;
+      method: Method;
+      amount: number;
+      updatedAt: string;
+    };
     if (toBalance) {
-      await database.balances.put({
+      updatedToBalance = {
         ...toBalance,
         amount: toBalance.amount + draft.toAmount,
         updatedAt: now,
-      });
+      };
+      await database.balances.put(updatedToBalance);
     } else {
-      const newToBalance = {
+      updatedToBalance = {
         id: toId,
         currency: draft.toCurrency,
         method: draft.toMethod,
         amount: draft.toAmount,
         updatedAt: now,
       };
-      await database.balances.put(newToBalance);
+      await database.balances.put(updatedToBalance);
     }
 
     await database.conversions.add(conversion);
 
     // Push records after all writes in the transaction
     void pushRecord('conversions', conversion as unknown as Record<string, unknown>);
-    void pushRecord('balances', fromBalance as unknown as Record<string, unknown>);
-    void pushRecord('balances', (toBalance ?? { id: toId, currency: draft.toCurrency, method: draft.toMethod, amount: draft.toAmount, updatedAt: now }) as unknown as Record<string, unknown>);
+    void pushRecord('balances', updatedFromBalance as unknown as Record<string, unknown>);
+    void pushRecord('balances', updatedToBalance as unknown as Record<string, unknown>);
   });
 
   return conversion;

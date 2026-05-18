@@ -1,6 +1,6 @@
 # TapTrack Repo Map
 
-Last mapped: 2026-05-14
+Last mapped: 2026-05-18
 
 ## Overview
 
@@ -28,13 +28,17 @@ TapTrack is a mobile-first personal finance tracker using Next.js 14 App Router,
 
 | Path | Role |
 | --- | --- |
-| `app/layout.tsx` | Root layout, providers, setup gate, and shared app shell. |
-| `app/page.tsx` | Dashboard route with quick command, budget summary, balances, and recent transactions. |
-| `app/transactions/page.tsx` | Transactions workspace route. |
-| `app/budgets/page.tsx` | Budget workspace route. |
-| `app/recurring/page.tsx` | Recurring transactions route. |
-| `app/reports/page.tsx` | Reports and chart route. |
-| `app/settings/page.tsx` | Settings, balances, categories, export/import, reset route. |
+| `app/layout.tsx` | Root app layout (`html/body`) and global styles. |
+| `app/page.tsx` | Root route redirect to `/app`. |
+| `app/(authenticated)/layout.tsx` | Authenticated provider stack + app shell wrapper. |
+| `app/(authenticated)/app/page.tsx` | Dashboard route with quick command, budget summary, balances, and recent transactions. |
+| `app/(authenticated)/app/transactions/page.tsx` | Transactions workspace route. |
+| `app/(authenticated)/app/budgets/page.tsx` | Budget workspace route. |
+| `app/(authenticated)/app/recurring/page.tsx` | Recurring transactions route. |
+| `app/(authenticated)/app/reports/page.tsx` | Reports and chart route. |
+| `app/(authenticated)/app/settings/page.tsx` | Settings, balances, categories, export/import, reset route. |
+| `app/(authenticated)/app/conversions/page.tsx` | Currency exchange and transfer workspace route. |
+| `app/(auth)/login/page.tsx` | Email/password authentication UI. |
 | `app/providers/DatabaseProvider.tsx` | Seeds IndexedDB and runs due recurring transaction checks on app open. |
 | `src/types.ts` | Shared domain types and enum-like constants. |
 | `src/database.ts` | Dexie database class, V1 table declarations, and seed routine. |
@@ -50,16 +54,18 @@ TapTrack is a mobile-first personal finance tracker using Next.js 14 App Router,
 | `src/reports/reportTransforms.ts` | Pure budget-performance transform used by reports UI and service. |
 | `src/exports/exportService.ts` | CSV, JSON backup/import, and simple PDF report export. |
 | `src/components/*.tsx` | Ledger Console shell, setup form, dashboard, and route workspaces. |
-| `src/**/*.test.ts` | Vitest coverage for parser, transactions, setup, budgets, recurring, reports, and exports. |
+| `src/sync/syncService.ts` | Supabase push/delete/pull sync, retry queue, and full snapshot replacement helpers. |
+| `src/**/*.test.ts` | Vitest coverage for parser, transactions, setup, budgets, recurring, reports, exports, sync, conversions, and utility helpers. |
 
 ## Data Flow
 
 1. `DatabaseProvider` calls `ensureDatabaseSeeded()` on the client, then `createDueRecurringTransactions()`.
 2. `SetupGate` reads `settings.setupCompleted`; first use shows `SetupForm` until balances and the monthly budget are saved.
 3. `CommandInput` parses commands with Dexie-backed categories and settings, previews the draft, then calls `createTransaction()`.
-4. Transaction create/update/delete operations apply balance effects atomically and reject negative resulting balances.
-5. Dashboard, transaction lists, budgets, recurring lists, reports, and settings read Dexie live queries so UI updates after local writes.
-6. Export/import flows read or restore all Dexie tables through `exportService`.
+4. Transaction and conversion writes apply balance effects atomically and reject negative resulting balances.
+5. Sync layer (`pushRecord`/`deleteRecord`) mirrors local mutations to Supabase; app-open `pullUpdates()` merges remote deltas.
+6. Dashboard, transaction lists, budgets, recurring lists, reports, and settings read Dexie live queries so UI updates after local writes.
+7. Export/import flows read or restore all Dexie tables through `exportService`; reset/import then call full snapshot sync.
 
 ## Runtime And Build Signals
 
@@ -83,12 +89,12 @@ npm.cmd run build
 
 `npm.cmd run check` runs the full ladder.
 
-Latest browser smoke command target: `http://127.0.0.1:3001`.
+Latest browser smoke command target: `http://localhost:3000`.
 
 ## Known Gaps
 
 - The PDF report is functional but visually basic.
-- Category editing/deleting is not complete.
+- Category editing is still not implemented (add/delete are available).
 - No service worker or install manifest polish yet.
 - No custom date-range/yearly reports yet.
 - No automatic currency conversion in reports by design for V1.

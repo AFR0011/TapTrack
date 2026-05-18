@@ -3,6 +3,7 @@ import { DEFAULT_SETTINGS_ID, getBalanceId } from '@/defaultData';
 import { getCurrentMonth } from '@/dates';
 import { upsertMonthlyBudget } from '@/budgets/budgetService';
 import type { Balance, Currency, Method, Settings } from '@/types';
+import { pushRecord } from '@/sync/syncService';
 
 export type InitialSetupInput = {
   balances: Record<Currency, Record<Method, number>>;
@@ -19,6 +20,8 @@ export async function completeInitialSetup(
 
   const now = new Date().toISOString();
   const month = input.month ?? getCurrentMonth();
+  let seededBalances: Balance[] = [];
+  let updatedSettings: Settings | null = null;
 
   await database.transaction('rw', database.balances, database.settings, database.monthlyBudgets, async () => {
     const balances: Balance[] = Object.entries(input.balances).flatMap(([currency, methods]) =>
@@ -32,14 +35,16 @@ export async function completeInitialSetup(
     );
 
     await database.balances.bulkPut(balances);
-    await database.settings.put({
+    seededBalances = balances;
+    updatedSettings = {
       id: DEFAULT_SETTINGS_ID,
       defaultCurrency: 'TRY',
       lastUsedMethod: input.defaultMethod,
       setupCompleted: true,
       createdAt: (await database.settings.get(DEFAULT_SETTINGS_ID))?.createdAt ?? now,
       updatedAt: now,
-    });
+    };
+    await database.settings.put(updatedSettings);
   });
 
   await upsertMonthlyBudget(
@@ -50,6 +55,13 @@ export async function completeInitialSetup(
     },
     database
   );
+
+  seededBalances.forEach((balance) => {
+    void pushRecord('balances', balance as unknown as Record<string, unknown>);
+  });
+  if (updatedSettings) {
+    void pushRecord('settings', updatedSettings as unknown as Record<string, unknown>);
+  }
 
   const settings = await database.settings.get(DEFAULT_SETTINGS_ID);
   if (!settings) {

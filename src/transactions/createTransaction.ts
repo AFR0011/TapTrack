@@ -1,8 +1,8 @@
 import { DEFAULT_SETTINGS_ID, createDefaultSettings, getBalanceId } from '@/defaultData';
 import { db, ensureDatabaseSeeded, type TapTrackDatabase } from '@/database';
 import { getInsufficientBalanceMessage, getTransactionBalanceDelta } from '@/balances/balanceEffects';
-import type { Balance, Currency, Method, Transaction, TransactionDraft } from '@/types';
-import { pushRecord } from '@/sync/syncService';
+import type { Balance, Currency, Method, Settings, Transaction, TransactionDraft } from '@/types';
+import { deleteRecord, pushRecord } from '@/sync/syncService';
 
 export class InsufficientBalanceError extends Error {
   readonly code = 'INSUFFICIENT_BALANCE';
@@ -49,24 +49,26 @@ export async function createTransaction(
       throw new InsufficientBalanceError(input.currency, input.method, currentBalance.amount);
     }
 
-    await database.balances.put({
+    const updatedBalance: Balance = {
       ...currentBalance,
       amount: nextAmount,
       updatedAt: now,
-    });
+    };
+    await database.balances.put(updatedBalance);
     await database.transactions.add(transaction);
 
     const settings = (await database.settings.get(DEFAULT_SETTINGS_ID)) ?? createDefaultSettings(now);
-    await database.settings.put({
+    const updatedSettings = {
       ...settings,
       lastUsedMethod: input.method,
       updatedAt: now,
-    });
+    };
+    await database.settings.put(updatedSettings);
 
     // Push records after all writes in the transaction
     void pushRecord('transactions', transaction as unknown as Record<string, unknown>);
-    void pushRecord('balances', currentBalance as unknown as Record<string, unknown>);
-    void pushRecord('settings', settings as unknown as Record<string, unknown>);
+    void pushRecord('balances', updatedBalance as unknown as Record<string, unknown>);
+    void pushRecord('settings', updatedSettings as unknown as Record<string, unknown>);
   });
 
   return transaction;
@@ -82,7 +84,7 @@ export async function updateTransaction(
   const now = new Date().toISOString();
   let updatedTransaction: Transaction | null = null;
   let balanceUpdates: Balance[] = [];
-  let settings: any = null;
+  let updatedSettings: Settings | null = null;
 
   await database.transaction('rw', database.transactions, database.balances, database.settings, async () => {
     const existingTransaction = await database.transactions.get(id);
@@ -108,19 +110,22 @@ export async function updateTransaction(
 
     await database.transactions.put(updatedTransaction);
 
-    settings = (await database.settings.get(DEFAULT_SETTINGS_ID)) ?? createDefaultSettings(now);
-    await database.settings.put({
+    const settings = (await database.settings.get(DEFAULT_SETTINGS_ID)) ?? createDefaultSettings(now);
+    updatedSettings = {
       ...settings,
       lastUsedMethod: input.method,
       updatedAt: now,
-    });
+    };
+    await database.settings.put(updatedSettings);
 
     // Push records after all writes in the transaction
     void pushRecord('transactions', updatedTransaction as unknown as Record<string, unknown>);
     balanceUpdates.forEach((balance) => {
       void pushRecord('balances', balance as unknown as Record<string, unknown>);
     });
-    void pushRecord('settings', settings as unknown as Record<string, unknown>);
+    if (updatedSettings) {
+      void pushRecord('settings', updatedSettings as unknown as Record<string, unknown>);
+    }
   });
 
   if (!updatedTransaction) {
@@ -160,15 +165,17 @@ export async function deleteTransaction(
       throw new InsufficientBalanceError(transaction.currency, transaction.method, currentBalance.amount);
     }
 
-    await database.balances.put({
+    const updatedBalance: Balance = {
       ...currentBalance,
       amount: nextAmount,
       updatedAt: now,
-    });
+    };
+    await database.balances.put(updatedBalance);
     await database.transactions.delete(id);
 
     // Push balance update
-    void pushRecord('balances', currentBalance as unknown as Record<string, unknown>);
+    void pushRecord('balances', updatedBalance as unknown as Record<string, unknown>);
+    void deleteRecord('transactions', id);
   });
 }
 
@@ -234,11 +241,12 @@ export async function createTransactions(
 
     const lastInput = inputs.at(-1)!;
     const settings = (await database.settings.get(DEFAULT_SETTINGS_ID)) ?? createDefaultSettings(now);
-    await database.settings.put({
+    const updatedSettings = {
       ...settings,
       lastUsedMethod: lastInput.method,
       updatedAt: now,
-    });
+    };
+    await database.settings.put(updatedSettings);
 
     // Push records after all writes in the transaction
     for (const t of transactions) {
@@ -247,7 +255,7 @@ export async function createTransactions(
     for (const balance of balanceMap.values()) {
       void pushRecord('balances', balance as unknown as Record<string, unknown>);
     }
-    void pushRecord('settings', settings as unknown as Record<string, unknown>);
+    void pushRecord('settings', updatedSettings as unknown as Record<string, unknown>);
   });
 
   return transactions;

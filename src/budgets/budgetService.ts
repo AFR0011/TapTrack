@@ -1,7 +1,7 @@
 import { db, ensureDatabaseSeeded, type TapTrackDatabase } from '@/database';
 import { getPreviousMonth } from '@/dates';
-import type { Category, CategoryBudget, MonthlyBudget } from '@/types';
-import { pushRecord } from '@/sync/syncService';
+import type { CategoryBudget, MonthlyBudget } from '@/types';
+import { deleteRecord, pushRecord } from '@/sync/syncService';
 
 export type MonthlyBudgetInput = {
   month: string;
@@ -54,12 +54,26 @@ export async function upsertMonthlyBudget(
 
   const now = new Date().toISOString();
   const existing = await getMonthlyBudget(input.month, database);
+  let rolloverFromPreviousMonth =
+    input.rolloverFromPreviousMonth ?? existing?.rolloverFromPreviousMonth ?? 0;
+
+  if (input.rolloverFromPreviousMonth === undefined && !existing) {
+    const previousMonth = getPreviousMonth(input.month);
+    const previousBudget = await getMonthlyBudget(previousMonth, database);
+    const previousSpent = await getTotalSpentForMonth(previousMonth, database);
+    rolloverFromPreviousMonth = previousBudget
+      ? calculateRollover(
+          previousBudget.totalBudget + previousBudget.rolloverFromPreviousMonth,
+          previousSpent
+        )
+      : 0;
+  }
+
   const budget: MonthlyBudget = {
     id: existing?.id ?? getMonthlyBudgetId(input.month),
     month: input.month,
     totalBudget: input.totalBudget,
-    rolloverFromPreviousMonth:
-      input.rolloverFromPreviousMonth ?? existing?.rolloverFromPreviousMonth ?? 0,
+    rolloverFromPreviousMonth,
     currency: 'TRY',
     createdAt: existing?.createdAt ?? now,
     updatedAt: now,
@@ -204,6 +218,9 @@ export async function deleteCategory(
   database: TapTrackDatabase = db
 ): Promise<void> {
   await ensureDatabaseSeeded(database);
+  const now = new Date().toISOString();
+  const updatedTransactions: Array<Record<string, unknown>> = [];
+  let deletedCategoryBudgetIds: string[] = [];
 
   await database.transaction('rw', database.categories, database.categoryBudgets, database.transactions, async () => {
     // Find a replacement category (prefer "Other" or first available expense category)
@@ -223,11 +240,22 @@ export async function deleteCategory(
     for (const transaction of transactions) {
       await database.transactions.update(transaction.id, {
         categoryId: replacementCategoryId,
-        updatedAt: new Date().toISOString(),
+        updatedAt: now,
+      });
+      updatedTransactions.push({
+        ...transaction,
+        categoryId: replacementCategoryId,
+        updatedAt: now,
       });
     }
 
     // Delete all category budgets for this category
+    const categoryBudgets = await database.categoryBudgets
+      .where('categoryId')
+      .equals(categoryId)
+      .toArray();
+    deletedCategoryBudgetIds = categoryBudgets.map((budget) => budget.id);
+
     await database.categoryBudgets
       .where('categoryId')
       .equals(categoryId)
@@ -237,5 +265,11 @@ export async function deleteCategory(
     await database.categories.delete(categoryId);
   });
 
-  void pushRecord('categories', { id: categoryId, _deleted: true } as unknown as Record<string, unknown>);
+  updatedTransactions.forEach((transaction) => {
+    void pushRecord('transactions', transaction as unknown as Record<string, unknown>);
+  });
+  deletedCategoryBudgetIds.forEach((budgetId) => {
+    void deleteRecord('categoryBudgets', budgetId);
+  });
+  void deleteRecord('categories', categoryId);
 }

@@ -1,10 +1,10 @@
 # TapTrack Project State
 
-Last updated: 2026-05-14
+Last updated: 2026-05-18
 
 ## Current Status
 
-TapTrack V2 is implemented. All V2 features are complete with fixes for identified issues.
+TapTrack V2 is implemented and has passed a QA remediation sweep for routing, sync reliability, recurring/budget correctness, and Telegram robustness.
 
 ### V1 Foundation (unchanged)
 - Next.js App Router shell with shared dashboard, transactions, budgets, recurring, reports, and settings navigation.
@@ -25,9 +25,10 @@ TapTrack V2 is implemented. All V2 features are complete with fixes for identifi
 
 **Phase 2 — Cloud infrastructure (Supabase + Auth + Sync)**
 - Supabase Postgres mirrors all Dexie tables with `user_id` and RLS policies.
-- Single-user magic-link email auth via `@supabase/ssr`; middleware protects all routes; `/login` page provided.
-- `pushRecord(table, record)` upserts to Supabase immediately after every local Dexie write (fire-and-forget).
-- `pullUpdates()` on app open fetches Supabase rows newer than `lastSyncAt` and merges into Dexie.
+- Single-user email/password auth via `@supabase/ssr`; middleware protects app routes; `/login` page provided.
+- `pushRecord(table, record)` and `deleteRecord(table, id)` sync local mutations to Supabase with retry queue support.
+- `syncAllLocalData()` replaces remote state from local snapshot after destructive local operations (reset/import).
+- `pullUpdates()` on app open fetches Supabase rows newer than `lastSyncAt` and merges into Dexie without advancing sync timestamp when any table fails.
 - `NEXT_PUBLIC_SUPABASE_URL` and `NEXT_PUBLIC_SUPABASE_ANON_KEY` deployed to Vercel.
 
 **Phase 3 — Telegram bot**
@@ -58,7 +59,7 @@ TapTrack V2 is implemented. All V2 features are complete with fixes for identifi
 
 ## Active Objective
 
-All V2 phases are complete. The app is ready for daily use and cloud sync. Remaining production steps:
+All V2 phases are complete and core QA findings have been remediated. Remaining production steps:
 
 1. **Deploy Ollama server** — provision a Render Web Service (or VPS), install Ollama, pull `qwen2.5:1.5b`, set `OLLAMA_BASE_URL` in Vercel.
 2. **Register Telegram webhook** — call `GET /api/telegram/register` once after the Vercel URL is stable.
@@ -75,15 +76,15 @@ npm.cmd run test
 npm.cmd run build
 ```
 
-Latest verified: 2026-05-13 — all four steps pass clean.
+Latest verified: 2026-05-18 — all four steps pass clean.
 
 - `npm.cmd run typecheck` — 0 errors.
-- `npm.cmd run test` — 7 test files, 26 tests, all passing.
-- `npm.cmd run build` — 15 static/dynamic routes, middleware 81.7 kB.
+- `npm.cmd run test` — 12 test files, 49 tests, all passing.
+- `npm.cmd run build` — 17 static/dynamic routes (including `/app/*` and root redirect), middleware 81.8 kB.
 
 ## Remaining Risks And Assumptions
 
-- Supabase sync is fire-and-forget; if the device is offline at write time, the push is silently dropped. A retry queue is a future improvement.
+- Supabase sync now includes a retry queue, but it is still best-effort (browser-local queue; no server-side durable jobs).
 - AI categorization requires a running Ollama server and will silently fall back to keyword rules when unreachable.
 - The Telegram bot writes directly to Supabase (not Dexie); changes appear in the PWA on next app open via `pullUpdates`.
 - PDF report is intentionally simple; pdfmake layout polish is out of current scope.

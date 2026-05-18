@@ -47,7 +47,6 @@ export default function BudgetsWorkspace() {
       await upsertMonthlyBudget({
         month,
         totalBudget: parseAmountInput(totalBudgetInput || String(monthlyBudget?.totalBudget ?? 0)),
-        rolloverFromPreviousMonth: monthlyBudget?.rolloverFromPreviousMonth ?? 0,
       });
       setTotalBudgetInput('');
     } catch (err) {

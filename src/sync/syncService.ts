@@ -28,16 +28,30 @@ const DEXIE_TO_SUPABASE: Record<DexieTableName, string> = {
 
 const LAST_SYNC_KEY = 'taptrack_last_sync_at';
 const RETRY_QUEUE_KEY = 'taptrack_retry_queue';
+const MAX_RETRY_ATTEMPTS = 3;
+const RETRY_DELAY_MS = 5000;
+
+type RetryOperation = 'upsert' | 'delete';
 
 interface RetryItem {
+  tableName: DexieTableName;
+  operation: RetryOperation;
+  recordId: string;
+  record?: Record<string, unknown>;
+  attempts: number;
+  lastAttempt: number;
+}
+
+interface LegacyRetryItem {
   tableName: DexieTableName;
   record: Record<string, unknown>;
   attempts: number;
   lastAttempt: number;
 }
 
-function getRecordId(record: Record<string, unknown>): string {
-  return record.id as string;
+function getRecordId(record: Record<string, unknown>): string | null {
+  const recordId = record.id;
+  return typeof recordId === 'string' && recordId.length > 0 ? recordId : null;
 }
 
 function toSnakeCase(str: string): string {
@@ -48,10 +62,7 @@ function toCamelCase(str: string): string {
   return str.replace(/_([a-z])/g, (_, c: string) => c.toUpperCase());
 }
 
-function serializeForSupabase(
-  record: Record<string, unknown>,
-  userId: string
-): Record<string, unknown> {
+function serializeForSupabase(record: Record<string, unknown>, userId: string): Record<string, unknown> {
   const result: Record<string, unknown> = { user_id: userId };
   for (const [k, v] of Object.entries(record)) {
     result[toSnakeCase(k)] = v;
@@ -78,6 +89,9 @@ export async function pushRecord(
   tableName: DexieTableName,
   record: Record<string, unknown>
 ): Promise<void> {
+  const recordId = getRecordId(record);
+  if (!recordId) return;
+
   const supabase = createSupabaseBrowserClient();
   const {
     data: { user },
@@ -86,31 +100,100 @@ export async function pushRecord(
 
   const supabaseTable = DEXIE_TO_SUPABASE[tableName];
   const serialized = serializeForSupabase(record, user.id);
-  const retryItem: RetryItem = {
+  const { error } = await supabase.from(supabaseTable).upsert(serialized, { onConflict: 'id' });
+
+  if (!error) {
+    removeFromRetryQueue(tableName, recordId, 'upsert');
+    return;
+  }
+
+  queueRetry({
     tableName,
+    operation: 'upsert',
+    recordId,
     record,
     attempts: 0,
     lastAttempt: Date.now(),
-  };
+  });
+}
 
-  try {
-    await supabase.from(supabaseTable).upsert(serialized, { onConflict: 'id' });
-    // Clear any existing retry item on success
-    await removeFromRetryQueue(tableName, getRecordId(record));
-  } catch {
-    // Add to retry queue with exponential backoff check
-    const queue = getRetryQueue();
-    // Check if this record is already in the queue (by id)
-    const existing = queue.find((item) => item.tableName === tableName && getRecordId(item.record) === getRecordId(record));
-    if (!existing) {
-      queue.push(retryItem);
-      saveRetryQueue(queue);
-    } else if (existing.attempts < 3 && Date.now() - existing.lastAttempt > 5000) {
-      // Retry if failed more than 5 seconds ago and attempts < 3
-      existing.attempts += 1;
-      existing.lastAttempt = Date.now();
-      saveRetryQueue(queue);
+/**
+ * Pushes a hard delete to Supabase. If delete fails, it is queued for retry.
+ */
+export async function deleteRecord(
+  tableName: DexieTableName,
+  recordId: string
+): Promise<void> {
+  if (!recordId) return;
+
+  const supabase = createSupabaseBrowserClient();
+  const {
+    data: { user },
+  } = await supabase.auth.getUser();
+  if (!user) return;
+
+  const supabaseTable = DEXIE_TO_SUPABASE[tableName];
+  const { error } = await supabase
+    .from(supabaseTable)
+    .delete()
+    .eq('id', recordId)
+    .eq('user_id', user.id);
+
+  if (!error) {
+    removeFromRetryQueue(tableName, recordId, 'delete');
+    return;
+  }
+
+  queueRetry({
+    tableName,
+    operation: 'delete',
+    recordId,
+    attempts: 0,
+    lastAttempt: Date.now(),
+  });
+}
+
+/**
+ * Replaces remote tables with the current local snapshot.
+ * Used by destructive local operations such as reset/import.
+ */
+export async function syncAllLocalData(database: TapTrackDatabase = db): Promise<void> {
+  const supabase = createSupabaseBrowserClient();
+  const {
+    data: { user },
+  } = await supabase.auth.getUser();
+  if (!user) return;
+
+  for (const [dexieTable, supabaseTable] of Object.entries(DEXIE_TO_SUPABASE) as [
+    DexieTableName,
+    string,
+  ][]) {
+    const { error: deleteError } = await supabase.from(supabaseTable).delete().eq('user_id', user.id);
+    if (deleteError) {
+      throw new Error(`Failed to clear ${supabaseTable}: ${deleteError.message}`);
     }
+
+    // biome-ignore lint: dynamic table access needed for generic sync
+    // rome-ignore lint: dynamic table access
+    const rows = await (database[dexieTable] as unknown as {
+      toArray: () => Promise<Record<string, unknown>[]>;
+    }).toArray();
+
+    if (rows.length === 0) continue;
+
+    const serializedRows = rows.map((row) => serializeForSupabase(row, user.id));
+    const { error: upsertError } = await supabase
+      .from(supabaseTable)
+      .upsert(serializedRows, { onConflict: 'id' });
+
+    if (upsertError) {
+      throw new Error(`Failed to sync ${supabaseTable}: ${upsertError.message}`);
+    }
+  }
+
+  if (typeof window !== 'undefined') {
+    localStorage.setItem(LAST_SYNC_KEY, new Date().toISOString());
+    saveRetryQueue([]);
   }
 }
 
@@ -130,20 +213,22 @@ export async function processRetryQueue(): Promise<void> {
 
   for (let i = queue.length - 1; i >= 0; i--) {
     const item = queue[i];
-    // Only retry if more than 5 seconds since last attempt and attempts < 3
-    if (now - item.lastAttempt < 5000 || item.attempts >= 3) {
+    // Only retry if enough time passed and attempts are under the cap.
+    if (now - item.lastAttempt < RETRY_DELAY_MS || item.attempts >= MAX_RETRY_ATTEMPTS) {
       continue;
     }
 
     const supabaseTable = DEXIE_TO_SUPABASE[item.tableName];
-    const serialized = serializeForSupabase(item.record, user.id);
+    const success = await retryQueueItem(item, supabaseTable, user.id, supabase);
 
-    try {
-      await supabase.from(supabaseTable).upsert(serialized, { onConflict: 'id' });
-      queue.splice(i, 1); // Remove from queue on success
-    } catch {
-      item.attempts += 1;
-      item.lastAttempt = now;
+    if (success) {
+      queue.splice(i, 1);
+    } else {
+      queue[i] = {
+        ...item,
+        attempts: item.attempts + 1,
+        lastAttempt: now,
+      };
     }
   }
 
@@ -153,7 +238,11 @@ export async function processRetryQueue(): Promise<void> {
 function getRetryQueue(): RetryItem[] {
   try {
     const stored = localStorage.getItem(RETRY_QUEUE_KEY);
-    return stored ? (JSON.parse(stored) as RetryItem[]) : [];
+    if (!stored) return [];
+    const parsed = JSON.parse(stored) as Array<RetryItem | LegacyRetryItem>;
+    return parsed
+      .map(normalizeRetryItem)
+      .filter((item): item is RetryItem => item !== null);
   } catch {
     return [];
   }
@@ -167,10 +256,21 @@ function saveRetryQueue(queue: RetryItem[]): void {
   }
 }
 
-function removeFromRetryQueue(tableName: DexieTableName, recordId: string): void {
+function removeFromRetryQueue(
+  tableName: DexieTableName,
+  recordId: string,
+  operation: RetryOperation
+): void {
   try {
     const queue = getRetryQueue();
-    const filtered = queue.filter((item) => !(item.tableName === tableName && getRecordId(item.record) === recordId));
+    const filtered = queue.filter(
+      (item) =>
+        !(
+          item.tableName === tableName &&
+          item.recordId === recordId &&
+          item.operation === operation
+        )
+    );
     if (filtered.length !== queue.length) {
       saveRetryQueue(filtered);
     }
@@ -197,6 +297,7 @@ export async function pullUpdates(): Promise<void> {
       '1970-01-01T00:00:00.000Z';
 
     let allTablesSuccess = true;
+    let latestSyncedTimestamp = lastSyncAt;
     const tablesToSync = Object.entries(DEXIE_TO_SUPABASE) as [DexieTableName, string][];
 
     for (const [dexieTable, supabaseTable] of tablesToSync) {
@@ -208,12 +309,20 @@ export async function pullUpdates(): Promise<void> {
         .select('*')
         .gt(timestampCol, lastSyncAt);
 
-      if (error || !data || data.length === 0) continue;
+      if (error) {
+        allTablesSuccess = false;
+        continue;
+      }
+      if (!data || data.length === 0) continue;
 
       const table = db[dexieTable];
       try {
         for (const row of data) {
           const record = deserializeFromSupabase(row as Record<string, unknown>);
+          const rowTimestamp = row[timestampCol];
+          if (typeof rowTimestamp === 'string' && rowTimestamp > latestSyncedTimestamp) {
+            latestSyncedTimestamp = rowTimestamp;
+          }
           // biome-ignore lint: dynamic table access needed for generic sync
           // rome-ignore lint: dynamic table access
           await (table as unknown as { put: (r: unknown) => Promise<unknown> }).put(record);
@@ -226,9 +335,78 @@ export async function pullUpdates(): Promise<void> {
 
     // Only advance sync timestamp if all tables synced successfully
     if (allTablesSuccess && typeof window !== 'undefined') {
-      localStorage.setItem(LAST_SYNC_KEY, new Date().toISOString());
+      localStorage.setItem(
+        LAST_SYNC_KEY,
+        latestSyncedTimestamp > lastSyncAt ? latestSyncedTimestamp : new Date().toISOString()
+      );
     }
   } catch {
     // Best-effort - do not advance sync timestamp on error
   }
+}
+
+function normalizeRetryItem(item: RetryItem | LegacyRetryItem): RetryItem | null {
+  if ('operation' in item && 'recordId' in item) {
+    return item.recordId ? item : null;
+  }
+
+  const recordId = getRecordId(item.record);
+  if (!recordId) return null;
+
+  return {
+    tableName: item.tableName,
+    operation: 'upsert',
+    recordId,
+    record: item.record,
+    attempts: item.attempts,
+    lastAttempt: item.lastAttempt,
+  };
+}
+
+function queueRetry(item: RetryItem): void {
+  const queue = getRetryQueue();
+  const existingIndex = queue.findIndex(
+    (queued) =>
+      queued.tableName === item.tableName &&
+      queued.recordId === item.recordId &&
+      queued.operation === item.operation
+  );
+
+  if (existingIndex === -1) {
+    saveRetryQueue([...queue, item]);
+    return;
+  }
+
+  const existing = queue[existingIndex]!;
+  if (Date.now() - existing.lastAttempt < RETRY_DELAY_MS) return;
+
+  queue[existingIndex] = {
+    ...existing,
+    attempts: Math.min(existing.attempts + 1, MAX_RETRY_ATTEMPTS),
+    lastAttempt: Date.now(),
+    record: item.record ?? existing.record,
+  };
+  saveRetryQueue(queue);
+}
+
+async function retryQueueItem(
+  item: RetryItem,
+  supabaseTable: string,
+  userId: string,
+  supabase: ReturnType<typeof createSupabaseBrowserClient>
+): Promise<boolean> {
+  if (item.operation === 'delete') {
+    const { error } = await supabase
+      .from(supabaseTable)
+      .delete()
+      .eq('id', item.recordId)
+      .eq('user_id', userId);
+    return !error;
+  }
+
+  if (!item.record) return false;
+
+  const serialized = serializeForSupabase(item.record, userId);
+  const { error } = await supabase.from(supabaseTable).upsert(serialized, { onConflict: 'id' });
+  return !error;
 }

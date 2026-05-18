@@ -11,13 +11,13 @@ import { deleteCategory } from '@/budgets/budgetService';
 import { SUPPORTED_METHODS, type Category, type Method, type TransactionType } from '@/types';
 import { ConfirmDialog } from './ConfirmDialog';
 import { toast } from 'sonner';
+import { pushRecord, syncAllLocalData } from '@/sync/syncService';
 
 export default function SettingsWorkspace() {
   const balances = useLiveQuery(() => db.balances.toArray(), [], []);
   const categories = useLiveQuery(() => db.categories.toArray(), [], []);
   const settings = useLiveQuery(() => db.settings.get(DEFAULT_SETTINGS_ID), []);
   const importInputRef = useRef<HTMLInputElement | null>(null);
-  const [status, setStatus] = useState('');
   const [month, setMonth] = useState(getCurrentMonth());
   const [categoryName, setCategoryName] = useState('');
   const [categoryType, setCategoryType] = useState<TransactionType>('expense');
@@ -26,13 +26,22 @@ export default function SettingsWorkspace() {
   const [categoryDeleteConfirm, setCategoryDeleteConfirm] = useState<Category | null>(null);
 
   const updateBalance = async (id: string, value: string) => {
-    await db.balances.update(id, { amount: parseAmountInput(value), updatedAt: new Date().toISOString() });
+    const existing = await db.balances.get(id);
+    if (!existing) return;
+
+    const updatedBalance = {
+      ...existing,
+      amount: parseAmountInput(value),
+      updatedAt: new Date().toISOString(),
+    };
+    await db.balances.put(updatedBalance);
+    void pushRecord('balances', updatedBalance as unknown as Record<string, unknown>);
   };
 
   const addCategory = async () => {
     if (!categoryName.trim()) return;
     const now = new Date().toISOString();
-    await db.categories.add({
+    const category = {
       id: `cat-${crypto.randomUUID()}`,
       name: categoryName.trim(),
       color: categoryColor,
@@ -41,14 +50,11 @@ export default function SettingsWorkspace() {
       type: categoryType,
       createdAt: now,
       updatedAt: now,
-    });
+    };
+    await db.categories.add(category);
+    void pushRecord('categories', category as unknown as Record<string, unknown>);
     setCategoryName('');
     toast.success('Category added.');
-  };
-
-  const handleDeleteCategory = async (id: string) => {
-    await deleteCategory(id);
-    toast.success('Category deleted.');
   };
 
   const handleExportCSV = async () => {
@@ -69,6 +75,7 @@ export default function SettingsWorkspace() {
   const handleImportFile = async (file: File | undefined) => {
     if (!file) return;
     await importJSON(await file.text());
+    await syncAllLocalData();
     toast.success('JSON backup imported.');
   };
 
@@ -99,19 +106,24 @@ export default function SettingsWorkspace() {
       }
     );
     await ensureDatabaseSeeded();
+    await syncAllLocalData();
     toast.success('App data reset. Setup will show again.');
   };
 
   const handleChangeDefaultMethod = async (method: Method) => {
     if (!settings) return;
-    await db.settings.put({ ...settings, lastUsedMethod: method, updatedAt: new Date().toISOString() });
+    const updatedSettings = { ...settings, lastUsedMethod: method, updatedAt: new Date().toISOString() };
+    await db.settings.put(updatedSettings);
+    void pushRecord('settings', updatedSettings as unknown as Record<string, unknown>);
     toast.success('Default method updated.');
   };
 
   const handleToggleAI = async () => {
     if (!settings) return;
     const next = !settings.aiCategorizationEnabled;
-    await db.settings.put({ ...settings, aiCategorizationEnabled: next, updatedAt: new Date().toISOString() });
+    const updatedSettings = { ...settings, aiCategorizationEnabled: next, updatedAt: new Date().toISOString() };
+    await db.settings.put(updatedSettings);
+    void pushRecord('settings', updatedSettings as unknown as Record<string, unknown>);
     toast.success(next ? 'AI categorization enabled.' : 'AI categorization disabled.');
   };
 
@@ -225,7 +237,6 @@ export default function SettingsWorkspace() {
           </div>
         </div>
         <input ref={importInputRef} type="file" accept="application/json" className="hidden" onChange={(event) => handleImportFile(event.target.files?.[0])} />
-        {status ? <p className="mt-3 text-sm font-medium text-slate-600">{status}</p> : null}
       </section>
 
       <ConfirmDialog
@@ -234,9 +245,9 @@ export default function SettingsWorkspace() {
         message="This will permanently erase all transactions, balances, budgets, categories, and settings. This cannot be undone."
         confirmLabel="Reset everything"
         confirmVariant="danger"
-        onConfirm={() => {
+        onConfirm={async () => {
           setShowResetConfirm(false);
-          resetAppData();
+          await resetAppData();
         }}
         onCancel={() => setShowResetConfirm(false)}
       />
@@ -247,8 +258,11 @@ export default function SettingsWorkspace() {
         message={`Delete "${categoryDeleteConfirm?.name}"? Transactions using this category will be unassigned.`}
         confirmLabel="Delete"
         confirmVariant="danger"
-        onConfirm={() => {
-          if (categoryDeleteConfirm) deleteCategory(categoryDeleteConfirm.id);
+        onConfirm={async () => {
+          if (categoryDeleteConfirm) {
+            await deleteCategory(categoryDeleteConfirm.id);
+            toast.success('Category deleted.');
+          }
           setCategoryDeleteConfirm(null);
         }}
         onCancel={() => setCategoryDeleteConfirm(null)}

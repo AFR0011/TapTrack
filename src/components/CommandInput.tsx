@@ -129,7 +129,7 @@ export default function CommandInput() {
   const isMulti = previews.length > 1;
 
   return (
-    <section className="rounded-2xl border border-slate-200 bg-white p-5 shadow-xs shadow-slate-200/50 transition-shadow hover:shadow-md">
+    <section id="quick-log" className="rounded-2xl border border-slate-200 bg-white p-5 shadow-xs shadow-slate-200/50 transition-shadow hover:shadow-md">
       <div className="mb-3 flex flex-col gap-1 md:flex-row md:items-center md:justify-between">
         <div>
           <h2 className="text-base font-semibold text-slate-950">Quick command</h2>

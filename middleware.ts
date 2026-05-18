@@ -38,10 +38,10 @@ export async function middleware(request: NextRequest) {
     return NextResponse.redirect(loginUrl);
   }
 
-  if (user && pathname === '/login') {
-    const homeUrl = request.nextUrl.clone();
-    homeUrl.pathname = '/';
-    return NextResponse.redirect(homeUrl);
+  if (user && (pathname === '/login' || pathname === '/')) {
+    const appUrl = request.nextUrl.clone();
+    appUrl.pathname = '/app';
+    return NextResponse.redirect(appUrl);
   }
 
   return supabaseResponse;

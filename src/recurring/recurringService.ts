@@ -1,7 +1,7 @@
 import { db, ensureDatabaseSeeded, type TapTrackDatabase } from '@/database';
 import { addFrequency, formatLocalDate, parseLocalDate } from '@/dates';
 import { createTransaction } from '@/transactions/createTransaction';
-import { pushRecord } from '@/sync/syncService';
+import { deleteRecord, pushRecord } from '@/sync/syncService';
 import type { RecurringTransaction, TransactionDraft } from '@/types';
 
 export type RecurringInput = Omit<RecurringTransaction, 'id' | 'createdAt' | 'updatedAt'>;
@@ -75,11 +75,8 @@ export async function deleteRecurringTransaction(
   database: TapTrackDatabase = db
 ): Promise<void> {
   await ensureDatabaseSeeded(database);
-  const recurring = await database.recurringTransactions.get(id);
   await database.recurringTransactions.delete(id);
-  if (recurring) {
-    void pushRecord('recurringTransactions', { ...recurring, _deleted: true } as unknown as Record<string, unknown>);
-  }
+  void deleteRecord('recurringTransactions', id);
 }
 
 export function getInitialNextRunDate(startDate: string, currentDate = new Date()) {
@@ -114,8 +111,18 @@ export async function createDueRecurringTransactions(
   for (const recurring of activeRecurring) {
     let nextRunDate = recurring.nextRunDate;
     let safety = 0;
+    const endDate = recurring.endDate;
+
+    if (endDate && nextRunDate > endDate) {
+      await updateRecurringTransaction(recurring.id, { isActive: false }, database);
+      continue;
+    }
 
     while (nextRunDate <= today && safety < 366) {
+      if (endDate && nextRunDate > endDate) {
+        break;
+      }
+
       const existingTransaction = await database.transactions
         .where('recurringSourceId')
         .equals(recurring.id)
@@ -146,7 +153,11 @@ export async function createDueRecurringTransactions(
       }
 
       nextRunDate = formatLocalDate(addFrequency(parseLocalDate(nextRunDate), recurring.frequency));
-      await updateRecurringTransaction(recurring.id, { nextRunDate }, database);
+      const updates: Partial<RecurringTransaction> = { nextRunDate };
+      if (endDate && nextRunDate > endDate) {
+        updates.isActive = false;
+      }
+      await updateRecurringTransaction(recurring.id, updates, database);
       safety += 1;
     }
   }
