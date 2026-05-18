@@ -17,7 +17,11 @@
 
 ## Working Rules
 
-- Keep V1 local-first. Do not add cloud sync, user accounts, backend servers, Supabase, Firebase, bank/institution imports, receipt/photo scanning or attachments, or AI categorization unless explicitly requested.
+- V2 features (cloud sync, Telegram bot, AI categorization, exchange rates, etc.) are complete. Focus on bug fixes and UX improvements.
+- Cloud sync: Use Supabase for remote storage. Push updates fire-and-forget; pull updates on app open. See `src/sync/syncService.ts`.
+- Telegram: Webhook routes at `app/api/telegram/webhook` and `app/api/telegram/register`. Requires `TELEGRAM_BOT_TOKEN`, `TELEGRAM_WEBHOOK_SECRET`, `TAPTRACK_OWNER_USER_ID` env vars.
+- AI categorization: Local Ollama via `app/api/categorize`. Requires `OLLAMA_BASE_URL` and `OLLAMA_MODEL`.
+- Exchange rates: Fetch live rates from `open.er-api.com` via `app/api/exchange-rates`.
 - Prefer small diffs that advance the current build phase in `BLUEPRINT.md`.
 - Shared domain types belong in `src/types.ts`.
 - Canonical persistence should flow through `src/database.ts` and service modules under `src/`; avoid parallel client-only transaction stores unless the persistence boundary is made explicit.

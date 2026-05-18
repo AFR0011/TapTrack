@@ -196,10 +196,10 @@ export async function pullUpdates(): Promise<void> {
       (typeof window !== 'undefined' && localStorage.getItem(LAST_SYNC_KEY)) ||
       '1970-01-01T00:00:00.000Z';
 
-    for (const [dexieTable, supabaseTable] of Object.entries(DEXIE_TO_SUPABASE) as [
-      DexieTableName,
-      string,
-    ][]) {
+    let allTablesSuccess = true;
+    const tablesToSync = Object.entries(DEXIE_TO_SUPABASE) as [DexieTableName, string][];
+
+    for (const [dexieTable, supabaseTable] of tablesToSync) {
       // conversions has no updated_at, so use created_at
       const timestampCol = dexieTable === 'conversions' ? 'created_at' : 'updated_at';
 
@@ -211,18 +211,24 @@ export async function pullUpdates(): Promise<void> {
       if (error || !data || data.length === 0) continue;
 
       const table = db[dexieTable];
-      for (const row of data) {
-        const record = deserializeFromSupabase(row as Record<string, unknown>);
-        // biome-ignore lint: dynamic table access needed for generic sync
-        // rome-ignore lint: dynamic table access
-        await (table as unknown as { put: (r: unknown) => Promise<unknown> }).put(record);
+      try {
+        for (const row of data) {
+          const record = deserializeFromSupabase(row as Record<string, unknown>);
+          // biome-ignore lint: dynamic table access needed for generic sync
+          // rome-ignore lint: dynamic table access
+          await (table as unknown as { put: (r: unknown) => Promise<unknown> }).put(record);
+        }
+      } catch {
+        allTablesSuccess = false;
+        // Continue syncing other tables even if one fails
       }
     }
 
-    if (typeof window !== 'undefined') {
+    // Only advance sync timestamp if all tables synced successfully
+    if (allTablesSuccess && typeof window !== 'undefined') {
       localStorage.setItem(LAST_SYNC_KEY, new Date().toISOString());
     }
   } catch {
-    // Best-effort
+    // Best-effort - do not advance sync timestamp on error
   }
 }

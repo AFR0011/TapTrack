@@ -78,19 +78,23 @@ export async function createConversion(
         updatedAt: now,
       });
     } else {
-      await database.balances.put({
+      const newToBalance = {
         id: toId,
         currency: draft.toCurrency,
         method: draft.toMethod,
         amount: draft.toAmount,
         updatedAt: now,
-      });
+      };
+      await database.balances.put(newToBalance);
     }
 
     await database.conversions.add(conversion);
-  });
 
-  void pushRecord('conversions', conversion as unknown as Record<string, unknown>);
+    // Push records after all writes in the transaction
+    void pushRecord('conversions', conversion as unknown as Record<string, unknown>);
+    void pushRecord('balances', fromBalance as unknown as Record<string, unknown>);
+    void pushRecord('balances', (toBalance ?? { id: toId, currency: draft.toCurrency, method: draft.toMethod, amount: draft.toAmount, updatedAt: now }) as unknown as Record<string, unknown>);
+  });
 
   return conversion;
 }

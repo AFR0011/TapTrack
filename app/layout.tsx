@@ -1,11 +1,6 @@
 import type { Metadata } from "next";
 import { Inter } from "next/font/google";
 import "./globals.css";
-import AppShell from "@/components/AppShell";
-import SetupGate from "@/components/SetupGate";
-import { DatabaseProvider } from "./providers/DatabaseProvider";
-import { ReactQueryProvider } from "./providers/ReactQueryProvider";
-import { ToastProvider } from "@/components/ToastProvider";
 
 const inter = Inter({ subsets: ["latin"] });
 
@@ -22,15 +17,7 @@ export default function RootLayout({
   return (
     <html lang="en">
       <body className={inter.className}>
-        <ReactQueryProvider>
-          <ToastProvider>
-            <DatabaseProvider>
-              <SetupGate>
-                <AppShell>{children}</AppShell>
-              </SetupGate>
-            </DatabaseProvider>
-          </ToastProvider>
-        </ReactQueryProvider>
+        {children}
       </body>
     </html>
   );

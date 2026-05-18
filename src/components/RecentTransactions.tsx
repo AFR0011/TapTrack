@@ -6,7 +6,7 @@ import { AnimatePresence, motion } from 'framer-motion';
 import { useLiveQuery } from 'dexie-react-hooks';
 import { db } from '@/database';
 import { formatMoney } from '@/format';
-import type { Transaction } from '@/types';
+import type { Category, Transaction } from '@/types';
 
 const itemVariants = {
   hidden: { opacity: 0, x: -12 },
@@ -17,6 +17,15 @@ const itemVariants = {
 export default function RecentTransactions() {
   const [filter, setFilter] = useState<'all' | 'income' | 'expense'>('all');
   const transactions = useLiveQuery(() => db.transactions.toArray(), [], []);
+  const categories = useLiveQuery(() => db.categories.toArray(), [], []);
+
+  // Create a map for quick category lookup
+  const categoryMap = useMemo(() => {
+    const map = new Map<string, string>();
+    categories.forEach((cat) => map.set(cat.id, cat.name));
+    return map;
+  }, [categories]);
+
   const sortedTransactions = useMemo(
     () =>
       [...transactions].sort((a, b) => {
@@ -87,7 +96,7 @@ export default function RecentTransactions() {
                 <div>
                   <p className="text-sm font-semibold text-slate-950">{transaction.title}</p>
                   <p className="mt-1 text-xs font-medium uppercase tracking-normal text-slate-400">
-                    {transaction.date} · {transaction.method} · {transaction.categoryId}
+                    {transaction.date} · {transaction.method} · {categoryMap.get(transaction.categoryId) ?? 'Unknown'}
                   </p>
                 </div>
                 <p

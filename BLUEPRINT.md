@@ -127,11 +127,18 @@ Do **not** build these in V1:
 
 Most V1 non-goals can be considered later, but only after the local MVP is proven useful.
 
-Out of current product scope, including the V1.5/V2 roadmap unless explicitly re-scoped:
+## 6.1 V2 Features (Implemented)
 
-* app-store native deployment
-* bank/institution imports or sync
-* receipt/photo scanning, OCR, or attachments
+The following features were added in V2:
+
+* Cloud sync via Supabase
+* Multi-entry command parsing (`-250 dinner -500 lunch` in one line)
+* Real Telegram bot integration
+* AI categorization via local Ollama
+* Exchange rate API for currency conversion
+* User accounts/login via Supabase Auth
+* Design polish with Framer Motion animations
+* Manual currency conversions (e.g., convert 100 USD to 3200 TRY)
 
 ---
 

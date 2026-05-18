@@ -1,6 +1,7 @@
 import { db, ensureDatabaseSeeded, type TapTrackDatabase } from '@/database';
 import { addFrequency, formatLocalDate, parseLocalDate } from '@/dates';
 import { createTransaction } from '@/transactions/createTransaction';
+import { pushRecord } from '@/sync/syncService';
 import type { RecurringTransaction, TransactionDraft } from '@/types';
 
 export type RecurringInput = Omit<RecurringTransaction, 'id' | 'createdAt' | 'updatedAt'>;
@@ -26,6 +27,7 @@ export async function createRecurringTransaction(
   };
 
   await database.recurringTransactions.add(newRecurring);
+  void pushRecord('recurringTransactions', newRecurring as unknown as Record<string, unknown>);
   return newRecurring;
 }
 
@@ -46,6 +48,7 @@ export async function updateRecurringTransaction(
   if (!updated) {
     throw new Error('Recurring transaction not found');
   }
+  void pushRecord('recurringTransactions', updated as unknown as Record<string, unknown>);
   return updated;
 }
 
@@ -72,7 +75,11 @@ export async function deleteRecurringTransaction(
   database: TapTrackDatabase = db
 ): Promise<void> {
   await ensureDatabaseSeeded(database);
+  const recurring = await database.recurringTransactions.get(id);
   await database.recurringTransactions.delete(id);
+  if (recurring) {
+    void pushRecord('recurringTransactions', { ...recurring, _deleted: true } as unknown as Record<string, unknown>);
+  }
 }
 
 export function getInitialNextRunDate(startDate: string, currentDate = new Date()) {

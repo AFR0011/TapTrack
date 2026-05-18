@@ -205,7 +205,28 @@ export async function deleteCategory(
 ): Promise<void> {
   await ensureDatabaseSeeded(database);
 
-  await database.transaction('rw', database.categories, database.categoryBudgets, async () => {
+  await database.transaction('rw', database.categories, database.categoryBudgets, database.transactions, async () => {
+    // Find a replacement category (prefer "Other" or first available expense category)
+    const otherCategory = await database.categories
+      .where('id')
+      .equals('cat-other')
+      .first();
+    const replacementCategory = otherCategory || (await database.categories.where('type').equals('expense').first());
+    const replacementCategoryId = replacementCategory?.id || categoryId;
+
+    // Update all transactions using this category to use replacement
+    const transactions = await database.transactions
+      .where('categoryId')
+      .equals(categoryId)
+      .toArray();
+
+    for (const transaction of transactions) {
+      await database.transactions.update(transaction.id, {
+        categoryId: replacementCategoryId,
+        updatedAt: new Date().toISOString(),
+      });
+    }
+
     // Delete all category budgets for this category
     await database.categoryBudgets
       .where('categoryId')
@@ -215,4 +236,6 @@ export async function deleteCategory(
     // Delete the category itself
     await database.categories.delete(categoryId);
   });
+
+  void pushRecord('categories', { id: categoryId, _deleted: true } as unknown as Record<string, unknown>);
 }
