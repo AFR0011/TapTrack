@@ -1,6 +1,6 @@
 'use client';
 
-import { useRef, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { useLiveQuery } from 'dexie-react-hooks';
 import { db, ensureDatabaseSeeded } from '@/database';
 import { DEFAULT_SETTINGS_ID } from '@/defaultData';
@@ -12,6 +12,7 @@ import { SUPPORTED_METHODS, type Category, type Method, type TransactionType } f
 import { ConfirmDialog } from './ConfirmDialog';
 import { toast } from 'sonner';
 import { pushRecord, syncAllLocalData } from '@/sync/syncService';
+import { applyTheme, resolveStoredTheme, setStoredTheme, type ThemeMode } from '@/theme';
 
 export default function SettingsWorkspace() {
   const balances = useLiveQuery(() => db.balances.toArray(), [], []);
@@ -24,6 +25,14 @@ export default function SettingsWorkspace() {
   const [categoryColor, setCategoryColor] = useState('#2563eb');
   const [showResetConfirm, setShowResetConfirm] = useState(false);
   const [categoryDeleteConfirm, setCategoryDeleteConfirm] = useState<Category | null>(null);
+  const darkModeEnabled = settings?.darkModeEnabled ?? (resolveStoredTheme() === 'dark');
+
+  useEffect(() => {
+    if (settings?.darkModeEnabled === undefined) return;
+    const theme: ThemeMode = settings.darkModeEnabled ? 'dark' : 'light';
+    setStoredTheme(theme);
+    applyTheme(theme);
+  }, [settings?.darkModeEnabled]);
 
   const updateBalance = async (id: string, value: string) => {
     const existing = await db.balances.get(id);
@@ -127,6 +136,19 @@ export default function SettingsWorkspace() {
     toast.success(next ? 'AI categorization enabled.' : 'AI categorization disabled.');
   };
 
+  const handleToggleDarkMode = async () => {
+    if (!settings) return;
+    const next = !(settings.darkModeEnabled ?? false);
+    const updatedSettings = { ...settings, darkModeEnabled: next, updatedAt: new Date().toISOString() };
+    await db.settings.put(updatedSettings);
+    void pushRecord('settings', updatedSettings as unknown as Record<string, unknown>);
+
+    const theme: ThemeMode = next ? 'dark' : 'light';
+    setStoredTheme(theme);
+    applyTheme(theme);
+    toast.success(next ? 'Dark mode enabled.' : 'Dark mode disabled.');
+  };
+
   return (
     <div className="space-y-5">
       <header>
@@ -154,6 +176,26 @@ export default function SettingsWorkspace() {
           </label>
           <div className="mt-5 rounded-md bg-slate-50 p-3 text-sm font-medium text-slate-600">
             Default currency is TRY for V1. USD/EUR are tracked as separate balances without conversion.
+          </div>
+          <div className="mt-5 flex items-center justify-between gap-4 rounded-md border border-slate-200 bg-slate-50 p-3">
+            <span className="text-sm font-semibold text-slate-700">
+              Dark mode {darkModeEnabled ? 'on' : 'off'}
+            </span>
+            <button
+              type="button"
+              onClick={handleToggleDarkMode}
+              className={`relative inline-flex h-6 w-11 shrink-0 cursor-pointer rounded-full border-2 border-transparent transition-colors focus:outline-none focus:ring-2 focus:ring-violet-500 focus:ring-offset-2 ${
+                darkModeEnabled ? 'bg-violet-600' : 'bg-slate-200'
+              }`}
+              role="switch"
+              aria-checked={darkModeEnabled}
+            >
+              <span
+                className={`pointer-events-none inline-block h-5 w-5 rounded-full bg-white shadow ring-0 transition-transform ${
+                  darkModeEnabled ? 'translate-x-5' : 'translate-x-0'
+                }`}
+              />
+            </button>
           </div>
         </div>
 

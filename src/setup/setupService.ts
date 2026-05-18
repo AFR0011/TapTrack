@@ -1,5 +1,5 @@
 import { db, ensureDatabaseSeeded, type TapTrackDatabase } from '@/database';
-import { DEFAULT_SETTINGS_ID, getBalanceId } from '@/defaultData';
+import { createDefaultSettings, DEFAULT_SETTINGS_ID, getBalanceId } from '@/defaultData';
 import { getCurrentMonth } from '@/dates';
 import { upsertMonthlyBudget } from '@/budgets/budgetService';
 import type { Balance, Currency, Method, Settings } from '@/types';
@@ -36,15 +36,16 @@ export async function completeInitialSetup(
 
     await database.balances.bulkPut(balances);
     seededBalances = balances;
-    updatedSettings = {
+    const existingSettings = (await database.settings.get(DEFAULT_SETTINGS_ID)) ?? createDefaultSettings(now);
+    const nextSettings: Settings = {
+      ...existingSettings,
       id: DEFAULT_SETTINGS_ID,
-      defaultCurrency: 'TRY',
       lastUsedMethod: input.defaultMethod,
       setupCompleted: true,
-      createdAt: (await database.settings.get(DEFAULT_SETTINGS_ID))?.createdAt ?? now,
       updatedAt: now,
     };
-    await database.settings.put(updatedSettings);
+    updatedSettings = nextSettings;
+    await database.settings.put(nextSettings);
   });
 
   await upsertMonthlyBudget(

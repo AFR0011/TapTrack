@@ -101,7 +101,7 @@ export default function AppShell({ children }: { children: ReactNode }) {
           animate="animate"
           exit="exit"
           transition={{ duration: 0.18, ease: 'easeOut' }}
-          className="mx-auto max-w-7xl px-4 pt-5 pb-28 md:py-7"
+          className="mx-auto max-w-7xl px-4 pt-5 pb-36 md:py-7"
         >
           {children}
         </motion.main>
@@ -132,16 +132,6 @@ export default function AppShell({ children }: { children: ReactNode }) {
               </Link>
             );
           })}
-          {/* FAB for quick-log */}
-          <Link
-            href="/app#quick-log"
-            aria-label="Go to quick log"
-            className="relative -mt-5 flex h-12 w-12 items-center justify-center justify-self-center rounded-full bg-gradient-to-br from-blue-600 to-violet-600 shadow-lg shadow-blue-500/30 transition-all hover:opacity-90 active:scale-95"
-          >
-            <svg className="h-6 w-6 text-white" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2.5} strokeLinecap="round">
-              <path d="M12 5v14M5 12h14" />
-            </svg>
-          </Link>
           {/* Overflow dropdown for remaining items */}
           <div className="relative flex items-center justify-center">
             <details className="group">

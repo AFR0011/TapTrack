@@ -7,6 +7,11 @@
   --foreground: #0f172a;
 }
 
+.dark {
+  --background: #020617;
+  --foreground: #e2e8f0;
+}
+
 html {
   scroll-behavior: smooth;
   -webkit-font-smoothing: antialiased;
@@ -16,6 +21,35 @@ html {
 body {
   color: var(--foreground);
   background: var(--background);
+}
+
+/* Dark-mode utility overrides for existing light-first classes */
+.dark .bg-white,
+.dark .bg-slate-50,
+.dark .bg-white\/90,
+.dark .bg-white\/95 {
+  background-color: #0f172a;
+}
+
+.dark .text-slate-950 {
+  color: #f8fafc;
+}
+
+.dark .text-slate-700,
+.dark .text-slate-600,
+.dark .text-slate-500,
+.dark .text-slate-400 {
+  color: #94a3b8;
+}
+
+.dark .border-slate-100,
+.dark .border-slate-200,
+.dark .border-slate-300 {
+  border-color: #334155;
+}
+
+.dark .bg-slate-100 {
+  background-color: #1e293b;
 }
 
 ::selection {

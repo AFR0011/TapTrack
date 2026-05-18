@@ -55,6 +55,7 @@ export function createDefaultSettings(now = new Date().toISOString()): Settings 
     lastUsedMethod: 'card',
     setupCompleted: false,
     aiCategorizationEnabled: false,
+    darkModeEnabled: false,
     createdAt: now,
     updatedAt: now,
   };
