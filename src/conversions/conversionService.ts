@@ -67,6 +67,7 @@ export async function createConversion(
     date: draft.date,
     note: draft.note,
     createdAt: now,
+    updatedAt: now,
   };
 
   await database.transaction('rw', database.conversions, database.balances, async () => {

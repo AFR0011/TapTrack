@@ -92,6 +92,7 @@ export interface Conversion {
   date: string;
   note?: string;
   createdAt: string;
+  updatedAt?: string;
 }
 
 /** Discriminated kind: 'exchange' = currency swap, 'transfer' = same-currency method swap */

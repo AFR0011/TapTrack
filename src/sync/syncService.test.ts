@@ -7,15 +7,39 @@ vi.mock('@/lib/supabase', () => ({
 import { createSupabaseBrowserClient } from '@/lib/supabase';
 import { processRetryQueue, pullUpdates, pushRecord } from './syncService';
 
-const LAST_SYNC_KEY = 'taptrack_last_sync_at';
-const RETRY_QUEUE_KEY = 'taptrack_retry_queue';
+const RETRY_QUEUE_KEY = 'taptrack_retry_queue:user-1';
+const SYNC_CURSOR_KEY = 'taptrack_sync_cursor:user-1';
 
 type TableResponse = { data: unknown[] | null; error: { message: string } | null };
 
-function createClientMock(options?: {
+type MockOptions = {
   upsertError?: { message: string } | null;
+  deleteError?: { message: string } | null;
   tableResponses?: Record<string, TableResponse>;
-}) {
+};
+
+function createDeleteChain(error: { message: string } | null = null) {
+  const chain = {
+    eq: vi.fn(() => chain),
+    in: vi.fn(() => chain),
+    then: (resolve: (value: { error: { message: string } | null }) => unknown) =>
+      Promise.resolve(resolve({ error })),
+  };
+  return chain;
+}
+
+function createSelectChain(table: string, tableResponses: Record<string, TableResponse>) {
+  const chain = {
+    eq: vi.fn(() => chain),
+    gt: vi.fn(() => chain),
+    order: vi.fn(async () => tableResponses[table] ?? { data: [], error: null }),
+    then: (resolve: (value: TableResponse) => unknown) =>
+      Promise.resolve(resolve(tableResponses[table] ?? { data: [], error: null })),
+  };
+  return chain;
+}
+
+function createClientMock(options?: MockOptions) {
   const tableResponses = options?.tableResponses ?? {};
   return {
     auth: {
@@ -23,13 +47,8 @@ function createClientMock(options?: {
     },
     from: vi.fn((table: string) => ({
       upsert: vi.fn(async () => ({ error: options?.upsertError ?? null })),
-      delete: vi.fn(() => ({
-        eq: vi.fn(() => ({ eq: vi.fn(async () => ({ error: null })) })),
-        in: vi.fn(() => ({ eq: vi.fn(async () => ({ error: null })) })),
-      })),
-      select: vi.fn(() => ({
-        gt: vi.fn(async () => tableResponses[table] ?? { data: [], error: null }),
-      })),
+      delete: vi.fn(() => createDeleteChain(options?.deleteError ?? null)),
+      select: vi.fn(() => createSelectChain(table, tableResponses)),
     })),
   };
 }
@@ -120,9 +139,9 @@ describe('syncService', () => {
     expect(queue).toEqual([]);
   });
 
-  it('does not advance lastSyncAt when any table pull fails', async () => {
+  it('does not advance sync cursor when any table pull fails', async () => {
     const initialSync = '2026-05-18T00:00:00.000Z';
-    localStorage.setItem(LAST_SYNC_KEY, initialSync);
+    localStorage.setItem(SYNC_CURSOR_KEY, initialSync);
 
     vi.mocked(createSupabaseBrowserClient).mockReturnValue(
       createClientMock({
@@ -134,6 +153,6 @@ describe('syncService', () => {
 
     await pullUpdates();
 
-    expect(localStorage.getItem(LAST_SYNC_KEY)).toBe(initialSync);
+    expect(localStorage.getItem(SYNC_CURSOR_KEY)).toBe(initialSync);
   });
 });
