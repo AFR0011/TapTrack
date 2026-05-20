@@ -31,8 +31,9 @@ export async function middleware(request: NextRequest) {
   const { pathname } = request.nextUrl;
   const isAuthRoute = pathname.startsWith('/login') || pathname.startsWith('/auth');
   const isApiRoute = pathname.startsWith('/api/telegram') || pathname.startsWith('/api/exchange-rates');
+  const isPublicPwaAsset = pathname === '/manifest.webmanifest' || pathname === '/sw.js' || pathname.startsWith('/icons/');
 
-  if (!user && !isAuthRoute && !isApiRoute) {
+  if (!user && !isAuthRoute && !isApiRoute && !isPublicPwaAsset) {
     const loginUrl = request.nextUrl.clone();
     loginUrl.pathname = '/login';
     return NextResponse.redirect(loginUrl);

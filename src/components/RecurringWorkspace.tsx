@@ -212,7 +212,10 @@ export default function RecurringWorkspace() {
 
       <section className="overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-xs shadow-slate-200/50 transition-all hover:shadow-md">
         {recurringTransactions.length === 0 ? (
-          <div className="p-8 text-center text-sm font-medium text-slate-500">No recurring transactions yet.</div>
+          <div className="p-8 text-center">
+            <p className="text-sm font-semibold text-slate-700">No recurring transactions yet.</p>
+            <p className="mt-1 text-sm font-medium text-slate-500">Use the form above for rent, subscriptions, salary, or other repeated entries.</p>
+          </div>
         ) : (
           <div className="divide-y divide-slate-100">
             {recurringTransactions

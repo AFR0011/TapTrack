@@ -73,5 +73,43 @@ describe('exportService', () => {
     expect(pdf.type).toBe('application/pdf');
     expect(text).toContain('TapTrack Monthly Report');
     expect(text).toContain('coffee');
+    expect(text).toContain('Food');
+  });
+
+  it('exports a PDF blob for custom date ranges', async () => {
+    await database.balances.update('TRY-cash', { amount: 500 });
+    await createTransaction(expense, database);
+
+    const pdf = await exportPDF({ mode: 'range', startDate: '2026-05-01', endDate: '2026-05-31' }, database);
+    const text = await pdf.text();
+
+    expect(pdf.type).toBe('application/pdf');
+    expect(text).toContain('TapTrack Range Report');
+    expect(text).toContain('2026-05-01 to 2026-05-31');
+    expect(text).toContain('Food');
+  });
+
+  it('exports a PDF blob for yearly summaries', async () => {
+    await database.balances.update('TRY-card', { amount: 1000 });
+    await createTransaction(
+      {
+        type: 'income',
+        amount: 1000,
+        currency: 'TRY',
+        title: 'salary',
+        categoryId: 'cat-income',
+        method: 'card',
+        date: '2026-01-01',
+      },
+      database
+    );
+
+    const pdf = await exportPDF({ mode: 'year', year: '2026' }, database);
+    const text = await pdf.text();
+
+    expect(pdf.type).toBe('application/pdf');
+    expect(text).toContain('TapTrack Yearly Report');
+    expect(text).toContain('MONTHLY SUMMARY');
+    expect(text).toContain('2026-01 | income 1000 TRY');
   });
 });

@@ -1,69 +1,43 @@
 # TapTrack Project State
 
-Last updated: 2026-05-18
+Last updated: 2026-05-20
 
 ## Current Status
 
-TapTrack V2 is implemented and has passed a QA remediation sweep for routing, sync reliability, recurring/budget correctness, and Telegram robustness.
+TapTrack V2 is implemented and the QA remediation plan is now mostly implemented in the working tree. The app remains a local-first Next.js 14 App Router product with Dexie/IndexedDB as the client data source and optional Supabase, Telegram, Ollama, exchange-rate, and PWA integrations.
 
-### V1 Foundation (unchanged)
-- Next.js App Router shell with shared dashboard, transactions, budgets, recurring, reports, and settings navigation.
-- First-time setup gate captures six starting balances, monthly TRY budget, and default payment method.
-- Fast command parsing, preview, save, balance update, negative-balance blocking, and live dashboard updates.
+The Next/PostCSS production audit remains intentionally deferred to a dedicated framework-upgrade batch.
+
+## Implemented Foundation
+
+- Authenticated App Router shell with dashboard, transactions, conversions, budgets, recurring, reports, and settings.
+- First-time setup gate for starting balances, monthly TRY budget, and default payment method.
+- Command-first transaction capture with multi-entry parsing, preview, batch save, balance validation, and AI category suggestions when enabled.
 - Manual transaction add/edit/delete with balance reversal validation.
-- Monthly TRY budget, rollover calculation, category budgets, and budget usage display.
+- Monthly TRY budgets, rollover calculation, category budgets, and budget usage display.
 - Recurring transaction CRUD and app-open due/missed transaction creation.
-- Reports cover category spending, spending over time, income vs expense, monthly comparison, and budget performance.
-- Settings covers balance updates, default method, category CRUD, CSV/JSON/PDF export and import, and reset.
+- Reports for month, custom date range, and yearly summaries, with the existing TRY-unified report toggle kept view-local.
+- Settings for balances, defaults, AI toggle, dark mode, category add/edit/delete, export/import, reset, and sync status.
+- CSV/JSON export/import and simple PDF report export for monthly, date-range, and yearly reports.
 
-### V2 Features
+## V2 Integrations
 
-**Phase 1 — Multi-entry command parsing**
-- `parseCommands(input)` splits on `+/-` boundaries and returns a `ParseCommandResult[]`.
-- `createTransactions([...])` atomically saves a batch in a single Dexie transaction with cumulative balance validation.
-- Preview card shows stacked previews and a "Save All" button for multi-entry inputs.
+- Supabase auth and mirrored remote tables with per-user sync cursors, retry queue, delete tombstones, reset/import full-sync replacement, and manual sync-now status.
+- Telegram webhook and registration routes with JSON auth failures and middleware exemptions.
+- Exchange-rate API using `open.er-api.com` with a server-side cache and fallback rates.
+- Local Ollama categorization route with graceful failure back to rule-based/manual category selection.
+- PWA manifest, SVG app icons, metadata, and a static-asset-only service worker.
 
-**Phase 2 — Cloud infrastructure (Supabase + Auth + Sync)**
-- Supabase Postgres mirrors all Dexie tables with `user_id` and RLS policies.
-- Single-user email/password auth via `@supabase/ssr`; middleware protects app routes; `/login` page provided.
-- `pushRecord(table, record)` and `deleteRecord(table, id)` sync local mutations to Supabase with retry queue support.
-- `syncAllLocalData()` replaces remote state from local snapshot after destructive local operations (reset/import).
-- `pullUpdates()` on app open fetches Supabase rows newer than `lastSyncAt` and merges into Dexie without advancing sync timestamp when any table fails.
-- `NEXT_PUBLIC_SUPABASE_URL` and `NEXT_PUBLIC_SUPABASE_ANON_KEY` deployed to Vercel.
+## QA Remediation Added
 
-**Phase 3 — Telegram bot**
-- `POST /api/telegram/webhook` verifies `X-Telegram-Bot-Api-Secret-Token`, parses commands, saves directly to Supabase.
-- Handles `/balance`, `/today`, `/help` commands and free-text transaction entries.
-- `GET /api/telegram/register` registers the webhook URL with Telegram.
-- `TELEGRAM_BOT_TOKEN`, `TELEGRAM_WEBHOOK_SECRET`, and `TAPTRACK_OWNER_USER_ID` env vars required.
-
-**Phase 4 — Exchange rates + TRY-unified reports**
-- `GET /api/exchange-rates` fetches USD→TRY and EUR→TRY from `open.er-api.com`; cached 1 hour via ISR + Cache-Control.
-- Reports page gains a "Unify to TRY" toggle that fetches live rates and re-renders all charts and metrics using converted amounts.
-- `ExchangeRates` type added to `src/types.ts`.
-
-**Phase 5 — AI categorization (local Ollama)**
-- `POST /api/categorize` proxies to an Ollama server at `OLLAMA_BASE_URL`; returns `{ categoryId }` or `null` on error.
-- `src/ai/categoryPrompt.ts` builds a one-shot classification prompt from the user's category list.
-- CommandInput shows "AI …" badge while fetching; shows "AI" pill on the suggested category with a "revert" link.
-- Settings → "AI categorization" toggle (stored in `settings.aiCategorizationEnabled`) with setup instructions.
-- Degrades silently to keyword-rule suggestion when Ollama is unreachable or `OLLAMA_BASE_URL` is unset.
-
-**Phase 6 — Design polish**
-- Framer Motion + tailwindcss-animate installed.
-- AppShell: glassmorphism header (backdrop-blur + white/80), gradient active nav pill, animated gradient mobile bottom-nav pill with spring layout animation, page fade-slide transitions via `AnimatePresence`.
-- DashboardSummary: `AnimatedNumber` count-up for balances and spending figures, animated budget progress bar, card entrance stagger.
-- RecentTransactions: `AnimatePresence` list with slide-in items, animated filter pill, `motion.div` layout animation for reorder.
-- CommandInput: preview section animates in/out with `AnimatePresence`.
-- Tailwind extended with gradient tokens, box-shadow utilities (`glass`, `glass-lg`, `highlight`), and animation keyframes.
-
-## Active Objective
-
-All V2 phases are complete and core QA findings have been remediated. Remaining production steps:
-
-1. **Deploy Ollama server** — provision a Render Web Service (or VPS), install Ollama, pull `qwen2.5:1.5b`, set `OLLAMA_BASE_URL` in Vercel.
-2. **Register Telegram webhook** — call `GET /api/telegram/register` once after the Vercel URL is stable.
-3. **Configure `TAPTRACK_OWNER_USER_ID`** — set to the Supabase `auth.users.id` of the account after first sign-in.
+- Route/API smoke script: `npm.cmd run smoke:routes`.
+- Vitest coverage for middleware redirect policy, public API exemptions, PWA asset exemptions, exchange-rate fallback JSON, and Telegram auth failures.
+- Category editing service and UI for name, type, color, and icon.
+- Category delete protection for defaults and transaction reassignment to the matching income/expense fallback category.
+- Tests for category edit, delete reassignment, default-category protection, and sync side effects.
+- Tests for date-range aggregation, yearly aggregation, PDF range/year content, and existing CSV/JSON regressions.
+- Daily-use UI polish for clearer empty states, recent activity category labels/colors/icons, command multi-entry errors, and explicit balance failure messaging.
+- Production checklist and separate dependency security upgrade plan.
 
 ## Verification State
 
@@ -76,17 +50,26 @@ npm.cmd run test
 npm.cmd run build
 ```
 
-Latest verified: 2026-05-18 — all four steps pass clean.
+`npm.cmd run check` runs the same ladder.
 
-- `npm.cmd run typecheck` — 0 errors.
-- `npm.cmd run test` — 12 test files, 49 tests, all passing.
-- `npm.cmd run build` — 17 static/dynamic routes (including `/app/*` and root redirect), middleware 81.8 kB.
+Latest verification in this working tree:
+
+- `npm.cmd run test -- middleware.test.ts app/api/integration-routes.test.ts src/budgets/budgetService.test.ts src/reports/reportService.test.ts src/exports/exportService.test.ts src/sync/syncService.test.ts` - 6 files, 28 tests passing.
+- `npm.cmd run typecheck` - 0 errors.
+- `npm.cmd run check` - lint, typecheck, 14 test files, 67 tests, and production build all passing.
+- `$env:TAPTRACK_SMOKE_BASE_URL="http://127.0.0.1:3002"; npm.cmd run smoke:routes` - root/login/app redirects, exchange API JSON, Telegram JSON auth failures, manifest, and service worker all passing.
+- Browser DOM smoke on `/login` desktop and mobile viewport - no horizontal overflow detected; manifest link present.
+- `npm.cmd audit --omit=dev` - still reports Next/PostCSS advisories that require a breaking Next 16 upgrade.
+
+Authenticated workspace browser checks remain blocked until a real Supabase session is available in the browser profile. Route smoke verifies that unauthenticated `/app` correctly redirects to `/login`.
 
 ## Remaining Risks And Assumptions
 
-- Supabase sync now includes a retry queue, but it is still best-effort (browser-local queue; no server-side durable jobs).
-- AI categorization requires a running Ollama server and will silently fall back to keyword rules when unreachable.
-- The Telegram bot writes directly to Supabase (not Dexie); changes appear in the PWA on next app open via `pullUpdates`.
-- PDF report is intentionally simple; pdfmake layout polish is out of current scope.
-- Recurring transactions run on app open only; no background execution or push notifications.
-- `npm audit` still reports Next/PostCSS advisories; upgrading to Next 16 is a separate framework-upgrade decision.
+- Supabase sync is still browser-local and best-effort; there is no server-side durable job queue.
+- Telegram writes directly to Supabase; the app sees those changes after pull sync.
+- AI categorization requires a reachable Ollama deployment and remains optional.
+- PDF export is more readable and supports range/year, but still uses the current lightweight in-repo PDF flow rather than a full layout engine.
+- Recurring transactions run on app open only; there is no background execution or push notification layer.
+- PWA offline support is intentionally limited to static shell assets. IndexedDB remains the data source.
+- `npm.cmd audit --omit=dev` still needs the dedicated Next 16 security-upgrade batch documented in `docs/DEPENDENCY_SECURITY_UPGRADE_PLAN.md`.
+- Bank/institution imports, receipt/photo scanning, OCR, and attachments remain out of current scope.

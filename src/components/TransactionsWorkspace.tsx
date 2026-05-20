@@ -191,7 +191,21 @@ export default function TransactionsWorkspace() {
 
       <section className="overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-xs shadow-slate-200/50 transition-all hover:shadow-md">
         {filteredTransactions.length === 0 ? (
-          <div className="p-8 text-center text-sm font-medium text-slate-500">No transactions match these filters.</div>
+          <div className="p-8 text-center">
+            <p className="text-sm font-semibold text-slate-700">No transactions match these filters.</p>
+            <p className="mt-1 text-sm font-medium text-slate-500">Clear the filters or add a transaction for this month.</p>
+            <button
+              type="button"
+              onClick={() => {
+                setEditing(null);
+                setShowForm(true);
+                setError('');
+              }}
+              className="mt-4 rounded-md bg-blue-500 px-4 py-2 text-sm font-semibold text-white hover:bg-blue-600"
+            >
+              Add transaction
+            </button>
+          </div>
         ) : (
           <div className="divide-y divide-slate-100">
             {filteredTransactions.map((transaction) => (

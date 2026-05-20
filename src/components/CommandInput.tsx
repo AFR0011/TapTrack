@@ -64,7 +64,7 @@ export default function CommandInput() {
         setError(failures[0]!.ok === false ? failures[0]!.message : '');
       } else {
         const messages = results.map((r, i) => (!r.ok ? `Entry ${i + 1}: ${r.message}` : null)).filter(Boolean);
-        setError(messages.join(' · '));
+        setError(`Fix ${messages.length} entr${messages.length === 1 ? 'y' : 'ies'} before previewing: ${messages.join('; ')}`);
       }
       return;
     }
@@ -120,7 +120,11 @@ export default function CommandInput() {
       setInput('');
       setError('');
     } catch (err) {
-      setError(err instanceof InsufficientBalanceError ? err.message : 'Could not save transaction(s).');
+      setError(
+        err instanceof InsufficientBalanceError
+          ? `Balance check failed: ${err.message}`
+          : 'Could not save transaction(s).'
+      );
     } finally {
       setSaving(false);
     }

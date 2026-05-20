@@ -1,18 +1,26 @@
 'use client';
 
-import { useEffect, useRef, useState } from 'react';
+import { useCallback, useEffect, useRef, useState } from 'react';
 import { useLiveQuery } from 'dexie-react-hooks';
 import { db, ensureDatabaseSeeded } from '@/database';
 import { DEFAULT_SETTINGS_ID } from '@/defaultData';
 import { getCurrentMonth } from '@/dates';
 import { formatMoney, parseAmountInput } from '@/format';
 import { exportCSV, exportJSON, exportPDF, importJSON } from '@/exports/exportService';
-import { deleteCategory } from '@/budgets/budgetService';
+import { deleteCategory, updateCategory } from '@/budgets/budgetService';
 import { SUPPORTED_METHODS, type Category, type Method, type TransactionType } from '@/types';
 import { ConfirmDialog } from './ConfirmDialog';
 import { toast } from 'sonner';
-import { pushRecord, syncAllLocalData } from '@/sync/syncService';
+import {
+  getSyncStatus,
+  pushRecord,
+  syncAllLocalData,
+  syncNow,
+  type SyncStatusSnapshot,
+} from '@/sync/syncService';
 import { applyTheme, resolveStoredTheme, setStoredTheme, type ThemeMode } from '@/theme';
+
+const CATEGORY_ICON_OPTIONS = ['circle', 'utensils', 'home', 'repeat', 'ticket', 'arrow-down'];
 
 export default function SettingsWorkspace() {
   const balances = useLiveQuery(() => db.balances.toArray(), [], []);
@@ -23,6 +31,10 @@ export default function SettingsWorkspace() {
   const [categoryName, setCategoryName] = useState('');
   const [categoryType, setCategoryType] = useState<TransactionType>('expense');
   const [categoryColor, setCategoryColor] = useState('#2563eb');
+  const [categoryIcon, setCategoryIcon] = useState('circle');
+  const [editingCategory, setEditingCategory] = useState<Category | null>(null);
+  const [syncStatus, setSyncStatus] = useState<SyncStatusSnapshot | null>(null);
+  const [syncing, setSyncing] = useState(false);
   const [showResetConfirm, setShowResetConfirm] = useState(false);
   const [categoryDeleteConfirm, setCategoryDeleteConfirm] = useState<Category | null>(null);
   const darkModeEnabled = settings?.darkModeEnabled ?? (resolveStoredTheme() === 'dark');
@@ -33,6 +45,20 @@ export default function SettingsWorkspace() {
     setStoredTheme(theme);
     applyTheme(theme);
   }, [settings?.darkModeEnabled]);
+
+  const refreshSyncStatus = useCallback(async () => {
+    setSyncStatus(await getSyncStatus());
+  }, []);
+
+  useEffect(() => {
+    void refreshSyncStatus();
+    window.addEventListener('online', refreshSyncStatus);
+    window.addEventListener('offline', refreshSyncStatus);
+    return () => {
+      window.removeEventListener('online', refreshSyncStatus);
+      window.removeEventListener('offline', refreshSyncStatus);
+    };
+  }, [refreshSyncStatus]);
 
   const updateBalance = async (id: string, value: string) => {
     const existing = await db.balances.get(id);
@@ -54,7 +80,7 @@ export default function SettingsWorkspace() {
       id: `cat-${crypto.randomUUID()}`,
       name: categoryName.trim(),
       color: categoryColor,
-      icon: 'circle',
+      icon: categoryIcon,
       isDefault: false,
       type: categoryType,
       createdAt: now,
@@ -63,7 +89,41 @@ export default function SettingsWorkspace() {
     await db.categories.add(category);
     void pushRecord('categories', category as unknown as Record<string, unknown>);
     setCategoryName('');
+    setCategoryIcon('circle');
     toast.success('Category added.');
+  };
+
+  const startCategoryEdit = (category: Category) => {
+    setEditingCategory(category);
+    setCategoryName(category.name);
+    setCategoryType(category.type);
+    setCategoryColor(category.color ?? '#2563eb');
+    setCategoryIcon(category.icon ?? 'circle');
+  };
+
+  const cancelCategoryEdit = () => {
+    setEditingCategory(null);
+    setCategoryName('');
+    setCategoryType('expense');
+    setCategoryColor('#2563eb');
+    setCategoryIcon('circle');
+  };
+
+  const saveCategoryEdit = async () => {
+    if (!editingCategory) return;
+    try {
+      await updateCategory({
+        id: editingCategory.id,
+        name: categoryName,
+        type: categoryType,
+        color: categoryColor,
+        icon: categoryIcon,
+      });
+      toast.success('Category updated.');
+      cancelCategoryEdit();
+    } catch (err) {
+      toast.error(err instanceof Error ? err.message : 'Category could not be updated.');
+    }
   };
 
   const handleExportCSV = async () => {
@@ -85,6 +145,7 @@ export default function SettingsWorkspace() {
     if (!file) return;
     await importJSON(await file.text());
     await syncAllLocalData();
+    await refreshSyncStatus();
     toast.success('JSON backup imported.');
   };
 
@@ -116,6 +177,7 @@ export default function SettingsWorkspace() {
     );
     await ensureDatabaseSeeded();
     await syncAllLocalData();
+    await refreshSyncStatus();
     toast.success('App data reset. Setup will show again.');
   };
 
@@ -147,6 +209,19 @@ export default function SettingsWorkspace() {
     setStoredTheme(theme);
     applyTheme(theme);
     toast.success(next ? 'Dark mode enabled.' : 'Dark mode disabled.');
+  };
+
+  const handleSyncNow = async () => {
+    setSyncing(true);
+    try {
+      await syncNow();
+      await refreshSyncStatus();
+      toast.success('Sync completed.');
+    } catch (err) {
+      toast.error(err instanceof Error ? err.message : 'Sync failed.');
+    } finally {
+      setSyncing(false);
+    }
   };
 
   return (
@@ -233,25 +308,74 @@ export default function SettingsWorkspace() {
       </section>
 
       <section className="rounded-2xl border border-slate-200 bg-white p-5 shadow-xs shadow-slate-200/50 transition-all hover:shadow-md">
+        <div className="flex flex-col gap-3 md:flex-row md:items-start md:justify-between">
+          <div>
+            <h2 className="text-base font-semibold text-slate-950">Sync status</h2>
+            <p className="mt-1 text-sm text-slate-500">
+              Cloud sync is optional and local data remains usable when remote services fail.
+            </p>
+          </div>
+          <button
+            type="button"
+            onClick={handleSyncNow}
+            disabled={syncing || !syncStatus?.authenticated}
+            className="rounded-md bg-blue-500 px-4 py-2 text-sm font-semibold text-white hover:bg-blue-600 disabled:cursor-not-allowed disabled:opacity-60"
+          >
+            {syncing ? 'Syncing' : 'Sync now'}
+          </button>
+        </div>
+        <div className="mt-4 grid gap-3 md:grid-cols-5">
+          <SyncMetric label="Account" value={syncStatus?.authenticated ? 'Signed in' : 'Not signed in'} />
+          <SyncMetric label="Network" value={syncStatus?.online ? 'Online' : 'Offline'} />
+          <SyncMetric label="Last pull" value={formatSyncTimestamp(syncStatus?.lastSyncAt)} />
+          <SyncMetric label="Last push" value={formatSyncTimestamp(syncStatus?.lastPushAt)} />
+          <SyncMetric label="Pending retries" value={String(syncStatus?.pendingRetryCount ?? 0)} />
+        </div>
+        <p className="mt-3 text-xs font-medium text-slate-400">
+          Telegram and AI remain optional integrations. Local tracking, import, export, and manual entry do not depend on them.
+        </p>
+      </section>
+
+      <section className="rounded-2xl border border-slate-200 bg-white p-5 shadow-xs shadow-slate-200/50 transition-all hover:shadow-md">
         <h2 className="text-base font-semibold text-slate-950">Categories</h2>
-        <div className="mt-4 grid gap-3 md:grid-cols-[1fr_160px_120px_auto]">
+        <div className="mt-4 grid gap-3 md:grid-cols-[1fr_150px_130px_120px_auto]">
           <input value={categoryName} onChange={(event) => setCategoryName(event.target.value)} placeholder="Category name" className="w-full rounded-md border border-slate-300 px-3 py-2 text-sm font-medium text-slate-950 outline-none focus:border-blue-500" />
-          <select value={categoryType} onChange={(event) => setCategoryType(event.target.value as TransactionType)} className="w-full rounded-md border border-slate-300 px-3 py-2 text-sm font-medium text-slate-950 outline-none focus:border-blue-500">
+          <select value={categoryType} disabled={editingCategory?.isDefault} onChange={(event) => setCategoryType(event.target.value as TransactionType)} className="w-full rounded-md border border-slate-300 px-3 py-2 text-sm font-medium text-slate-950 outline-none focus:border-blue-500 disabled:bg-slate-100 disabled:text-slate-400">
             <option value="expense">expense</option>
             <option value="income">income</option>
           </select>
+          <select value={categoryIcon} onChange={(event) => setCategoryIcon(event.target.value)} className="w-full rounded-md border border-slate-300 px-3 py-2 text-sm font-medium text-slate-950 outline-none focus:border-blue-500">
+            {CATEGORY_ICON_OPTIONS.map((icon) => (
+              <option key={icon} value={icon}>{icon}</option>
+            ))}
+          </select>
           <input type="color" value={categoryColor} onChange={(event) => setCategoryColor(event.target.value)} className="h-10 w-full rounded-md border border-slate-300 bg-white px-2 py-1" />
-          <button type="button" onClick={addCategory} className="rounded-md bg-blue-500 px-4 py-2 text-sm font-semibold text-white hover:bg-blue-600">Add</button>
+          <div className="flex gap-2">
+            <button type="button" onClick={editingCategory ? saveCategoryEdit : addCategory} className="rounded-md bg-blue-500 px-4 py-2 text-sm font-semibold text-white hover:bg-blue-600">
+              {editingCategory ? 'Save' : 'Add'}
+            </button>
+            {editingCategory ? (
+              <button type="button" onClick={cancelCategoryEdit} className="rounded-md border border-slate-300 px-3 py-2 text-sm font-semibold text-slate-700 hover:bg-slate-100">
+                Cancel
+              </button>
+            ) : null}
+          </div>
         </div>
         <div className="mt-4 grid gap-2 md:grid-cols-2">
           {categories.map((category) => (
             <div key={category.id} className="flex items-center justify-between rounded-md border border-slate-100 bg-slate-50 px-3 py-2">
               <div className="flex items-center gap-2">
                 <span className="h-3 w-3 rounded-full" style={{ background: category.color ?? '#64748b' }} />
-                <span className="text-sm font-semibold text-slate-950">{category.name}</span>
+                <div>
+                  <span className="text-sm font-semibold text-slate-950">{category.name}</span>
+                  <p className="text-xs font-medium text-slate-400">{category.icon ?? 'circle'}</p>
+                </div>
               </div>
               <div className="flex items-center gap-2">
                 <span className="text-xs font-medium uppercase tracking-normal text-slate-500">{category.type}</span>
+                <button type="button" onClick={() => startCategoryEdit(category)} className="text-xs font-semibold text-blue-600 hover:text-blue-700">
+                  Edit
+                </button>
                 {category.isDefault ? null : (
                   <button type="button" onClick={() => setCategoryDeleteConfirm(category)} className="text-xs font-semibold text-red-500 hover:text-red-700">
                     Delete
@@ -297,7 +421,7 @@ export default function SettingsWorkspace() {
       <ConfirmDialog
         open={categoryDeleteConfirm !== null}
         title="Delete category"
-        message={`Delete "${categoryDeleteConfirm?.name}"? Transactions using this category will be unassigned.`}
+        message={`Delete "${categoryDeleteConfirm?.name}"? Transactions using this category will move to the matching fallback category.`}
         confirmLabel="Delete"
         confirmVariant="danger"
         onConfirm={async () => {
@@ -326,6 +450,20 @@ function BalanceRow({ label, value, onSave }: { label: string; value: string; on
       <button type="button" onClick={() => { onSave(input); setInput(''); }} className="rounded-md border border-slate-300 px-3 py-2 text-sm font-semibold text-slate-700 hover:bg-slate-100">Save</button>
     </div>
   );
+}
+
+function SyncMetric({ label, value }: { label: string; value: string }) {
+  return (
+    <div className="rounded-md bg-slate-50 px-3 py-2">
+      <p className="text-xs font-medium uppercase tracking-normal text-slate-500">{label}</p>
+      <p className="mt-1 break-words text-sm font-semibold text-slate-950">{value}</p>
+    </div>
+  );
+}
+
+function formatSyncTimestamp(value: string | null | undefined) {
+  if (!value) return 'Never';
+  return new Date(value).toLocaleString();
 }
 
 function downloadText(filename: string, text: string, type: string) {

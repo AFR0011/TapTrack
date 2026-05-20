@@ -1,0 +1,9 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512" role="img" aria-label="TapTrack">
+  <rect width="512" height="512" fill="#2563eb"/>
+  <rect x="72" y="72" width="368" height="368" rx="84" fill="#1d4ed8"/>
+  <path d="M130 158h252v52H130z" fill="#ffffff" opacity=".94"/>
+  <path d="M130 246h160v52H130z" fill="#ffffff" opacity=".94"/>
+  <path d="M130 334h252v52H130z" fill="#ffffff" opacity=".94"/>
+  <circle cx="354" cy="272" r="64" fill="#16a34a"/>
+  <path d="M354 236v72M318 272h72" stroke="#ffffff" stroke-width="34" stroke-linecap="round"/>
+</svg>

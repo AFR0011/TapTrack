@@ -4,8 +4,12 @@ import { formatDisplayMonth } from '@/dates';
 import {
   getBudgetPerformanceReport,
   getCategorySpending,
+  getDateRangeCategorySpending,
+  getDateRangeIncomeVsExpense,
+  getDateRangeTransactionList,
   getFullTransactionList,
   getIncomeVsExpense,
+  getYearlySummary,
 } from '@/reports/reportService';
 import type {
   Balance,
@@ -28,6 +32,11 @@ export type TapTrackBackup = {
   conversions: Conversion[];
   settings: Settings[];
 };
+
+export type ReportExportOptions =
+  | { mode: 'month'; month: string }
+  | { mode: 'range'; startDate: string; endDate: string }
+  | { mode: 'year'; year: string };
 
 const CSV_COLUMNS: Array<keyof Transaction> = [
   'id',
@@ -106,18 +115,65 @@ export async function importJSON(jsonData: string, database: TapTrackDatabase = 
   await ensureDatabaseSeeded(database);
 }
 
-export async function exportPDF(month: string, database: TapTrackDatabase = db): Promise<Blob> {
+export async function exportPDF(
+  options: string | ReportExportOptions,
+  database: TapTrackDatabase = db
+): Promise<Blob> {
   await ensureDatabaseSeeded(database);
 
-  const [transactions, incomeVsExpense, categorySpending, budgetPerformance] = await Promise.all([
-    getFullTransactionList(month, database),
-    getIncomeVsExpense(month, database),
-    getCategorySpending(month, database),
-    getBudgetPerformanceReport(month, database),
-  ]);
+  const normalizedOptions = typeof options === 'string' ? { mode: 'month' as const, month: options } : options;
+  const categories = await database.categories.toArray();
+  const categoryById = new Map(categories.map((category) => [category.id, category.name]));
+
+  if (normalizedOptions.mode === 'year') {
+    const summary = await getYearlySummary(normalizedOptions.year, database);
+    const lines = [
+      `TapTrack Yearly Report - ${normalizedOptions.year}`,
+      '================================================================================',
+      `Generated: ${new Date().toISOString()}`,
+      '',
+      'FINANCIAL SUMMARY',
+      '--------------------------------------------------------------------------------',
+      `Total income:    ${summary.totalIncome} TRY`,
+      `Total expenses:  ${summary.totalExpense} TRY`,
+      `Net:             ${summary.net} TRY`,
+      '',
+      'MONTHLY SUMMARY',
+      '--------------------------------------------------------------------------------',
+      ...summary.months.map(
+        (item) =>
+          `${item.month} | income ${item.income} TRY | expenses ${item.expense} TRY | net ${item.net} TRY`
+      ),
+      '',
+      '================================================================================',
+      'End of report - Page 1 of 1',
+    ];
+
+    return createSimplePdf(lines);
+  }
+
+  const reportLabel =
+    normalizedOptions.mode === 'month'
+      ? `Monthly Report - ${formatDisplayMonth(normalizedOptions.month)}`
+      : `Range Report - ${normalizedOptions.startDate} to ${normalizedOptions.endDate}`;
+
+  const [transactions, incomeVsExpense, categorySpending, budgetPerformance] =
+    normalizedOptions.mode === 'month'
+      ? await Promise.all([
+          getFullTransactionList(normalizedOptions.month, database),
+          getIncomeVsExpense(normalizedOptions.month, database),
+          getCategorySpending(normalizedOptions.month, database),
+          getBudgetPerformanceReport(normalizedOptions.month, database),
+        ])
+      : await Promise.all([
+          getDateRangeTransactionList(normalizedOptions.startDate, normalizedOptions.endDate, database),
+          getDateRangeIncomeVsExpense(normalizedOptions.startDate, normalizedOptions.endDate, database),
+          getDateRangeCategorySpending(normalizedOptions.startDate, normalizedOptions.endDate, database),
+          Promise.resolve(null),
+        ]);
 
   const lines = [
-    `TapTrack Monthly Report - ${formatDisplayMonth(month)}`,
+    `TapTrack ${reportLabel}`,
     '================================================================================',
     `Generated: ${new Date().toISOString()}`,
     '',
@@ -129,14 +185,20 @@ export async function exportPDF(month: string, database: TapTrackDatabase = db):
     '',
     'BUDGET SUMMARY',
     '--------------------------------------------------------------------------------',
-    `Budget available:   ${budgetPerformance.available} TRY`,
-    `Budget spent:       ${budgetPerformance.totalSpent} TRY`,
-    `Budget remaining:   ${budgetPerformance.remaining} TRY`,
+    ...(budgetPerformance
+      ? [
+          `Budget available:   ${budgetPerformance.available} TRY`,
+          `Budget spent:       ${budgetPerformance.totalSpent} TRY`,
+          `Budget remaining:   ${budgetPerformance.remaining} TRY`,
+        ]
+      : ['Budget summary is shown for monthly reports only.']),
     '',
     'CATEGORY SPENDING',
     '--------------------------------------------------------------------------------',
     ...(categorySpending.length
-      ? categorySpending.map((item) => `${item.categoryId}: ${item.amount} TRY`)
+      ? categorySpending.map(
+          (item) => `${categoryById.get(item.categoryId) ?? item.categoryId}: ${item.amount} TRY`
+        )
       : ['No TRY expense categories this month.']),
     '',
     'TRANSACTIONS',
@@ -144,9 +206,9 @@ export async function exportPDF(month: string, database: TapTrackDatabase = db):
     ...(transactions.length
       ? transactions.map(
           (transaction) =>
-            `${transaction.date} | ${transaction.type === 'income' ? '+' : '-'}${transaction.amount} ${transaction.currency} | ${transaction.method} | ${transaction.title} | ${transaction.categoryId}`
+            `${transaction.date} | ${transaction.type === 'income' ? '+' : '-'}${transaction.amount} ${transaction.currency} | ${transaction.method} | ${transaction.title} | ${categoryById.get(transaction.categoryId) ?? transaction.categoryId}`
         )
-      : ['No transactions this month.']),
+      : ['No transactions for this report period.']),
     '',
     '================================================================================',
     `End of report - Page 1 of 1`,

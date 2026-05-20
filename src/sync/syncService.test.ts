@@ -5,10 +5,11 @@ vi.mock('@/lib/supabase', () => ({
 }));
 
 import { createSupabaseBrowserClient } from '@/lib/supabase';
-import { processRetryQueue, pullUpdates, pushRecord } from './syncService';
+import { getSyncStatus, processRetryQueue, pullUpdates, pushRecord } from './syncService';
 
 const RETRY_QUEUE_KEY = 'taptrack_retry_queue:user-1';
 const SYNC_CURSOR_KEY = 'taptrack_sync_cursor:user-1';
+const PUSH_CURSOR_KEY = 'taptrack_push_cursor:user-1';
 
 type TableResponse = { data: unknown[] | null; error: { message: string } | null };
 
@@ -154,5 +155,36 @@ describe('syncService', () => {
     await pullUpdates();
 
     expect(localStorage.getItem(SYNC_CURSOR_KEY)).toBe(initialSync);
+  });
+
+  it('reports sync status from auth, cursors, and retry queue', async () => {
+    localStorage.setItem(SYNC_CURSOR_KEY, '2026-05-18T00:00:00.000Z');
+    localStorage.setItem(PUSH_CURSOR_KEY, '2026-05-18T01:00:00.000Z');
+    localStorage.setItem(
+      RETRY_QUEUE_KEY,
+      JSON.stringify([
+        {
+          tableName: 'balances',
+          operation: 'upsert',
+          recordId: 'TRY-cash',
+          record: { id: 'TRY-cash' },
+          attempts: 0,
+          lastAttempt: 0,
+        },
+      ])
+    );
+
+    vi.mocked(createSupabaseBrowserClient).mockReturnValue(
+      createClientMock() as ReturnType<typeof createSupabaseBrowserClient>
+    );
+
+    await expect(getSyncStatus()).resolves.toMatchObject({
+      authenticated: true,
+      userId: 'user-1',
+      lastSyncAt: '2026-05-18T00:00:00.000Z',
+      lastPushAt: '2026-05-18T01:00:00.000Z',
+      pendingRetryCount: 1,
+      online: true,
+    });
   });
 });

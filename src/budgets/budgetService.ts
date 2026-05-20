@@ -1,6 +1,6 @@
 import { db, ensureDatabaseSeeded, type TapTrackDatabase } from '@/database';
 import { getPreviousMonth } from '@/dates';
-import type { CategoryBudget, MonthlyBudget } from '@/types';
+import type { Category, CategoryBudget, MonthlyBudget, TransactionType } from '@/types';
 import { deleteRecord, pushRecord } from '@/sync/syncService';
 
 export type MonthlyBudgetInput = {
@@ -28,6 +28,14 @@ export type CategoryBudgetStatus = {
   budget: number;
   spent: number;
   remaining: number;
+};
+
+export type CategoryUpdateInput = {
+  id: string;
+  name: string;
+  type: TransactionType;
+  color?: string;
+  icon?: string;
 };
 
 export function getMonthlyBudgetId(month: string) {
@@ -223,13 +231,13 @@ export async function deleteCategory(
   let deletedCategoryBudgetIds: string[] = [];
 
   await database.transaction('rw', database.categories, database.categoryBudgets, database.transactions, async () => {
-    // Find a replacement category (prefer "Other" or first available expense category)
-    const otherCategory = await database.categories
-      .where('id')
-      .equals('cat-other')
-      .first();
-    const replacementCategory = otherCategory || (await database.categories.where('type').equals('expense').first());
-    const replacementCategoryId = replacementCategory?.id || categoryId;
+    const category = await database.categories.get(categoryId);
+    if (!category) {
+      throw new Error('Category not found.');
+    }
+    if (category.isDefault) {
+      throw new Error('Default categories cannot be deleted.');
+    }
 
     // Update all transactions using this category to use replacement
     const transactions = await database.transactions
@@ -238,6 +246,7 @@ export async function deleteCategory(
       .toArray();
 
     for (const transaction of transactions) {
+      const replacementCategoryId = await getFallbackCategoryId(transaction.type, database, categoryId);
       await database.transactions.update(transaction.id, {
         categoryId: replacementCategoryId,
         updatedAt: now,
@@ -272,4 +281,102 @@ export async function deleteCategory(
     void deleteRecord('categoryBudgets', budgetId);
   });
   void deleteRecord('categories', categoryId);
+}
+
+export async function updateCategory(
+  input: CategoryUpdateInput,
+  database: TapTrackDatabase = db
+): Promise<Category> {
+  await ensureDatabaseSeeded(database);
+
+  const now = new Date().toISOString();
+  const updatedTransactions: Array<Record<string, unknown>> = [];
+  let updatedCategory: Category | null = null;
+
+  await database.transaction('rw', database.categories, database.transactions, async () => {
+    const existing = await database.categories.get(input.id);
+    if (!existing) {
+      throw new Error('Category not found.');
+    }
+
+    const nextName = input.name.trim();
+    if (!nextName) {
+      throw new Error('Category name is required.');
+    }
+    if (existing.isDefault && input.type !== existing.type) {
+      throw new Error('Default category type cannot be changed.');
+    }
+
+    updatedCategory = {
+      ...existing,
+      name: nextName,
+      type: input.type,
+      color: input.color || existing.color,
+      icon: input.icon || existing.icon,
+      updatedAt: now,
+    };
+
+    await database.categories.put(updatedCategory);
+
+    if (existing.type !== input.type) {
+      const transactions = await database.transactions
+        .where('categoryId')
+        .equals(input.id)
+        .toArray();
+
+      for (const transaction of transactions) {
+        if (transaction.type === input.type) continue;
+
+        const replacementCategoryId = await getFallbackCategoryId(
+          transaction.type,
+          database,
+          input.id
+        );
+        await database.transactions.update(transaction.id, {
+          categoryId: replacementCategoryId,
+          updatedAt: now,
+        });
+        updatedTransactions.push({
+          ...transaction,
+          categoryId: replacementCategoryId,
+          updatedAt: now,
+        });
+      }
+    }
+  });
+
+  if (!updatedCategory) {
+    throw new Error('Category was not updated.');
+  }
+
+  void pushRecord('categories', updatedCategory as unknown as Record<string, unknown>);
+  updatedTransactions.forEach((transaction) => {
+    void pushRecord('transactions', transaction);
+  });
+
+  return updatedCategory;
+}
+
+async function getFallbackCategoryId(
+  type: TransactionType,
+  database: TapTrackDatabase,
+  excludedCategoryId?: string
+): Promise<string> {
+  const preferredId = type === 'income' ? 'cat-income' : 'cat-other';
+  const preferred = await database.categories.get(preferredId);
+  if (preferred && preferred.id !== excludedCategoryId && preferred.type === type) {
+    return preferred.id;
+  }
+
+  const fallback = await database.categories
+    .where('type')
+    .equals(type)
+    .filter((category) => category.id !== excludedCategoryId)
+    .first();
+
+  if (!fallback) {
+    throw new Error(`No fallback ${type} category is available.`);
+  }
+
+  return fallback.id;
 }

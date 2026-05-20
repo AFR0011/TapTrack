@@ -70,6 +70,15 @@ interface SupabaseRow extends Record<string, unknown> {
   record_id?: string;
 }
 
+export type SyncStatusSnapshot = {
+  authenticated: boolean;
+  userId: string | null;
+  lastSyncAt: string | null;
+  lastPushAt: string | null;
+  pendingRetryCount: number;
+  online: boolean;
+};
+
 function getRecordId(record: Record<string, unknown>): string | null {
   const recordId = record.id;
   return typeof recordId === 'string' && recordId.length > 0 ? recordId : null;
@@ -164,6 +173,10 @@ function getPushCursor(userId: string): string {
 
 function setPushCursor(userId: string, timestamp: string): void {
   writeStorage(getUserScopedStorageKey(PUSH_CURSOR_PREFIX, userId), timestamp);
+}
+
+function normalizeCursor(value: string): string | null {
+  return value === '1970-01-01T00:00:00.000Z' ? null : value;
 }
 
 function getRetryQueue(userId: string): RetryItem[] {
@@ -394,6 +407,46 @@ export async function syncNow(database: TapTrackDatabase = db): Promise<void> {
   await pullUpdates(database);
   await pushLocalChanges(database);
   await pullUpdates(database);
+}
+
+export async function getSyncStatus(): Promise<SyncStatusSnapshot> {
+  const online = typeof navigator === 'undefined' ? true : navigator.onLine !== false;
+
+  try {
+    const supabase = createSupabaseBrowserClient();
+    const {
+      data: { user },
+    } = await supabase.auth.getUser();
+
+    if (!user) {
+      return {
+        authenticated: false,
+        userId: null,
+        lastSyncAt: null,
+        lastPushAt: null,
+        pendingRetryCount: 0,
+        online,
+      };
+    }
+
+    return {
+      authenticated: true,
+      userId: user.id,
+      lastSyncAt: normalizeCursor(getSyncCursor(user.id)),
+      lastPushAt: normalizeCursor(getPushCursor(user.id)),
+      pendingRetryCount: getRetryQueue(user.id).length,
+      online,
+    };
+  } catch {
+    return {
+      authenticated: false,
+      userId: null,
+      lastSyncAt: null,
+      lastPushAt: null,
+      pendingRetryCount: 0,
+      online,
+    };
+  }
 }
 
 /**

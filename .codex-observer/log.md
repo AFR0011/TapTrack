@@ -25,3 +25,17 @@
 **Evidence:** `BLUEPRINT.md` previously listed bank import and receipt/photo attachments in Future Features while repo guidance only blocked bank imports in V1.
 **Risk if ignored:** Future planning passes may keep reintroducing excluded features as "later" roadmap items.
 **Next action:** keep resolved unless this pattern appears in other repos or skills
+
+### Observation 003: QA plans should name authenticated browser prerequisites
+
+**Status:** OPEN
+**Date:** 2026-05-20
+**Type:** agents-md
+**Scope:** repo
+**Target:** docs/PROJECT_STATE.md, docs/REPO_MAP.md
+**Trigger:** The QA remediation plan required browser checks for authenticated TapTrack pages, but the local browser profile had no Supabase session.
+**Issue:** Route smoke and DOM checks could verify public/login/PWA behavior, but authenticated workspace visual checks were blocked by credentials rather than product code.
+**Suggested improvement:** Future QA plans should explicitly list whether an authenticated browser session, seeded local auth profile, or temporary test account is available before requiring visual checks for protected pages.
+**Evidence:** `/app` correctly redirected to `/login`; login desktop/mobile DOM checks passed, but dashboard/transactions/reports/settings browser checks could not be reached without a real session.
+**Risk if ignored:** QA reports may blur the difference between verified authenticated UI behavior and checks that were blocked by auth setup.
+**Next action:** discuss with user
