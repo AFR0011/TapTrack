@@ -17,7 +17,8 @@ import { Button } from '@/components/ui/Button';
 import { Card, CardHeader } from '@/components/ui/Card';
 import { Field } from '@/components/ui/Field';
 import { SelectField } from '@/components/ui/SelectField';
-import { SkeletonCard } from '@/components/ui/Skeleton';
+import { PageHeader } from '@/components/ui/PageHeader';
+import { SkeletonCard, SkeletonListCard } from '@/components/ui/Skeleton';
 import { toast } from 'sonner';
 
 const ARROW_DOWN_ICON = 'M19 14l-7 7m0 0l-7-7m7 7V3';
@@ -113,28 +114,19 @@ export default function ConversionsWorkspace() {
   if (isLoading) {
     return (
       <div className="space-y-5" aria-busy="true" aria-label="Loading transfers and exchanges">
-        <header>
-          <h1 className="text-2xl font-semibold text-primary">Transfers & Exchanges</h1>
-          <p className="text-sm font-medium text-muted">
-            Move money between card and cash, or exchange currencies.
-          </p>
-        </header>
+        <PageHeader title="Transfers & exchanges" description="Move money or exchange currency." />
         <div className="grid gap-4 lg:grid-cols-2">
           <SkeletonCard />
           <SkeletonCard />
         </div>
+        <SkeletonListCard titleWidth="w-56" count={4} />
       </div>
     );
   }
 
   return (
     <div className="space-y-5">
-      <header>
-        <h1 className="text-2xl font-semibold text-primary">Transfers & Exchanges</h1>
-        <p className="text-sm font-medium text-muted">
-          Move money between card and cash, or exchange currencies.
-        </p>
-      </header>
+      <PageHeader title="Transfers & exchanges" description="Move money or exchange currency." />
 
       <section className="grid gap-4 lg:grid-cols-[minmax(0,1fr)_minmax(0,1fr)]">
         <Card className="min-w-0" padding="sm">
@@ -242,6 +234,7 @@ export default function ConversionsWorkspace() {
                   animate={{ opacity: 1, y: 0 }}
                   exit={{ opacity: 0 }}
                   role="alert"
+                  aria-live="polite"
                   className="rounded-lg border border-danger bg-danger-muted px-3 py-2 text-sm font-medium text-danger"
                 >
                   {error}

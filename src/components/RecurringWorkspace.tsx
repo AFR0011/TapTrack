@@ -25,8 +25,11 @@ import {
 } from '@/types';
 import { ConfirmDialog } from './ConfirmDialog';
 import { Button } from '@/components/ui/Button';
-import { cn, focusVisibleRing } from '@/lib/cn';
-import { SkeletonCard } from '@/components/ui/Skeleton';
+import { Field } from '@/components/ui/Field';
+import { SelectField } from '@/components/ui/SelectField';
+import { PageHeader } from '@/components/ui/PageHeader';
+import { SkeletonCard, SkeletonListCard } from '@/components/ui/Skeleton';
+import { cn } from '@/lib/cn';
 import { Toggle } from '@/components/ui/Toggle';
 import { toast } from 'sonner';
 
@@ -195,42 +198,96 @@ export default function RecurringWorkspace() {
   if (isLoading) {
     return (
       <div className="space-y-5" aria-busy="true" aria-label="Loading recurring transactions">
-        <header>
-          <h1 className="text-2xl font-semibold text-primary">Recurring</h1>
-          <p className="text-sm font-medium text-muted">Set up rent, subscriptions, salary, and other repeating entries.</p>
-        </header>
+        <PageHeader title="Recurring" description="Repeating income and expenses." />
         <SkeletonCard />
-        <SkeletonCard />
+        <SkeletonListCard titleWidth="w-56" count={4} />
       </div>
     );
   }
 
   return (
     <div className="space-y-5">
-      <header className="flex flex-col gap-3 md:flex-row md:items-end md:justify-between">
-        <div>
-          <h1 className="text-2xl font-semibold text-primary">Recurring</h1>
-          <p className="text-sm font-medium text-muted">Set up rent, subscriptions, salary, and other repeating entries.</p>
-        </div>
-        <Button type="button" variant="secondary" onClick={runDueCheck} loading={saving} disabled={saving}>
-          Process due items
-        </Button>
-      </header>
+      <PageHeader
+        title="Recurring"
+        description="Repeating income and expenses."
+        action={
+          <Button type="button" variant="secondary" onClick={runDueCheck} loading={saving} disabled={saving}>
+            Process due items
+          </Button>
+        }
+      />
 
       <section className="rounded-2xl border border-subtle bg-surface p-5 ">
         <h2 className="text-base font-semibold text-primary">{editing ? 'Edit recurring transaction' : 'New recurring transaction'}</h2>
         <div className="mt-4 grid gap-3 md:grid-cols-4">
-          <Select label="Type" value={form.type} onChange={(value) => setType(value as TransactionType)} options={TRANSACTION_TYPES} />
-          <Input label="Amount" value={form.amount} onChange={(value) => setField('amount', value)} inputMode="decimal" />
-          <Select label="Currency" value={form.currency} onChange={(value) => setField('currency', value as Currency)} options={SUPPORTED_CURRENCIES} />
-          <Select label="Method" value={form.method} onChange={(value) => setField('method', value as Method)} options={SUPPORTED_METHODS} />
-          <Input label="Title" value={form.title} onChange={(value) => setField('title', value)} />
-          <Select label="Category" value={selectedCategoryId} onChange={(value) => setField('categoryId', value)} options={typedCategories.map((category) => ({ value: category.id, label: category.name }))} />
-          <Select label="Frequency" value={form.frequency} onChange={(value) => setField('frequency', value as Frequency)} options={RECURRING_FREQUENCIES} />
-          <Input label="Start date" type="date" value={form.startDate} onChange={(value) => setField('startDate', value)} />
-          <Input label="End date (optional)" type="date" value={form.endDate} onChange={(value) => setField('endDate', value)} />
+          <SelectField
+            label="Type"
+            value={form.type}
+            onChange={(event) => setType(event.target.value as TransactionType)}
+            options={TRANSACTION_TYPES.map((type) => ({
+              value: type,
+              label: type.charAt(0).toUpperCase() + type.slice(1),
+            }))}
+          />
+          <Field
+            label="Amount"
+            value={form.amount}
+            onChange={(event) => setField('amount', event.target.value)}
+            inputMode="decimal"
+          />
+          <SelectField
+            label="Currency"
+            value={form.currency}
+            onChange={(event) => setField('currency', event.target.value as Currency)}
+            options={SUPPORTED_CURRENCIES}
+          />
+          <SelectField
+            label="Method"
+            value={form.method}
+            onChange={(event) => setField('method', event.target.value as Method)}
+            options={SUPPORTED_METHODS.map((method) => ({
+              value: method,
+              label: method.charAt(0).toUpperCase() + method.slice(1),
+            }))}
+          />
+          <Field label="Title" value={form.title} onChange={(event) => setField('title', event.target.value)} />
+          <SelectField
+            label="Category"
+            value={selectedCategoryId}
+            onChange={(event) => setField('categoryId', event.target.value)}
+            options={typedCategories.map((category) => ({ value: category.id, label: category.name }))}
+          />
+          <SelectField
+            label="Frequency"
+            value={form.frequency}
+            onChange={(event) => setField('frequency', event.target.value as Frequency)}
+            options={RECURRING_FREQUENCIES.map((frequency) => ({
+              value: frequency,
+              label: formatFrequencyLabel(frequency),
+            }))}
+          />
+          <Field
+            label="Start date"
+            type="date"
+            value={form.startDate}
+            onChange={(event) => setField('startDate', event.target.value)}
+          />
+          <Field
+            label="End date (optional)"
+            type="date"
+            value={form.endDate}
+            onChange={(event) => setField('endDate', event.target.value)}
+          />
         </div>
-        {status ? <p className="mt-3 text-sm font-medium text-secondary">{status}</p> : null}
+        {status ? (
+          <p
+            role="alert"
+            aria-live="polite"
+            className="mt-3 rounded-lg border border-danger bg-danger-muted px-3 py-2 text-sm font-medium text-danger"
+          >
+            {status}
+          </p>
+        ) : null}
         <div className="mt-4 flex gap-2">
           <Button type="button" onClick={editing ? handleUpdate : handleCreate} loading={saving} disabled={saving}>
             {editing ? 'Update recurring' : 'Save recurring'}
@@ -335,64 +392,3 @@ function RecurringStatusBadge({ isActive }: { isActive: boolean }) {
   );
 }
 
-function Input({
-  label,
-  value,
-  onChange,
-  type = 'text',
-  inputMode,
-}: {
-  label: string;
-  value: string;
-  onChange: (value: string) => void;
-  type?: string;
-  inputMode?: 'decimal';
-}) {
-  return (
-    <label className="grid gap-1.5">
-      <span className="text-sm font-medium text-secondary">{label}</span>
-      <input
-        type={type}
-        inputMode={inputMode}
-        value={value}
-        onChange={(event) => onChange(event.target.value)}
-        className={cn(
-          'min-h-11 rounded-lg border border-subtle px-3 py-2 text-sm font-medium text-primary outline-none focus-visible:border-accent',
-          focusVisibleRing
-        )}
-      />
-    </label>
-  );
-}
-
-function Select({
-  label,
-  value,
-  onChange,
-  options,
-}: {
-  label: string;
-  value: string;
-  onChange: (value: string) => void;
-  options: readonly string[] | Array<{ value: string; label: string }>;
-}) {
-  return (
-    <label className="grid gap-1.5">
-      <span className="text-sm font-medium text-secondary">{label}</span>
-      <select
-        value={value}
-        onChange={(event) => onChange(event.target.value)}
-        className={cn(
-          'min-h-11 rounded-lg border border-subtle px-3 py-2 text-sm font-medium text-primary outline-none focus-visible:border-accent',
-          focusVisibleRing
-        )}
-      >
-        {options.map((option) => {
-          const optionValue = typeof option === 'string' ? option : option.value;
-          const label = typeof option === 'string' ? option : option.label;
-          return <option key={optionValue} value={optionValue}>{label}</option>;
-        })}
-      </select>
-    </label>
-  );
-}

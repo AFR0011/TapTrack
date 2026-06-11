@@ -150,7 +150,11 @@ export default function SetupForm() {
           </div>
 
           {error ? (
-            <p role="alert" className="mt-4 rounded-lg border border-danger bg-danger-muted px-3 py-2 text-sm font-medium text-danger">
+            <p
+              role="alert"
+              aria-live="polite"
+              className="mt-4 rounded-lg border border-danger bg-danger-muted px-3 py-2 text-sm font-medium text-danger"
+            >
               {error}
             </p>
           ) : null}

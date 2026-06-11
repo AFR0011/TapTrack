@@ -29,6 +29,8 @@
   --ai-muted: #f5f3ff;
   --ai-border: #ddd6fe;
   --ai-text: #6d28d9;
+  --overlay: rgb(15 23 42 / 0.45);
+  --shadow-overlay: 0 12px 32px rgb(15 23 42 / 0.16);
 
   /* Legacy aliases used by body */
   --background: var(--bg);
@@ -62,6 +64,8 @@
   --ai-muted: #2e1f5e;
   --ai-border: #4c3d8f;
   --ai-text: #c4b5fd;
+  --overlay: rgb(0 0 0 / 0.62);
+  --shadow-overlay: 0 12px 32px rgb(0 0 0 / 0.45);
 
   --background: var(--bg);
   --foreground: var(--text-primary);

@@ -23,10 +23,12 @@ import { applyTheme, resolveStoredTheme, setStoredTheme, type ThemeMode } from '
 import { Button } from '@/components/ui/Button';
 import { Field } from '@/components/ui/Field';
 import { SelectField } from '@/components/ui/SelectField';
+import { PageHeader } from '@/components/ui/PageHeader';
 import { SkeletonCard } from '@/components/ui/Skeleton';
 import { ToggleRow } from '@/components/ui/Toggle';
 import { cn, focusVisibleRing } from '@/lib/cn';
 import { getSignedInEmail, signOutUser } from '@/lib/auth';
+import { downloadBlob, downloadText } from '@/lib/download';
 
 const CATEGORY_ICON_OPTIONS = [
   { value: 'circle', label: 'Circle' },
@@ -266,11 +268,8 @@ export default function SettingsWorkspace() {
 
   if (isLoading) {
     return (
-      <div className="mx-auto max-w-2xl space-y-5" aria-busy="true" aria-label="Loading settings">
-        <header>
-          <h1 className="text-2xl font-semibold text-primary">Settings</h1>
-          <p className="text-sm font-medium text-muted">Account, preferences, money, and data controls.</p>
-        </header>
+      <div className="space-y-5" aria-busy="true" aria-label="Loading settings">
+        <PageHeader title="Settings" description="Account, preferences, and data." />
         <SkeletonCard />
         <SkeletonCard />
         <SkeletonCard />
@@ -280,11 +279,8 @@ export default function SettingsWorkspace() {
   }
 
   return (
-    <div className="mx-auto max-w-2xl space-y-5">
-      <header>
-        <h1 className="text-2xl font-semibold text-primary">Settings</h1>
-        <p className="text-sm font-medium text-muted">Account, preferences, money, and data controls.</p>
-      </header>
+    <div className="space-y-5">
+      <PageHeader title="Settings" description="Account, preferences, and data." />
 
       <section className="rounded-2xl border border-subtle bg-surface p-5">
         <h2 className="text-base font-semibold text-primary">Account</h2>
@@ -701,17 +697,3 @@ function formatSyncTimestamp(value: string | null | undefined) {
   return new Date(value).toLocaleString();
 }
 
-function downloadText(filename: string, text: string, type: string) {
-  downloadBlob(filename, new Blob([text], { type }));
-}
-
-function downloadBlob(filename: string, blob: Blob) {
-  const url = URL.createObjectURL(blob);
-  const link = document.createElement('a');
-  link.href = url;
-  link.download = filename;
-  document.body.appendChild(link);
-  link.click();
-  document.body.removeChild(link);
-  URL.revokeObjectURL(url);
-}

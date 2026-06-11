@@ -70,7 +70,7 @@ export function ConfirmDialog({
 
   return (
     <div
-      className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4"
+      className="fixed inset-0 z-50 flex items-center justify-center bg-[var(--overlay)] p-4"
       onClick={(event) => {
         if (event.target === event.currentTarget) onCancel();
       }}
@@ -81,7 +81,7 @@ export function ConfirmDialog({
         aria-modal="true"
         aria-labelledby={dialogId}
         aria-describedby={descriptionId}
-        className="w-full max-w-sm rounded-xl border border-subtle bg-surface p-5 shadow-xl"
+        className="w-full max-w-sm rounded-xl border border-subtle bg-surface p-5 shadow-[var(--shadow-overlay)]"
       >
         <h3 id={dialogId} className="text-base font-semibold text-primary">{title}</h3>
         <p id={descriptionId} className="mt-2 text-sm font-medium text-secondary">{message}</p>

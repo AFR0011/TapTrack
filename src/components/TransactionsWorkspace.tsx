@@ -28,7 +28,8 @@ import { Button } from '@/components/ui/Button';
 import { cn, focusVisibleRing } from '@/lib/cn';
 import { Field } from '@/components/ui/Field';
 import { SelectField } from '@/components/ui/SelectField';
-import { SkeletonCard } from '@/components/ui/Skeleton';
+import { PageHeader } from '@/components/ui/PageHeader';
+import { SkeletonCard, SkeletonListCard } from '@/components/ui/Skeleton';
 import { toast } from 'sonner';
 
 type TransactionFormState = {
@@ -138,39 +139,36 @@ export default function TransactionsWorkspace() {
   if (isLoading) {
     return (
       <div className="space-y-5" aria-busy="true" aria-label="Loading transactions">
-        <header>
-          <h1 className="text-2xl font-semibold text-primary">Transactions</h1>
-          <p className="text-sm font-medium text-muted">Search, filter, and manage your transactions.</p>
-        </header>
+        <PageHeader title="Transactions" description="Search, filter, and edit." />
         <SkeletonCard />
-        <SkeletonCard />
+        <SkeletonListCard titleWidth="w-48" count={6} />
       </div>
     );
   }
 
   return (
     <div className="space-y-5">
-      <header className="flex flex-col gap-3 md:flex-row md:items-end md:justify-between">
-        <div>
-          <h1 className="text-2xl font-semibold text-primary">Transactions</h1>
-          <p className="text-sm font-medium text-muted">Search, filter, and manage your transactions.</p>
-        </div>
-        <div className="flex flex-wrap gap-2">
-          <Button type="button" variant="secondary" onClick={() => router.push('/app/recurring')}>
-            Recurring
-          </Button>
-          <Button
-            type="button"
-            onClick={() => {
-              setEditing(null);
-              setShowForm((current) => !current);
-              setError('');
-            }}
-          >
-            {showForm ? 'Close form' : 'Add transaction'}
-          </Button>
-        </div>
-      </header>
+      <PageHeader
+        title="Transactions"
+        description="Search, filter, and edit."
+        action={
+          <div className="flex flex-wrap gap-2">
+            <Button type="button" variant="secondary" onClick={() => router.push('/app/recurring')}>
+              Recurring
+            </Button>
+            <Button
+              type="button"
+              onClick={() => {
+                setEditing(null);
+                setShowForm((current) => !current);
+                setError('');
+              }}
+            >
+              {showForm ? 'Close form' : 'Add transaction'}
+            </Button>
+          </div>
+        }
+      />
 
       {(showForm || editing) && (
         <TransactionForm
@@ -188,31 +186,14 @@ export default function TransactionsWorkspace() {
 
       <section className="rounded-2xl border border-subtle bg-surface p-5">
         <div className="grid gap-3 sm:grid-cols-2 md:grid-cols-5">
-          <label className="grid gap-1.5">
-            <span className="text-sm font-medium text-secondary">Search</span>
-            <input
-              type="text"
-              value={searchQuery}
-              onChange={(event) => setSearchQuery(event.target.value)}
-              placeholder="Title, note, or category"
-              className={cn(
-                'min-h-11 w-full rounded-lg border border-subtle px-3 py-2 text-sm font-medium text-primary outline-none focus-visible:border-accent',
-                focusVisibleRing
-              )}
-            />
-          </label>
-          <label className="grid gap-1.5">
-            <span className="text-sm font-medium text-secondary">Month</span>
-            <input
-              type="month"
-              value={month}
-              onChange={(event) => setMonth(event.target.value)}
-              className={cn(
-                'min-h-11 w-full rounded-lg border border-subtle px-3 py-2 text-sm font-medium text-primary outline-none focus-visible:border-accent',
-                focusVisibleRing
-              )}
-            />
-          </label>
+          <Field
+            label="Search"
+            type="text"
+            value={searchQuery}
+            onChange={(event) => setSearchQuery(event.target.value)}
+            placeholder="Title, note, or category"
+          />
+          <Field label="Month" type="month" value={month} onChange={(event) => setMonth(event.target.value)} />
           <SecondaryTransactionFilters
             className="hidden md:contents"
             categories={categories}
@@ -244,7 +225,15 @@ export default function TransactionsWorkspace() {
             onCategoryFilterChange={setCategoryFilter}
           />
         </details>
-        {error ? <p className="mt-3 text-sm font-medium text-danger">{error}</p> : null}
+        {error ? (
+          <p
+            role="alert"
+            aria-live="polite"
+            className="mt-3 rounded-lg border border-danger bg-danger-muted px-3 py-2 text-sm font-medium text-danger"
+          >
+            {error}
+          </p>
+        ) : null}
       </section>
 
       <section className="overflow-hidden rounded-2xl border border-subtle bg-surface ">
@@ -280,7 +269,7 @@ export default function TransactionsWorkspace() {
                       <button
                         type="button"
                         onClick={() => openTransactionEditor(transaction)}
-                        className="flex min-h-11 min-w-0 flex-1 items-center justify-between gap-3 rounded-lg px-1 text-left transition-colors hover:bg-surface-muted focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-accent md:px-0"
+                        className="flex min-h-11 min-w-0 flex-1 cursor-pointer items-center justify-between gap-3 rounded-lg px-1 text-left transition-colors hover:bg-surface-muted focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-accent md:px-0"
                       >
                         <div className="min-w-0">
                           <p className="text-sm font-semibold text-primary">{transaction.title}</p>
@@ -484,7 +473,11 @@ function TransactionForm({
           <Field label="Note" value={form.note} onChange={(event) => setField('note', event.target.value)} />
         </div>
         {error ? (
-          <p role="alert" className="text-sm font-medium text-danger">
+          <p
+            role="alert"
+            aria-live="polite"
+            className="rounded-lg border border-danger bg-danger-muted px-3 py-2 text-sm font-medium text-danger"
+          >
             {error}
           </p>
         ) : null}
@@ -555,60 +548,39 @@ function SecondaryTransactionFilters({
 }) {
   return (
     <div className={className}>
-      <label className="grid gap-1.5">
-        <span className="text-sm font-medium text-secondary">Type</span>
-        <select
-          value={typeFilter}
-          onChange={(event) => onTypeFilterChange(event.target.value as 'all' | TransactionType)}
-          className={cn(
-            'min-h-11 w-full rounded-lg border border-subtle px-3 py-2 text-sm font-medium text-primary outline-none focus-visible:border-accent',
-            focusVisibleRing
-          )}
-        >
-          <option value="all">All</option>
-          {TRANSACTION_TYPES.map((type) => (
-            <option key={type} value={type}>
-              {type.charAt(0).toUpperCase() + type.slice(1)}
-            </option>
-          ))}
-        </select>
-      </label>
-      <label className="grid gap-1.5">
-        <span className="text-sm font-medium text-secondary">Method</span>
-        <select
-          value={methodFilter}
-          onChange={(event) => onMethodFilterChange(event.target.value as 'all' | Method)}
-          className={cn(
-            'min-h-11 w-full rounded-lg border border-subtle px-3 py-2 text-sm font-medium text-primary outline-none focus-visible:border-accent',
-            focusVisibleRing
-          )}
-        >
-          <option value="all">All</option>
-          {SUPPORTED_METHODS.map((method) => (
-            <option key={method} value={method}>
-              {method.charAt(0).toUpperCase() + method.slice(1)}
-            </option>
-          ))}
-        </select>
-      </label>
-      <label className="grid gap-1.5">
-        <span className="text-sm font-medium text-secondary">Category</span>
-        <select
-          value={categoryFilter}
-          onChange={(event) => onCategoryFilterChange(event.target.value)}
-          className={cn(
-            'min-h-11 w-full rounded-lg border border-subtle px-3 py-2 text-sm font-medium text-primary outline-none focus-visible:border-accent',
-            focusVisibleRing
-          )}
-        >
-          <option value="all">All</option>
-          {categories.map((category) => (
-            <option key={category.id} value={category.id}>
-              {category.name}
-            </option>
-          ))}
-        </select>
-      </label>
+      <SelectField
+        label="Type"
+        value={typeFilter}
+        onChange={(event) => onTypeFilterChange(event.target.value as 'all' | TransactionType)}
+        options={[
+          { value: 'all', label: 'All' },
+          ...TRANSACTION_TYPES.map((type) => ({
+            value: type,
+            label: type.charAt(0).toUpperCase() + type.slice(1),
+          })),
+        ]}
+      />
+      <SelectField
+        label="Method"
+        value={methodFilter}
+        onChange={(event) => onMethodFilterChange(event.target.value as 'all' | Method)}
+        options={[
+          { value: 'all', label: 'All' },
+          ...SUPPORTED_METHODS.map((method) => ({
+            value: method,
+            label: method.charAt(0).toUpperCase() + method.slice(1),
+          })),
+        ]}
+      />
+      <SelectField
+        label="Category"
+        value={categoryFilter}
+        onChange={(event) => onCategoryFilterChange(event.target.value)}
+        options={[
+          { value: 'all', label: 'All' },
+          ...categories.map((category) => ({ value: category.id, label: category.name })),
+        ]}
+      />
     </div>
   );
 }

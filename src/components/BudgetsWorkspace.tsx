@@ -9,6 +9,7 @@ import { upsertCategoryBudget, upsertMonthlyBudget } from '@/budgets/budgetServi
 import { Button } from '@/components/ui/Button';
 import { cn, focusVisibleRing } from '@/lib/cn';
 import { ProgressBar } from '@/components/ui/ProgressBar';
+import { PageHeader } from '@/components/ui/PageHeader';
 import { SkeletonCard } from '@/components/ui/Skeleton';
 import { toast } from 'sonner';
 
@@ -35,7 +36,10 @@ export default function BudgetsWorkspace() {
   }, [month, savedTotalBudget]);
 
   const isLoading =
-    transactions === undefined || categories === undefined || categoryBudgets === undefined;
+    transactions === undefined ||
+    categories === undefined ||
+    categoryBudgets === undefined ||
+    monthlyBudget === undefined;
 
   const monthExpenses = useMemo(
     () =>
@@ -87,12 +91,7 @@ export default function BudgetsWorkspace() {
   if (isLoading) {
     return (
       <div className="space-y-5" aria-busy="true" aria-label="Loading budgets">
-        <header className="flex flex-col gap-3 md:flex-row md:items-end md:justify-between">
-          <div>
-            <h1 className="text-2xl font-semibold text-primary">Budgets</h1>
-            <p className="text-sm font-medium text-muted">TRY monthly planning with total rollover and category usage.</p>
-          </div>
-        </header>
+        <PageHeader title="Budgets" description="Monthly TRY budgets." />
         <div className="grid gap-4 lg:grid-cols-2">
           <SkeletonCard />
           <SkeletonCard />
@@ -103,21 +102,21 @@ export default function BudgetsWorkspace() {
 
   return (
     <div className="space-y-5">
-      <header className="flex flex-col gap-3 md:flex-row md:items-end md:justify-between">
-        <div>
-          <h1 className="text-2xl font-semibold text-primary">Budgets</h1>
-          <p className="text-sm font-medium text-muted">TRY monthly planning with total rollover and category usage.</p>
-        </div>
-        <input
-          type="month"
-          value={month}
-          onChange={(event) => setMonth(event.target.value)}
-          className={cn(
-            'min-h-11 rounded-lg border border-subtle px-3 py-2 text-sm font-medium text-primary outline-none focus-visible:border-accent',
-            focusVisibleRing
-          )}
-        />
-      </header>
+      <PageHeader
+        title="Budgets"
+        description="Monthly TRY budgets."
+        action={
+          <input
+            type="month"
+            value={month}
+            onChange={(event) => setMonth(event.target.value)}
+            className={cn(
+              'min-h-11 rounded-lg border border-subtle px-3 py-2 text-sm font-medium text-primary outline-none focus-visible:border-accent',
+              focusVisibleRing
+            )}
+          />
+        }
+      />
 
       <section className="grid gap-4 lg:grid-cols-[0.9fr_1.1fr]">
         <div className="rounded-2xl border border-subtle bg-surface p-5 ">

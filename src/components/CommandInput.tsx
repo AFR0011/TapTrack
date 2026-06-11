@@ -150,27 +150,36 @@ export default function CommandInput() {
   return (
     <section
       id="quick-log"
-      className="rounded-2xl border border-subtle bg-surface p-5 shadow-sm ring-1 ring-accent/15"
+      aria-busy={isDataLoading || undefined}
+      aria-label={isDataLoading ? 'Loading quick command' : undefined}
+      className="rounded-2xl border border-subtle bg-surface p-5 ring-1 ring-accent/15"
     >
-      <div className="flex flex-col gap-2 sm:flex-row">
-        <input
-          ref={inputRef}
-          type="text"
-          value={input}
-          onChange={(e) => setInput(e.target.value)}
-          onKeyDown={(e) => e.key === 'Enter' && handleSubmit()}
-          placeholder="-120 coffee cash"
-          disabled={saving || isDataLoading}
-          aria-label="Quick transaction command"
-          className={cn(
-            'h-12 min-h-12 flex-1 rounded-lg border border-subtle px-4 text-base font-medium text-primary outline-none transition-all placeholder:text-muted focus-visible:border-accent md:text-sm',
-            focusVisibleRing
-          )}
-        />
-        <Button onClick={handleSubmit} disabled={saving || isDataLoading}>
-          Preview
-        </Button>
-      </div>
+      {isDataLoading ? (
+        <div className="flex flex-col gap-2 sm:flex-row" aria-hidden="true">
+          <Skeleton className="h-12 min-h-12 flex-1 rounded-lg" />
+          <Skeleton className="h-12 w-24 rounded-lg" />
+        </div>
+      ) : (
+        <div className="flex flex-col gap-2 sm:flex-row">
+          <input
+            ref={inputRef}
+            type="text"
+            value={input}
+            onChange={(e) => setInput(e.target.value)}
+            onKeyDown={(e) => e.key === 'Enter' && handleSubmit()}
+            placeholder="-120 coffee cash"
+            disabled={saving}
+            aria-label="Quick transaction command"
+            className={cn(
+              'h-12 min-h-12 flex-1 rounded-lg border border-subtle px-4 text-base font-medium text-primary outline-none transition-all placeholder:text-muted focus-visible:border-accent md:text-sm',
+              focusVisibleRing
+            )}
+          />
+          <Button onClick={handleSubmit} disabled={saving}>
+            Preview
+          </Button>
+        </div>
+      )}
       <div className="mt-3 flex flex-wrap items-center gap-2">
         {isDataLoading ? (
           <>
@@ -206,7 +215,8 @@ export default function CommandInput() {
       {errors.length > 0 ? (
         <div
           role="alert"
-          className="mt-3 rounded-lg border border-subtle bg-danger-muted px-3 py-2 text-sm font-medium text-danger"
+          aria-live="polite"
+          className="mt-3 rounded-lg border border-danger bg-danger-muted px-3 py-2 text-sm font-medium text-danger"
         >
           {errors.length === 1 ? (
             <p>{errors[0]}</p>

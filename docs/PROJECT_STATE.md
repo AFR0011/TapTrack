@@ -1,10 +1,12 @@
 # TapTrack Project State
 
-Last updated: 2026-05-20
+Last updated: 2026-06-11
 
 ## Current Status
 
-TapTrack V2 is implemented and the QA remediation plan is now mostly implemented in the working tree. The app remains a local-first Next.js 14 App Router product with Dexie/IndexedDB as the client data source and optional Supabase, Telegram, Ollama, exchange-rate, and PWA integrations.
+TapTrack V2 is implemented. The QA remediation plan and the `modifications.md` UI/UX pass (#1–#40) are complete in the working tree. The app remains a local-first Next.js 14 App Router product with Dexie/IndexedDB as the client data source and optional Supabase, Telegram, Ollama, exchange-rate, and PWA integrations.
+
+Visual direction is **Calm Personal Ledger**: flat semantic-token surfaces, 1px borders, shared UI primitives, route-aware page widths, skeleton loading states, and tokenized dark-mode overlays/toasts/charts/dialogs.
 
 The Next/PostCSS production audit remains intentionally deferred to a dedicated framework-upgrade batch.
 
@@ -39,6 +41,24 @@ The Next/PostCSS production audit remains intentionally deferred to a dedicated 
 - Daily-use UI polish for clearer empty states, recent activity category labels/colors/icons, command multi-entry errors, and explicit balance failure messaging.
 - Production checklist and separate dependency security upgrade plan.
 
+## UI/UX Modifications (#1–#40)
+
+Completed per `modifications.md` (see also `docs/Design and UIUX Audit 110626.md` for the original audit).
+
+Highlights from the final batches in this session:
+
+- **#32 Touch targets** — 44px minimum on row actions, mobile nav, toggles, filter pills, and command preview Revert; misleading hover removed from non-clickable rows.
+- **#33 Accessible feedback** — `role="alert"` + `aria-live="polite"` on inline errors in command, transactions, conversions, setup, and recurring flows.
+- **#34 Hover affordance** — hover elevation/background only on clickable elements; static cards stay flat.
+- **#35 Skeleton states** — `Skeleton`, `SkeletonCard`, `SkeletonMetric`, `SkeletonListRows`, and `SkeletonListCard` on dashboard and all main workspaces while Dexie loads.
+- **#36 Shared helpers** — `src/lib/download.ts`; workspaces use `Field`/`SelectField`, `StatCard`/`StatRow`, and shared `EmptyState` instead of local clones.
+- **#37 Dark-mode sweep** — `--overlay` and `--shadow-overlay` tokens; tokenized `ConfirmDialog`, Sonner toasts (theme-synced), and Recharts tooltips.
+- **#38 Page widths** — `AppShell` route-aware `main` max-width: dashboard/settings `max-w-2xl`, reports `max-w-7xl`, other workspaces `max-w-6xl`.
+- **#39 PageHeader** — shared `PageHeader` on dashboard and all workspace routes with short one-line subtitles and optional action slots.
+- **#40 Verification** — full automated ladder plus route smoke (see below).
+
+Earlier mods (#1–#31) covered semantic tokens, UI primitives (`Button`, `Card`, `Field`, `SelectField`, `Toggle`, `ProgressBar`, etc.), workspace restyling, copy pass, focus rings, transaction form, reports category bars, setup/login tokenization, and related polish.
+
 ## Verification State
 
 Verification ladder:
@@ -52,16 +72,26 @@ npm.cmd run build
 
 `npm.cmd run check` runs the same ladder.
 
-Latest verification in this working tree:
+Latest verification in this working tree (2026-06-11, mods #32–#40 close-out):
 
-- `npm.cmd run test -- middleware.test.ts app/api/integration-routes.test.ts src/budgets/budgetService.test.ts src/reports/reportService.test.ts src/exports/exportService.test.ts src/sync/syncService.test.ts` - 6 files, 28 tests passing.
-- `npm.cmd run typecheck` - 0 errors.
-- `npm.cmd run check` - lint, typecheck, 14 test files, 67 tests, and production build all passing.
-- `$env:TAPTRACK_SMOKE_BASE_URL="http://127.0.0.1:3002"; npm.cmd run smoke:routes` - root/login/app redirects, exchange API JSON, Telegram JSON auth failures, manifest, and service worker all passing.
-- Browser DOM smoke on `/login` desktop and mobile viewport - no horizontal overflow detected; manifest link present.
-- `npm.cmd audit --omit=dev` - still reports Next/PostCSS advisories that require a breaking Next 16 upgrade.
+- `npm.cmd run lint` — pass.
+- `npm.cmd run typecheck` — pass.
+- `npm.cmd run test` — 14 files, 67 tests passing.
+- `npm.cmd run build` — pass (17 app routes).
+- `npm.cmd run smoke:routes` — 8/8 checks passing against `next start` on port 3000 (root/login/app redirects, exchange API JSON, manifest, service worker, Telegram JSON 401s).
+- `npm.cmd run check` — same ladder as above (lint → typecheck → test → build); does not include smoke.
+
+Manual walkthrough still recommended before release:
+
+- Light and dark mode on all screens, toasts, dialogs, and chart tooltips.
+- ~390px mobile: bottom nav, filters, row actions, no horizontal overflow.
+- Keyboard-only navigation and visible focus rings.
+- Setup → first transaction → budget → report flow; transaction and recurring CRUD; export/import/reset.
+- Throttled reload shows skeletons, not false empty states.
 
 Authenticated workspace browser checks remain blocked until a real Supabase session is available in the browser profile. Route smoke verifies that unauthenticated `/app` correctly redirects to `/login`.
+
+`npm.cmd audit --omit=dev` — still reports Next/PostCSS advisories that require a breaking Next 16 upgrade.
 
 ## Remaining Risks And Assumptions
 

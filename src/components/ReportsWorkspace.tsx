@@ -21,10 +21,14 @@ import { clampPercent, formatMoney } from '@/format';
 import { calculateIncomeVsExpense } from '@/reports/reportService';
 import { getBudgetPerformance } from '@/reports/reportTransforms';
 import { Button } from '@/components/ui/Button';
+import { EmptyState } from '@/components/ui/EmptyState';
+import { Field } from '@/components/ui/Field';
 import { ProgressBar } from '@/components/ui/ProgressBar';
-import { SkeletonCard } from '@/components/ui/Skeleton';
+import { PageHeader } from '@/components/ui/PageHeader';
+import { SkeletonCard, SkeletonMetric } from '@/components/ui/Skeleton';
+import { StatCard, StatRow } from '@/components/ui/StatRow';
 import { ToggleRow } from '@/components/ui/Toggle';
-import { cn, focusVisibleRing } from '@/lib/cn';
+import { downloadBlob } from '@/lib/download';
 import type { ExchangeRates, Transaction } from '@/types';
 
 const COLORS = [
@@ -42,6 +46,29 @@ const CHART_Y_AXIS = {
   axisLine: false,
   width: 56,
   tickFormatter: (value: number) => formatCompactAxisMoney(Number(value)),
+} as const;
+
+const CHART_TOOLTIP_PROPS = {
+  contentStyle: {
+    background: 'transparent',
+    border: 'none',
+    boxShadow: 'none',
+    padding: 0,
+  },
+  wrapperStyle: {
+    outline: 'none',
+    zIndex: 20,
+  },
+  labelStyle: {
+    color: 'var(--text-muted)',
+  },
+  itemStyle: {
+    color: 'var(--text-primary)',
+  },
+  cursor: {
+    fill: 'var(--surface-muted)',
+    opacity: 0.45,
+  },
 } as const;
 
 type ReportMode = 'month' | 'range' | 'year';
@@ -91,7 +118,10 @@ export default function ReportsWorkspace() {
     [month]
   );
   const isLoading =
-    transactions === undefined || categories === undefined || categoryBudgets === undefined;
+    transactions === undefined ||
+    categories === undefined ||
+    categoryBudgets === undefined ||
+    monthlyBudget === undefined;
 
   useEffect(() => {
     if (!unifyToTRY || rates) return;
@@ -234,19 +264,20 @@ export default function ReportsWorkspace() {
   if (isLoading) {
     return (
       <div className="space-y-5" aria-busy="true" aria-label="Loading reports">
-        <header>
-          <h1 className="text-2xl font-semibold text-primary">Reports</h1>
-          <p className="text-sm font-medium text-muted">
-            Review income and spending by month, date range, or year.
-          </p>
-        </header>
+        <PageHeader title="Reports" description="Income, spending, and budgets." />
         <div className="flex flex-col gap-5">
           <div className="order-1 grid gap-4 md:order-2 md:grid-cols-3">
+            <SkeletonMetric />
+            <SkeletonMetric />
+            <SkeletonMetric />
+          </div>
+          <SkeletonCard className="order-2 md:order-1" />
+          <div className="order-3 grid gap-4 lg:grid-cols-2">
+            <SkeletonCard />
             <SkeletonCard />
             <SkeletonCard />
             <SkeletonCard />
           </div>
-          <SkeletonCard className="order-2 md:order-1" />
         </div>
       </div>
     );
@@ -254,41 +285,46 @@ export default function ReportsWorkspace() {
 
   return (
     <div className="space-y-5">
-      <header className="flex flex-col gap-3 md:flex-row md:items-end md:justify-between">
-        <div>
-          <h1 className="text-2xl font-semibold text-primary">Reports</h1>
-          <p className="text-sm font-medium text-muted">
-            Review income and spending by month, date range, or year.
-          </p>
-        </div>
-        <div className="flex flex-wrap items-center gap-2">
-          <ModeButton mode="month" activeMode={reportMode} onClick={setReportMode} />
-          <ModeButton mode="range" activeMode={reportMode} onClick={setReportMode} />
-          <ModeButton mode="year" activeMode={reportMode} onClick={setReportMode} />
-        </div>
-      </header>
+      <PageHeader
+        title="Reports"
+        description="Income, spending, and budgets."
+        action={
+          <div className="flex flex-wrap items-center gap-2">
+            <ModeButton mode="month" activeMode={reportMode} onClick={setReportMode} />
+            <ModeButton mode="range" activeMode={reportMode} onClick={setReportMode} />
+            <ModeButton mode="year" activeMode={reportMode} onClick={setReportMode} />
+          </div>
+        }
+      />
 
       <div className="flex flex-col gap-5">
         <section className="order-1 grid gap-4 md:order-2 md:grid-cols-3">
-          <Metric label="Income" value={formatMoney(incomeVsExpense.income)} tone="good" />
-          <Metric label="Expenses" value={formatMoney(incomeVsExpense.expense)} tone="bad" />
-          <Metric label="Net" value={formatMoney(incomeVsExpense.net)} tone={incomeVsExpense.net >= 0 ? 'good' : 'bad'} />
+          <StatCard label="Income" value={formatMoney(incomeVsExpense.income)} tone="good" />
+          <StatCard label="Expenses" value={formatMoney(incomeVsExpense.expense)} tone="bad" />
+          <StatCard label="Net" value={formatMoney(incomeVsExpense.net)} tone={incomeVsExpense.net >= 0 ? 'good' : 'bad'} />
         </section>
 
         <section className="order-2 rounded-2xl border border-subtle bg-surface p-5 md:order-1">
           <div className="flex flex-col gap-3 sm:flex-row sm:items-end sm:justify-between">
             <div className="grid flex-1 gap-3 sm:grid-cols-3">
               {reportMode === 'month' ? (
-                <DateInput label="Month" type="month" value={month} onChange={setMonth} />
+                <Field label="Month" type="month" value={month} onChange={(event) => setMonth(event.target.value)} />
               ) : null}
               {reportMode === 'range' ? (
                 <>
-                  <DateInput label="Start" type="date" value={rangeStart} onChange={setRangeStart} />
-                  <DateInput label="End" type="date" value={rangeEnd} onChange={setRangeEnd} />
+                  <Field label="Start" type="date" value={rangeStart} onChange={(event) => setRangeStart(event.target.value)} />
+                  <Field label="End" type="date" value={rangeEnd} onChange={(event) => setRangeEnd(event.target.value)} />
                 </>
               ) : null}
               {reportMode === 'year' ? (
-                <DateInput label="Year" type="number" value={year} onChange={setYear} min="2000" max="2100" />
+                <Field
+                  label="Year"
+                  type="number"
+                  value={year}
+                  onChange={(event) => setYear(event.target.value)}
+                  min="2000"
+                  max="2100"
+                />
               ) : null}
             </div>
 
@@ -338,8 +374,8 @@ export default function ReportsWorkspace() {
             <LineChart data={spendingOverTime}>
               <XAxis dataKey="date" tick={{ fill: 'var(--text-muted)', fontSize: 12 }} tickLine={false} axisLine={false} minTickGap={18} />
               <YAxis {...CHART_Y_AXIS} />
-              <Tooltip content={<ChartTooltip />} />
-              <Line type="monotone" dataKey="amount" name="Spent" stroke="var(--accent)" strokeWidth={3} dot={false} />
+              <Tooltip content={<ChartTooltip />} {...CHART_TOOLTIP_PROPS} />
+              <Line type="monotone" dataKey="amount" name="Spent" stroke="var(--chart-1)" strokeWidth={3} dot={false} />
             </LineChart>
           </ResponsiveContainer>
         </ChartPanel>
@@ -352,9 +388,9 @@ export default function ReportsWorkspace() {
             <BarChart data={comparisonData}>
               <XAxis dataKey="label" tick={{ fill: 'var(--text-muted)', fontSize: 12 }} tickLine={false} axisLine={false} />
               <YAxis {...CHART_Y_AXIS} />
-              <Tooltip content={<ChartTooltip />} />
-              <Bar dataKey="income" name="Income" fill="var(--success)" radius={[4, 4, 0, 0]} />
-              <Bar dataKey="expense" name="Expenses" fill="var(--danger)" radius={[4, 4, 0, 0]} />
+              <Tooltip content={<ChartTooltip />} {...CHART_TOOLTIP_PROPS} />
+              <Bar dataKey="income" name="Income" fill="var(--chart-2)" radius={[4, 4, 0, 0]} />
+              <Bar dataKey="expense" name="Expenses" fill="var(--chart-3)" radius={[4, 4, 0, 0]} />
             </BarChart>
           </ResponsiveContainer>
         </ChartPanel>
@@ -369,7 +405,8 @@ export default function ReportsWorkspace() {
           {reportMode !== 'month' ? (
             <EmptyState
               title="Budget view is monthly."
-              action="Switch to Month to review TRY budgets and rollover."
+              description="Switch to Month to review TRY budgets and rollover."
+              className="mt-4"
             />
           ) : (
             <>
@@ -388,9 +425,9 @@ export default function ReportsWorkspace() {
                 }
               />
               <div className="mt-4 grid gap-2">
-                <MetricRow label="Available" value={formatMoney(budgetPerformance.available)} />
-                <MetricRow label="Spent" value={formatMoney(budgetPerformance.totalSpent)} />
-                <MetricRow
+                <StatRow label="Available" value={formatMoney(budgetPerformance.available)} />
+                <StatRow label="Spent" value={formatMoney(budgetPerformance.totalSpent)} />
+                <StatRow
                   label="Remaining"
                   value={formatMoney(budgetPerformance.remaining)}
                   tone={budgetPerformance.remaining >= 0 ? 'good' : 'bad'}
@@ -398,7 +435,7 @@ export default function ReportsWorkspace() {
               </div>
               <div className="mt-4 divide-y divide-subtle">
                 {budgetPerformance.categoryBudgets.length === 0 ? (
-                  <EmptyState title="No category budgets yet." action="Set category limits on Budgets." compact />
+                  <EmptyState title="No category budgets yet." description="Set category limits on Budgets." compact />
                 ) : (
                   budgetPerformance.categoryBudgets.map((item) => (
                     <div key={item.categoryId} className="flex items-center justify-between py-3 text-sm">
@@ -443,48 +480,6 @@ function ModeButton({
   );
 }
 
-function DateInput({
-  label,
-  value,
-  onChange,
-  type,
-  min,
-  max,
-}: {
-  label: string;
-  value: string;
-  onChange: (value: string) => void;
-  type: 'month' | 'date' | 'number';
-  min?: string;
-  max?: string;
-}) {
-  return (
-    <label className="grid gap-1.5">
-      <span className="text-sm font-medium text-secondary">{label}</span>
-      <input
-        type={type}
-        min={min}
-        max={max}
-        value={value}
-        onChange={(event) => onChange(event.target.value)}
-        className={cn(
-          'min-h-11 rounded-lg border border-subtle px-3 py-2 text-sm font-medium text-primary outline-none focus-visible:border-accent',
-          focusVisibleRing
-        )}
-      />
-    </label>
-  );
-}
-
-function Metric({ label, value, tone }: { label: string; value: string; tone: 'good' | 'bad' }) {
-  return (
-    <div className="rounded-2xl border border-subtle bg-surface p-5 ">
-      <p className="text-sm font-semibold text-muted">{label}</p>
-      <p className={`mt-2 text-2xl font-semibold ${tone === 'good' ? 'text-success' : 'text-danger'}`}>{value}</p>
-    </div>
-  );
-}
-
 function formatCompactAxisMoney(amount: number) {
   const abs = Math.abs(amount);
   const sign = amount < 0 ? '-' : '';
@@ -518,18 +513,31 @@ function ChartTooltip({
   if (!active || !payload?.length) return null;
 
   return (
-    <div className="rounded-lg border border-subtle bg-surface px-3 py-2 text-sm shadow-sm">
-      {label ? <p className="mb-1.5 font-medium text-muted">{label}</p> : null}
+    <div
+      className="rounded-lg px-3 py-2 text-sm shadow-[var(--shadow-overlay)]"
+      style={{
+        background: 'var(--surface)',
+        border: '1px solid var(--border)',
+        color: 'var(--text-primary)',
+      }}
+    >
+      {label ? (
+        <p className="mb-1.5 font-medium" style={{ color: 'var(--text-muted)' }}>
+          {label}
+        </p>
+      ) : null}
       <div className="space-y-1">
         {payload.map((entry) => (
           <div key={entry.name} className="flex items-center justify-between gap-4">
-            <span className="flex items-center gap-2 font-medium text-secondary">
+            <span className="flex items-center gap-2 font-medium" style={{ color: 'var(--text-secondary)' }}>
               {entry.color ? (
                 <span className="h-2 w-2 rounded-full" style={{ background: entry.color }} aria-hidden />
               ) : null}
               {formatTooltipSeriesName(entry.name)}
             </span>
-            <span className="font-semibold tabular-nums text-primary">{formatMoney(Number(entry.value))}</span>
+            <span className="font-semibold tabular-nums" style={{ color: 'var(--text-primary)' }}>
+              {formatMoney(Number(entry.value))}
+            </span>
           </div>
         ))}
       </div>
@@ -577,45 +585,10 @@ function ChartPanel({ title, empty, children }: { title: string; empty: boolean;
     <div className="rounded-2xl border border-subtle bg-surface p-5 ">
       <h2 className="text-base font-semibold text-primary">{title}</h2>
       {empty ? (
-        <EmptyState title="No report data yet." action="Log a transaction for this period." />
+        <EmptyState title="No report data yet." description="Log a transaction for this period." className="mt-4" />
       ) : (
         <div className="mt-4">{children}</div>
       )}
     </div>
   );
-}
-
-function EmptyState({ title, action, compact = false }: { title: string; action: string; compact?: boolean }) {
-  return (
-    <div className={`${compact ? 'py-4' : 'mt-6 py-8'} text-center`}>
-      <p className="text-sm font-semibold text-secondary">{title}</p>
-      <p className="mt-1 text-sm font-medium text-muted">{action}</p>
-    </div>
-  );
-}
-
-function MetricRow({ label, value, tone }: { label: string; value: string; tone?: 'good' | 'bad' }) {
-  return (
-    <div className="flex items-center justify-between rounded-md bg-surface-muted px-3 py-2">
-      <span className="text-sm font-medium text-muted">{label}</span>
-      <span
-        className={`text-sm font-semibold ${
-          tone === 'good' ? 'text-success' : tone === 'bad' ? 'text-danger' : 'text-primary'
-        }`}
-      >
-        {value}
-      </span>
-    </div>
-  );
-}
-
-function downloadBlob(filename: string, blob: Blob) {
-  const url = URL.createObjectURL(blob);
-  const link = document.createElement('a');
-  link.href = url;
-  link.download = filename;
-  document.body.appendChild(link);
-  link.click();
-  document.body.removeChild(link);
-  URL.revokeObjectURL(url);
 }

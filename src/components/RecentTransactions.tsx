@@ -6,7 +6,7 @@ import { AnimatePresence, motion } from 'framer-motion';
 import { useLiveQuery } from 'dexie-react-hooks';
 import { db } from '@/database';
 import { formatMoney } from '@/format';
-import { Skeleton } from '@/components/ui/Skeleton';
+import { SkeletonListRows } from '@/components/ui/Skeleton';
 import { cn, focusVisibleRing } from '@/lib/cn';
 import type { Transaction } from '@/types';
 
@@ -77,16 +77,8 @@ export default function RecentTransactions() {
 
       <div className="divide-y divide-subtle">
         {transactions === undefined || categories === undefined ? (
-          <div className="space-y-3 p-4" aria-busy="true" aria-label="Loading recent transactions">
-            {Array.from({ length: 4 }).map((_, index) => (
-              <div key={index} className="grid grid-cols-[1fr_auto] gap-3">
-                <div className="space-y-2">
-                  <Skeleton className="h-4 w-32" />
-                  <Skeleton className="h-3 w-48" />
-                </div>
-                <Skeleton className="h-4 w-16" />
-              </div>
-            ))}
+          <div aria-busy="true" aria-label="Loading recent transactions">
+            <SkeletonListRows count={4} />
           </div>
         ) : filteredTransactions.length === 0 ? (
           <div className="p-6 text-center">
@@ -107,7 +99,7 @@ export default function RecentTransactions() {
                   animate="visible"
                   exit="exit"
                   transition={{ duration: 0.22, ease: 'easeOut', delay: index * 0.025 }}
-                  className="grid grid-cols-[1fr_auto] gap-3 px-4 py-3 transition-colors hover:bg-surface-muted/70"
+                  className="grid grid-cols-[1fr_auto] gap-3 px-4 py-3"
                 >
                   <div>
                     <p className="text-sm font-semibold text-primary">{transaction.title}</p>

@@ -4,6 +4,8 @@ import { useState, useEffect } from 'react';
 import CommandInput from '@/components/CommandInput';
 import DashboardSummary from '@/components/DashboardSummary';
 import RecentTransactions from '@/components/RecentTransactions';
+import { PageHeader } from '@/components/ui/PageHeader';
+import { Skeleton } from '@/components/ui/Skeleton';
 
 export default function Home() {
   const [currentMonth, setCurrentMonth] = useState('');
@@ -15,11 +17,11 @@ export default function Home() {
   }, []);
 
   return (
-    <div className="mx-auto max-w-2xl space-y-5">
-      <header>
-        <h1 className="text-2xl font-semibold text-primary">Dashboard</h1>
-        {currentMonth ? <p className="text-sm font-medium text-muted">{currentMonth}</p> : null}
-      </header>
+    <div className="space-y-5">
+      <PageHeader
+        title="Dashboard"
+        description={currentMonth || <Skeleton className="h-4 w-36" aria-hidden="true" />}
+      />
 
       <CommandInput />
       <DashboardSummary />

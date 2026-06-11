@@ -1,10 +1,10 @@
 # TapTrack Repo Map
 
-Last mapped: 2026-05-20
+Last mapped: 2026-06-11
 
 ## Overview
 
-TapTrack is a mobile-first personal finance tracker using Next.js 14 App Router, React, TypeScript, Tailwind CSS, Dexie/IndexedDB, Recharts, PapaParse, Supabase, and Vitest. `BLUEPRINT.md` defines the original product scope; this map reflects the active V2 implementation plus the QA remediation work.
+TapTrack is a mobile-first personal finance tracker using Next.js 14 App Router, React, TypeScript, Tailwind CSS, Dexie/IndexedDB, Recharts, PapaParse, Supabase, and Vitest. `BLUEPRINT.md` defines the original product scope; this map reflects the active V2 implementation, QA remediation, and the completed `modifications.md` UI/UX pass.
 
 ## Active Features
 
@@ -18,6 +18,7 @@ TapTrack is a mobile-first personal finance tracker using Next.js 14 App Router,
 - CSV/JSON/PDF export and JSON import.
 - PWA manifest, app icons, metadata, and static-asset service worker.
 - Sync status panel with last pull, last push, pending retries, online state, and manual sync.
+- Calm Personal Ledger UI: semantic CSS tokens, shared primitives under `src/components/ui/`, skeleton loading, `PageHeader`, route-aware page widths, and tokenized dark-mode overlays/toasts/charts.
 
 ## Active Structure
 
@@ -54,6 +55,10 @@ TapTrack is a mobile-first personal finance tracker using Next.js 14 App Router,
 | `src/exports/exportService.ts` | CSV, JSON backup/import, and simple PDF exports. |
 | `src/sync/syncService.ts` | Supabase push/delete/pull sync, retry queue, full snapshot sync, status helper. |
 | `src/components/*.tsx` | App shell, dashboard, route workspaces, setup, status, and UI helpers. |
+| `src/components/ui/*.tsx` | Shared primitives: `Button`, `Card`, `Field`, `SelectField`, `Toggle`, `ProgressBar`, `EmptyState`, `PageHeader`, `Skeleton*`, `StatCard`/`StatRow`. |
+| `src/lib/cn.ts` | `cn()` helper and `focusVisibleRing` utility. |
+| `src/lib/download.ts` | Shared `downloadBlob` / `downloadText` for exports. |
+| `app/globals.css` | Semantic light/dark tokens including `--overlay` and `--shadow-overlay`. |
 | `src/**/*.test.ts`, `middleware.test.ts`, `app/api/integration-routes.test.ts` | Vitest coverage for parser, services, sync, exports, routes, and API behavior. |
 
 ## Data Flow
@@ -65,6 +70,16 @@ TapTrack is a mobile-first personal finance tracker using Next.js 14 App Router,
 5. Transaction, conversion, budget, category, recurring, and settings writes update Dexie first, then enqueue best-effort Supabase sync.
 6. Reports and exports aggregate current Dexie data; TRY unification is view-level only and does not mutate balances.
 7. Reset/import replaces local data and calls full snapshot sync to update Supabase and tombstone removed rows.
+
+## Layout Notes
+
+`AppShell` applies route-specific `main` max-width:
+
+- Dashboard and Settings: `max-w-2xl`
+- Reports: `max-w-7xl`
+- Transactions, Budgets, Recurring, Conversions: `max-w-6xl`
+
+Desktop header nav remains `max-w-7xl`.
 
 ## Verification Commands
 
@@ -78,6 +93,16 @@ npm.cmd run build
 `npm.cmd run check` runs the full ladder.
 
 Route smoke against a running server:
+
+Start production server, then smoke (default base URL `http://127.0.0.1:3000`):
+
+```powershell
+npm.cmd run build
+npm.cmd run start
+npm.cmd run smoke:routes
+```
+
+Or override port:
 
 ```powershell
 $env:TAPTRACK_SMOKE_BASE_URL="http://127.0.0.1:<port>"; npm.cmd run smoke:routes
