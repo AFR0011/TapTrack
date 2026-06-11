@@ -1,6 +1,6 @@
 'use client';
 
-import { useMemo, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import { AnimatePresence, motion } from 'framer-motion';
 import { useLiveQuery } from 'dexie-react-hooks';
 import { db } from '@/database';
@@ -8,6 +8,10 @@ import { DEFAULT_SETTINGS_ID } from '@/defaultData';
 import { parseCommands } from '@/parser/parseCommand';
 import { InsufficientBalanceError, createTransactions } from '@/transactions/createTransaction';
 import type { Category, TransactionDraft } from '@/types';
+import { Button } from '@/components/ui/Button';
+import { cn, focusVisibleRing } from '@/lib/cn';
+import { Skeleton } from '@/components/ui/Skeleton';
+import { toast } from 'sonner';
 
 /** Tracks which preview index has an in-flight AI suggestion. */
 type AISuggestions = Record<number, { categoryId: string; label: string } | null>;
@@ -36,36 +40,44 @@ async function fetchAISuggestion(
 }
 
 export default function CommandInput() {
+  const inputRef = useRef<HTMLInputElement>(null);
   const [input, setInput] = useState('');
   const [previews, setPreviews] = useState<TransactionDraft[]>([]);
   const [aiOverrides, setAiOverrides] = useState<AISuggestions>({});
   const [aiLoading, setAiLoading] = useState<Set<number>>(new Set());
-  const [error, setError] = useState('');
+  const [errors, setErrors] = useState<string[]>([]);
   const [saving, setSaving] = useState(false);
-  const categories = useLiveQuery(() => db.categories.toArray(), [], []);
-  const settings = useLiveQuery(() => db.settings.get(DEFAULT_SETTINGS_ID), []);
+  const categories = useLiveQuery(() => db.categories.toArray());
+  const settings = useLiveQuery(() => db.settings.get(DEFAULT_SETTINGS_ID));
+  const isDataLoading = categories === undefined || settings === undefined;
   const categoriesById = useMemo(
-    () => new Map(categories.map((category) => [category.id, category])),
+    () => new Map((categories ?? []).map((category) => [category.id, category])),
     [categories]
   );
 
+  useEffect(() => {
+    if (window.matchMedia('(min-width: 768px)').matches) {
+      inputRef.current?.focus();
+    }
+  }, []);
+
   const handleSubmit = () => {
+    if (!categories || !settings) return;
+
     const results = parseCommands(input, {
       categories,
-      defaultMethod: settings?.lastUsedMethod,
+      defaultMethod: settings.lastUsedMethod,
     });
 
-    const failures = results.filter((r) => !r.ok);
-    if (failures.length > 0) {
+    const failureMessages = results
+      .map((r, i) => (!r.ok ? (results.length === 1 ? r.message : `Entry ${i + 1}: ${r.message}`) : null))
+      .filter((message): message is string => message !== null);
+
+    if (failureMessages.length > 0) {
       setPreviews([]);
       setAiOverrides({});
       setAiLoading(new Set());
-      if (results.length === 1) {
-        setError(failures[0]!.ok === false ? failures[0]!.message : '');
-      } else {
-        const messages = results.map((r, i) => (!r.ok ? `Entry ${i + 1}: ${r.message}` : null)).filter(Boolean);
-        setError(`Fix ${messages.length} entr${messages.length === 1 ? 'y' : 'ies'} before previewing: ${messages.join('; ')}`);
-      }
+      setErrors(failureMessages);
       return;
     }
 
@@ -73,7 +85,7 @@ export default function CommandInput() {
     setPreviews(drafts);
     setAiOverrides({});
     setAiLoading(new Set());
-    setError('');
+    setErrors([]);
 
     if (settings?.aiCategorizationEnabled) {
       const loadingSet = new Set(drafts.map((_, i) => i));
@@ -99,7 +111,7 @@ export default function CommandInput() {
     setPreviews([]);
     setAiOverrides({});
     setAiLoading(new Set());
-    setError('');
+    setErrors([]);
   };
 
   const handleSave = async () => {
@@ -114,17 +126,20 @@ export default function CommandInput() {
     setSaving(true);
     try {
       await createTransactions(finalDrafts);
+      const count = finalDrafts.length;
+      toast.success(`Saved ${count} transaction${count === 1 ? '' : 's'}.`);
       setPreviews([]);
       setAiOverrides({});
       setAiLoading(new Set());
       setInput('');
-      setError('');
+      setErrors([]);
+      inputRef.current?.focus();
     } catch (err) {
-      setError(
+      setErrors([
         err instanceof InsufficientBalanceError
           ? `Balance check failed: ${err.message}`
-          : 'Could not save transaction(s).'
-      );
+          : 'Could not save transaction(s).',
+      ]);
     } finally {
       setSaving(false);
     }
@@ -133,39 +148,80 @@ export default function CommandInput() {
   const isMulti = previews.length > 1;
 
   return (
-    <section id="quick-log" className="rounded-2xl border border-slate-200 bg-white p-5 shadow-xs shadow-slate-200/50 transition-shadow hover:shadow-md">
-      <div className="mb-3 flex flex-col gap-1 md:flex-row md:items-center md:justify-between">
-        <div>
-          <h2 className="text-base font-semibold text-slate-950">Quick command</h2>
-          <p className="text-sm text-slate-500">
-            Examples: -120 coffee cash, +20000 salary card, -250 dinner -500 lunch
-          </p>
-        </div>
-        {settings?.aiCategorizationEnabled && (
-          <span className="self-start rounded-full border border-violet-200 bg-violet-50 px-2 py-0.5 text-xs font-semibold text-violet-600 md:self-auto">
-            AI categorization on
-          </span>
-        )}
-      </div>
+    <section
+      id="quick-log"
+      className="rounded-2xl border border-subtle bg-surface p-5 shadow-sm ring-1 ring-accent/15"
+    >
       <div className="flex flex-col gap-2 sm:flex-row">
         <input
+          ref={inputRef}
           type="text"
           value={input}
           onChange={(e) => setInput(e.target.value)}
           onKeyDown={(e) => e.key === 'Enter' && handleSubmit()}
           placeholder="-120 coffee cash"
-          disabled={saving}
-          className="min-h-11 flex-1 rounded-lg border border-slate-300 px-4 py-2 text-sm font-medium text-slate-950 outline-none transition-all placeholder:text-slate-400 focus:border-blue-500 focus:ring-2 focus:ring-blue-100/50"
+          disabled={saving || isDataLoading}
+          aria-label="Quick transaction command"
+          className={cn(
+            'h-12 min-h-12 flex-1 rounded-lg border border-subtle px-4 text-base font-medium text-primary outline-none transition-all placeholder:text-muted focus-visible:border-accent md:text-sm',
+            focusVisibleRing
+          )}
         />
-        <button
-          onClick={handleSubmit}
-          disabled={saving}
-          className="min-h-11 rounded-lg bg-blue-500 px-5 py-2 text-sm font-semibold text-white transition-all hover:bg-blue-600 disabled:opacity-60"
-        >
+        <Button onClick={handleSubmit} disabled={saving || isDataLoading}>
           Preview
-        </button>
+        </Button>
       </div>
-      {error && <p className="mt-2 text-sm font-medium text-red-600">{error}</p>}
+      <div className="mt-3 flex flex-wrap items-center gap-2">
+        {isDataLoading ? (
+          <>
+            <Skeleton className="h-7 w-16" />
+            <Skeleton className="h-7 w-28" />
+            <Skeleton className="h-7 w-32" />
+          </>
+        ) : (
+          <>
+        <p className="text-xs font-medium text-muted">Examples:</p>
+        {['-120 coffee cash', '+20000 salary card'].map((example) => (
+          <button
+            key={example}
+            type="button"
+            onClick={() => setInput(example)}
+            disabled={saving}
+            className={cn(
+              'min-h-11 rounded-full border border-subtle bg-surface-muted px-2.5 py-1 text-xs font-medium text-secondary transition-colors hover:bg-surface-raised hover:text-primary disabled:opacity-60',
+              focusVisibleRing
+            )}
+          >
+            {example}
+          </button>
+        ))}
+        {settings.aiCategorizationEnabled ? (
+          <span className="rounded-full border border-ai-border bg-ai-muted px-2 py-0.5 text-xs font-semibold text-ai-text">
+            AI on
+          </span>
+        ) : null}
+          </>
+        )}
+      </div>
+      {errors.length > 0 ? (
+        <div
+          role="alert"
+          className="mt-3 rounded-lg border border-subtle bg-danger-muted px-3 py-2 text-sm font-medium text-danger"
+        >
+          {errors.length === 1 ? (
+            <p>{errors[0]}</p>
+          ) : (
+            <>
+              <p>Fix {errors.length} entries before previewing:</p>
+              <ul className="mt-2 list-disc space-y-1 pl-5">
+                {errors.map((message, index) => (
+                  <li key={`${index}-${message}`}>{message}</li>
+                ))}
+              </ul>
+            </>
+          )}
+        </div>
+      ) : null}
 
       <AnimatePresence>
       {previews.length > 0 && (
@@ -174,9 +230,9 @@ export default function CommandInput() {
           animate={{ opacity: 1, y: 0 }}
           exit={{ opacity: 0, y: -8 }}
           transition={{ duration: 0.2, ease: 'easeOut' }}
-          className="mt-4 rounded-xl border border-slate-200 bg-slate-50 p-4 transition-all"
+          className="mt-4 rounded-xl border border-subtle bg-surface-muted p-4 transition-all"
         >
-          <h3 className="mb-3 text-sm font-semibold text-slate-950">
+          <h3 className="mb-3 text-sm font-semibold text-primary">
             {isMulti ? `Preview (${previews.length} transactions)` : 'Preview'}
           </h3>
 
@@ -190,10 +246,10 @@ export default function CommandInput() {
               return (
                 <div
                   key={index}
-                  className={`${isMulti ? 'rounded-lg border border-slate-200 bg-white p-3' : ''}`}
+                  className={`${isMulti ? 'rounded-lg border border-subtle bg-surface p-3' : ''}`}
                 >
                   {isMulti && (
-                    <p className="mb-2 text-xs font-medium uppercase tracking-wide text-slate-400">
+                    <p className="mb-2 text-xs font-medium text-muted">
                       {index + 1} of {previews.length}
                     </p>
                   )}
@@ -202,21 +258,25 @@ export default function CommandInput() {
                     <PreviewItem label="Amount" value={`${preview.amount} ${preview.currency}`} />
                     <PreviewItem label="Title" value={preview.title} />
                     <div>
-                      <p className="text-xs font-medium uppercase tracking-normal text-slate-500">Category</p>
+                      <p className="text-xs font-medium text-muted">Category</p>
                       <div className="mt-1 flex flex-wrap items-center gap-1.5">
-                        <span className="font-semibold text-slate-950">{displayCategoryName}</span>
+                        <span className="font-semibold text-primary">{displayCategoryName}</span>
                         {isAiLoading && (
-                          <span className="animate-pulse rounded-full bg-violet-100 px-1.5 py-0.5 text-xs font-semibold text-violet-500">
+                          <span className="animate-pulse rounded-full bg-ai-muted px-1.5 py-0.5 text-xs font-semibold text-ai">
                             AI…
                           </span>
                         )}
                         {aiOverride && !isAiLoading && (
                           <>
-                            <span className="rounded-full bg-violet-100 px-1.5 py-0.5 text-xs font-semibold text-violet-600">
+                            <span className="rounded-full bg-ai-muted px-1.5 py-0.5 text-xs font-semibold text-ai-text">
                               AI
                             </span>
-                            <button
+                            <Button
                               type="button"
+                              variant="secondary"
+                              size="sm"
+                              className="min-w-11 shrink-0"
+                              aria-label={`Revert AI category for line ${index + 1}`}
                               onClick={() =>
                                 setAiOverrides((prev) => {
                                   const next = { ...prev };
@@ -224,10 +284,9 @@ export default function CommandInput() {
                                   return next;
                                 })
                               }
-                              className="text-xs font-semibold text-slate-400 hover:text-slate-600"
                             >
-                              revert
-                            </button>
+                              Revert
+                            </Button>
                           </>
                         )}
                       </div>
@@ -241,31 +300,23 @@ export default function CommandInput() {
           </div>
 
           <div className="mt-4 flex flex-wrap gap-2">
-            <button
-              onClick={handleSave}
-              disabled={saving}
-              className="rounded-lg bg-emerald-600 px-4 py-2 text-sm font-semibold text-white transition-all hover:bg-emerald-700 disabled:opacity-60"
-            >
-              {saving ? 'Saving…' : isMulti ? `Save All (${previews.length})` : 'Save'}
-            </button>
-            <button
-              onClick={handleEditPreview}
-              disabled={saving}
-              className="rounded-lg border border-slate-300 bg-white px-4 py-2 text-sm font-semibold text-slate-700 transition-all hover:bg-slate-100"
-            >
+            <Button variant="success" onClick={handleSave} disabled={saving} loading={saving}>
+              {isMulti ? `Save All (${previews.length})` : 'Save'}
+            </Button>
+            <Button variant="secondary" onClick={handleEditPreview} disabled={saving}>
               Edit
-            </button>
-            <button
+            </Button>
+            <Button
+              variant="ghost"
               onClick={() => {
                 setPreviews([]);
                 setAiOverrides({});
                 setAiLoading(new Set());
               }}
               disabled={saving}
-              className="rounded-lg px-4 py-2 text-sm font-semibold text-slate-500 transition-all hover:bg-slate-100"
             >
               Cancel
-            </button>
+            </Button>
           </div>
         </motion.div>
       )}
@@ -277,8 +328,8 @@ export default function CommandInput() {
 function PreviewItem({ label, value }: { label: string; value: string }) {
   return (
     <div>
-      <p className="text-xs font-medium uppercase tracking-normal text-slate-500">{label}</p>
-      <p className="mt-1 font-semibold text-slate-950">{value}</p>
+      <p className="text-xs font-medium text-muted">{label}</p>
+      <p className="mt-1 font-semibold text-primary">{value}</p>
     </div>
   );
 }

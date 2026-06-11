@@ -1,6 +1,7 @@
 'use client';
 
-import { useMemo, useState } from 'react';
+import { type FormEvent, useMemo, useState } from 'react';
+import { useRouter } from 'next/navigation';
 import { useLiveQuery } from 'dexie-react-hooks';
 import { db } from '@/database';
 import { formatLocalDate, getCurrentMonth } from '@/dates';
@@ -23,6 +24,11 @@ import {
   type TransactionType,
 } from '@/types';
 import { ConfirmDialog } from './ConfirmDialog';
+import { Button } from '@/components/ui/Button';
+import { cn, focusVisibleRing } from '@/lib/cn';
+import { Field } from '@/components/ui/Field';
+import { SelectField } from '@/components/ui/SelectField';
+import { SkeletonCard } from '@/components/ui/Skeleton';
 import { toast } from 'sonner';
 
 type TransactionFormState = {
@@ -37,8 +43,10 @@ type TransactionFormState = {
 };
 
 export default function TransactionsWorkspace() {
-  const categories = useLiveQuery(() => db.categories.toArray(), [], []);
-  const transactions = useLiveQuery(() => db.transactions.toArray(), [], []);
+  const router = useRouter();
+  const categories = useLiveQuery(() => db.categories.toArray());
+  const transactions = useLiveQuery(() => db.transactions.toArray());
+  const isLoading = categories === undefined || transactions === undefined;
   const [month, setMonth] = useState(getCurrentMonth());
   const [typeFilter, setTypeFilter] = useState<'all' | TransactionType>('all');
   const [methodFilter, setMethodFilter] = useState<'all' | Method>('all');
@@ -50,12 +58,12 @@ export default function TransactionsWorkspace() {
   const [confirmDelete, setConfirmDelete] = useState<Transaction | null>(null);
 
   const categoryById = useMemo(
-    () => new Map(categories.map((category) => [category.id, category])),
+    () => new Map((categories ?? []).map((category) => [category.id, category])),
     [categories]
   );
   const filteredTransactions = useMemo(
     () =>
-      transactions
+      (transactions ?? [])
         .filter((transaction) => transaction.date.startsWith(month))
         .filter((transaction) => typeFilter === 'all' || transaction.type === typeFilter)
         .filter((transaction) => methodFilter === 'all' || transaction.method === methodFilter)
@@ -76,6 +84,24 @@ export default function TransactionsWorkspace() {
         }),
     [categoryFilter, categoryById, methodFilter, month, searchQuery, transactions, typeFilter]
   );
+  const transactionsByDate = useMemo(() => {
+    const groups: Array<{ date: string; label: string; transactions: Transaction[] }> = [];
+
+    for (const transaction of filteredTransactions) {
+      const lastGroup = groups[groups.length - 1];
+      if (lastGroup && lastGroup.date === transaction.date) {
+        lastGroup.transactions.push(transaction);
+      } else {
+        groups.push({
+          date: transaction.date,
+          label: formatTransactionDateGroupLabel(transaction.date),
+          transactions: [transaction],
+        });
+      }
+    }
+
+    return groups;
+  }, [filteredTransactions]);
 
   const handleCreate = async (draft: TransactionDraft) => {
     await createTransaction(draft);
@@ -103,24 +129,47 @@ export default function TransactionsWorkspace() {
     }
   };
 
+  const openTransactionEditor = (transaction: Transaction) => {
+    setEditing(transaction);
+    setShowForm(false);
+    setError('');
+  };
+
+  if (isLoading) {
+    return (
+      <div className="space-y-5" aria-busy="true" aria-label="Loading transactions">
+        <header>
+          <h1 className="text-2xl font-semibold text-primary">Transactions</h1>
+          <p className="text-sm font-medium text-muted">Search, filter, and manage your transactions.</p>
+        </header>
+        <SkeletonCard />
+        <SkeletonCard />
+      </div>
+    );
+  }
+
   return (
     <div className="space-y-5">
       <header className="flex flex-col gap-3 md:flex-row md:items-end md:justify-between">
         <div>
-          <h1 className="text-2xl font-semibold text-slate-950">Transactions</h1>
-          <p className="text-sm font-medium text-slate-500">Filter, search, add, edit, delete, and backdate local records.</p>
+          <h1 className="text-2xl font-semibold text-primary">Transactions</h1>
+          <p className="text-sm font-medium text-muted">Search, filter, and manage your transactions.</p>
         </div>
-        <button
-          type="button"
-          onClick={() => {
-            setEditing(null);
-            setShowForm((current) => !current);
-            setError('');
-          }}
-          className="rounded-md bg-blue-500 px-4 py-2 text-sm font-semibold text-white hover:bg-blue-600"
-        >
-          {showForm ? 'Close form' : 'Add transaction'}
-        </button>
+        <div className="flex flex-wrap gap-2">
+          <Button type="button" variant="secondary" onClick={() => router.push('/app/recurring')}>
+            Recurring
+          </Button>
+          <Button
+            type="button"
+            onClick={() => {
+              setEditing(null);
+              setShowForm((current) => !current);
+              setError('');
+            }}
+          >
+            {showForm ? 'Close form' : 'Add transaction'}
+          </Button>
+        </div>
       </header>
 
       {(showForm || editing) && (
@@ -137,96 +186,144 @@ export default function TransactionsWorkspace() {
         />
       )}
 
-      <section className="rounded-2xl border border-slate-200 bg-white p-5 shadow-xs shadow-slate-200/50 transition-all hover:shadow-md">
-        <div className="grid gap-3 md:grid-cols-5">
-          <label className="grid gap-1 text-xs font-medium uppercase tracking-normal text-slate-500">
-            Search
+      <section className="rounded-2xl border border-subtle bg-surface p-5">
+        <div className="grid gap-3 sm:grid-cols-2 md:grid-cols-5">
+          <label className="grid gap-1.5">
+            <span className="text-sm font-medium text-secondary">Search</span>
             <input
               type="text"
               value={searchQuery}
               onChange={(event) => setSearchQuery(event.target.value)}
               placeholder="Title, note, or category"
-              className="rounded-md border border-slate-300 px-3 py-2 text-sm font-medium text-slate-950 outline-none focus:border-blue-500"
+              className={cn(
+                'min-h-11 w-full rounded-lg border border-subtle px-3 py-2 text-sm font-medium text-primary outline-none focus-visible:border-accent',
+                focusVisibleRing
+              )}
             />
           </label>
-          <label className="grid gap-1 text-xs font-medium uppercase tracking-normal text-slate-500">
-            Month
+          <label className="grid gap-1.5">
+            <span className="text-sm font-medium text-secondary">Month</span>
             <input
               type="month"
               value={month}
               onChange={(event) => setMonth(event.target.value)}
-              className="rounded-md border border-slate-300 px-3 py-2 text-sm font-medium text-slate-950 outline-none focus:border-blue-500"
+              className={cn(
+                'min-h-11 w-full rounded-lg border border-subtle px-3 py-2 text-sm font-medium text-primary outline-none focus-visible:border-accent',
+                focusVisibleRing
+              )}
             />
           </label>
-          <label className="grid gap-1 text-xs font-medium uppercase tracking-normal text-slate-500">
-            Type
-            <select value={typeFilter} onChange={(event) => setTypeFilter(event.target.value as 'all' | TransactionType)} className="rounded-md border border-slate-300 px-3 py-2 text-sm font-medium text-slate-950 outline-none focus:border-blue-500">
-              <option value="all">all</option>
-              {TRANSACTION_TYPES.map((type) => (
-                <option key={type} value={type}>{type}</option>
-              ))}
-            </select>
-          </label>
-          <label className="grid gap-1 text-xs font-medium uppercase tracking-normal text-slate-500">
-            Method
-            <select value={methodFilter} onChange={(event) => setMethodFilter(event.target.value as 'all' | Method)} className="rounded-md border border-slate-300 px-3 py-2 text-sm font-medium text-slate-950 outline-none focus:border-blue-500">
-              <option value="all">all</option>
-              {SUPPORTED_METHODS.map((method) => (
-                <option key={method} value={method}>{method}</option>
-              ))}
-            </select>
-          </label>
-          <label className="grid gap-1 text-xs font-medium uppercase tracking-normal text-slate-500">
-            Category
-            <select value={categoryFilter} onChange={(event) => setCategoryFilter(event.target.value)} className="rounded-md border border-slate-300 px-3 py-2 text-sm font-medium text-slate-950 outline-none focus:border-blue-500">
-              <option value="all">all</option>
-              {categories.map((category) => (
-                <option key={category.id} value={category.id}>{category.name}</option>
-              ))}
-            </select>
-          </label>
+          <SecondaryTransactionFilters
+            className="hidden md:contents"
+            categories={categories}
+            typeFilter={typeFilter}
+            methodFilter={methodFilter}
+            categoryFilter={categoryFilter}
+            onTypeFilterChange={setTypeFilter}
+            onMethodFilterChange={setMethodFilter}
+            onCategoryFilterChange={setCategoryFilter}
+          />
         </div>
-        {error ? <p className="mt-3 text-sm font-medium text-red-600">{error}</p> : null}
+        <details className="mt-3 rounded-lg border border-subtle bg-surface-muted md:hidden">
+          <summary
+            className={cn(
+              'flex min-h-11 cursor-pointer list-none items-center rounded-lg px-3 py-2.5 text-sm font-medium text-secondary select-none [&::-webkit-details-marker]:hidden',
+              focusVisibleRing
+            )}
+          >
+            Filters
+          </summary>
+          <SecondaryTransactionFilters
+            className="grid gap-3 border-t border-subtle p-3"
+            categories={categories}
+            typeFilter={typeFilter}
+            methodFilter={methodFilter}
+            categoryFilter={categoryFilter}
+            onTypeFilterChange={setTypeFilter}
+            onMethodFilterChange={setMethodFilter}
+            onCategoryFilterChange={setCategoryFilter}
+          />
+        </details>
+        {error ? <p className="mt-3 text-sm font-medium text-danger">{error}</p> : null}
       </section>
 
-      <section className="overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-xs shadow-slate-200/50 transition-all hover:shadow-md">
+      <section className="overflow-hidden rounded-2xl border border-subtle bg-surface ">
         {filteredTransactions.length === 0 ? (
           <div className="p-8 text-center">
-            <p className="text-sm font-semibold text-slate-700">No transactions match these filters.</p>
-            <p className="mt-1 text-sm font-medium text-slate-500">Clear the filters or add a transaction for this month.</p>
-            <button
+            <p className="text-sm font-semibold text-secondary">No transactions match these filters.</p>
+            <p className="mt-1 text-sm font-medium text-muted">Clear the filters or add a transaction for this month.</p>
+            <Button
               type="button"
+              className="mt-4"
               onClick={() => {
                 setEditing(null);
                 setShowForm(true);
                 setError('');
               }}
-              className="mt-4 rounded-md bg-blue-500 px-4 py-2 text-sm font-semibold text-white hover:bg-blue-600"
             >
               Add transaction
-            </button>
+            </Button>
           </div>
         ) : (
-          <div className="divide-y divide-slate-100">
-            {filteredTransactions.map((transaction) => (
-              <div key={transaction.id} className="grid gap-3 p-4 md:grid-cols-[1fr_auto_auto] md:items-center">
-                <div>
-                  <p className="text-sm font-semibold text-slate-950">{transaction.title}</p>
-                  <p className="mt-1 text-xs font-medium uppercase tracking-normal text-slate-500">
-                    {transaction.date} / {categoryById.get(transaction.categoryId)?.name ?? transaction.categoryId} / {transaction.method}
-                  </p>
-                  {transaction.note ? <p className="mt-1 text-sm text-slate-500">{transaction.note}</p> : null}
+          <div>
+            {transactionsByDate.map((group, groupIndex) => (
+              <div key={group.date} className={groupIndex > 0 ? 'border-t border-subtle' : undefined}>
+                <div className="bg-surface-muted px-4 py-2">
+                  <h3 className="text-xs font-semibold text-muted">{group.label}</h3>
                 </div>
-                <p className={`text-sm font-semibold ${transaction.type === 'income' ? 'text-emerald-600' : 'text-red-600'}`}>
-                  {transaction.type === 'income' ? '+' : '-'}{formatMoney(transaction.amount, transaction.currency)}
-                </p>
-                <div className="flex gap-2">
-                  <button type="button" onClick={() => { setEditing(transaction); setShowForm(false); }} className="rounded-md border border-slate-300 px-3 py-2 text-sm font-semibold text-slate-700 hover:bg-slate-100">
-                    Edit
-                  </button>
-                  <button type="button" onClick={() => setConfirmDelete(transaction)} className="rounded-md px-3 py-2 text-sm font-semibold text-red-600 hover:bg-red-50">
-                    Delete
-                  </button>
+                <div className="divide-y divide-subtle">
+                  {group.transactions.map((transaction) => (
+                    <div
+                      key={transaction.id}
+                      className="flex items-center gap-2 p-3 md:grid md:grid-cols-[1fr_auto_auto] md:items-center md:gap-3 md:p-4"
+                    >
+                      <button
+                        type="button"
+                        onClick={() => openTransactionEditor(transaction)}
+                        className="flex min-h-11 min-w-0 flex-1 items-center justify-between gap-3 rounded-lg px-1 text-left transition-colors hover:bg-surface-muted focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-accent md:px-0"
+                      >
+                        <div className="min-w-0">
+                          <p className="text-sm font-semibold text-primary">{transaction.title}</p>
+                          <p className="mt-1 text-xs font-medium text-muted">
+                            {categoryById.get(transaction.categoryId)?.name ?? transaction.categoryId} · {transaction.method}
+                          </p>
+                          {transaction.note ? <p className="mt-1 text-sm text-muted">{transaction.note}</p> : null}
+                        </div>
+                        <p
+                          className={`shrink-0 text-right text-sm font-semibold tabular-nums md:hidden ${transaction.type === 'income' ? 'text-success' : 'text-danger'}`}
+                        >
+                          {transaction.type === 'income' ? '+' : '-'}
+                          {formatMoney(transaction.amount, transaction.currency)}
+                        </p>
+                      </button>
+                      <p
+                        className={`hidden text-right text-sm font-semibold tabular-nums md:block ${transaction.type === 'income' ? 'text-success' : 'text-danger'}`}
+                      >
+                        {transaction.type === 'income' ? '+' : '-'}
+                        {formatMoney(transaction.amount, transaction.currency)}
+                      </p>
+                      <div className="flex shrink-0 items-center gap-1">
+                        <Button
+                          type="button"
+                          variant="ghost"
+                          size="icon"
+                          aria-label={`Edit ${transaction.title}`}
+                          onClick={() => openTransactionEditor(transaction)}
+                        >
+                          <StrokeIcon d={PENCIL_ICON} />
+                        </Button>
+                        <Button
+                          type="button"
+                          variant="dangerGhost"
+                          size="icon"
+                          aria-label={`Delete ${transaction.title}`}
+                          onClick={() => setConfirmDelete(transaction)}
+                        >
+                          <StrokeIcon d={TRASH_ICON} />
+                        </Button>
+                      </div>
+                    </div>
+                  ))}
                 </div>
               </div>
             ))}
@@ -287,16 +384,31 @@ function TransactionForm({
     }));
   };
 
-  const handleSubmit = async () => {
-    setSaving(true);
+  const handleSubmit = async (event: FormEvent<HTMLFormElement>) => {
+    event.preventDefault();
     setError('');
+
+    const trimmedTitle = form.title.trim();
+    const amount = parseAmountInput(form.amount);
+
+    if (!trimmedTitle) {
+      setError('Enter a title for this transaction.');
+      return;
+    }
+
+    if (amount <= 0) {
+      setError('Enter a valid amount greater than zero.');
+      return;
+    }
+
+    setSaving(true);
 
     try {
       await onSubmit({
         type: form.type,
-        amount: parseAmountInput(form.amount),
+        amount,
         currency: form.currency,
-        title: form.title.trim(),
+        title: trimmedTitle,
         categoryId: selectedCategoryId,
         method: form.method,
         date: form.date,
@@ -311,87 +423,192 @@ function TransactionForm({
   };
 
   return (
-    <section className="rounded-2xl border border-slate-200 bg-white p-5 shadow-xs shadow-slate-200/50 transition-all hover:shadow-md">
-      <h2 className="text-base font-semibold text-slate-950">{transaction ? 'Edit transaction' : 'Add transaction'}</h2>
-      <div className="mt-4 grid gap-3 md:grid-cols-4">
-        <FormSelect label="Type" value={form.type} onChange={(value) => setType(value as TransactionType)} options={TRANSACTION_TYPES} />
-        <FormInput label="Amount" value={form.amount} onChange={(value) => setField('amount', value)} inputMode="decimal" />
-        <FormSelect label="Currency" value={form.currency} onChange={(value) => setField('currency', value as Currency)} options={SUPPORTED_CURRENCIES} />
-        <FormSelect label="Method" value={form.method} onChange={(value) => setField('method', value as Method)} options={SUPPORTED_METHODS} />
-        <FormInput label="Title" value={form.title} onChange={(value) => setField('title', value)} />
-        <FormSelect label="Category" value={selectedCategoryId} onChange={(value) => setField('categoryId', value)} options={typedCategories.map((category) => ({ value: category.id, label: category.name }))} />
-        <FormInput label="Date" type="date" value={form.date} onChange={(value) => setField('date', value)} />
-        <FormInput label="Note" value={form.note} onChange={(value) => setField('note', value)} />
-      </div>
-      {error ? <p className="mt-3 text-sm font-medium text-red-600">{error}</p> : null}
-      <div className="mt-4 flex gap-2">
-        <button type="button" onClick={handleSubmit} disabled={saving} className="rounded-md bg-blue-500 px-4 py-2 text-sm font-semibold text-white hover:bg-blue-600 disabled:opacity-60">
-          {saving ? 'Saving' : 'Save transaction'}
-        </button>
-        <button type="button" onClick={onCancel} className="rounded-md px-4 py-2 text-sm font-semibold text-slate-500 hover:bg-slate-100">
-          Cancel
-        </button>
-      </div>
+    <section className="rounded-2xl border border-subtle bg-surface p-5">
+      <h2 id="transaction-form-title" className="text-base font-semibold text-primary">
+        {transaction ? 'Edit transaction' : 'Add transaction'}
+      </h2>
+      <form onSubmit={handleSubmit} aria-labelledby="transaction-form-title" className="mt-4 space-y-4" noValidate>
+        <div className="grid gap-3 md:grid-cols-4">
+          <SelectField
+            label="Type"
+            value={form.type}
+            onChange={(event) => setType(event.target.value as TransactionType)}
+            options={TRANSACTION_TYPES.map((type) => ({
+              value: type,
+              label: type.charAt(0).toUpperCase() + type.slice(1),
+            }))}
+          />
+          <Field
+            label="Amount"
+            value={form.amount}
+            onChange={(event) => setField('amount', event.target.value)}
+            inputMode="decimal"
+            autoComplete="off"
+            required
+          />
+          <SelectField
+            label="Currency"
+            value={form.currency}
+            onChange={(event) => setField('currency', event.target.value as Currency)}
+            options={SUPPORTED_CURRENCIES}
+          />
+          <SelectField
+            label="Method"
+            value={form.method}
+            onChange={(event) => setField('method', event.target.value as Method)}
+            options={SUPPORTED_METHODS.map((method) => ({
+              value: method,
+              label: method.charAt(0).toUpperCase() + method.slice(1),
+            }))}
+          />
+          <Field
+            label="Title"
+            value={form.title}
+            onChange={(event) => setField('title', event.target.value)}
+            autoComplete="off"
+            required
+          />
+          <SelectField
+            label="Category"
+            value={selectedCategoryId}
+            onChange={(event) => setField('categoryId', event.target.value)}
+            options={typedCategories.map((category) => ({ value: category.id, label: category.name }))}
+          />
+          <Field
+            label="Date"
+            type="date"
+            value={form.date}
+            onChange={(event) => setField('date', event.target.value)}
+            required
+          />
+          <Field label="Note" value={form.note} onChange={(event) => setField('note', event.target.value)} />
+        </div>
+        {error ? (
+          <p role="alert" className="text-sm font-medium text-danger">
+            {error}
+          </p>
+        ) : null}
+        <div className="flex flex-wrap gap-2">
+          <Button type="submit" loading={saving} disabled={saving}>
+            Save transaction
+          </Button>
+          <Button type="button" variant="ghost" onClick={onCancel}>
+            Cancel
+          </Button>
+        </div>
+      </form>
     </section>
   );
 }
 
-function FormInput({
-  label,
-  value,
-  onChange,
-  type = 'text',
-  inputMode,
-}: {
-  label: string;
-  value: string;
-  onChange: (value: string) => void;
-  type?: string;
-  inputMode?: 'decimal';
-}) {
+const PENCIL_ICON =
+  'M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z';
+const TRASH_ICON =
+  'M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16';
+
+function StrokeIcon({ d, className }: { d: string; className?: string }) {
   return (
-    <label className="grid gap-1 text-xs font-medium uppercase tracking-normal text-slate-500">
-      {label}
-      <input
-        type={type}
-        inputMode={inputMode}
-        value={value}
-        onChange={(event) => onChange(event.target.value)}
-        className="rounded-md border border-slate-300 px-3 py-2 text-sm font-medium normal-case text-slate-950 outline-none focus:border-blue-500"
-      />
-    </label>
+    <svg
+      className={className ?? 'h-5 w-5'}
+      viewBox="0 0 24 24"
+      fill="none"
+      stroke="currentColor"
+      strokeWidth={1.5}
+      strokeLinecap="round"
+      strokeLinejoin="round"
+      aria-hidden="true"
+    >
+      <path d={d} />
+    </svg>
   );
 }
 
-function FormSelect({
-  label,
-  value,
-  onChange,
-  options,
+function formatTransactionDateGroupLabel(date: string): string {
+  const today = formatLocalDate(new Date());
+  const yesterday = new Date();
+  yesterday.setDate(yesterday.getDate() - 1);
+  const yesterdayLabel = formatLocalDate(yesterday);
+
+  if (date === today) return 'Today';
+  if (date === yesterdayLabel) return 'Yesterday';
+  return date;
+}
+
+function SecondaryTransactionFilters({
+  className,
+  categories,
+  typeFilter,
+  methodFilter,
+  categoryFilter,
+  onTypeFilterChange,
+  onMethodFilterChange,
+  onCategoryFilterChange,
 }: {
-  label: string;
-  value: string;
-  onChange: (value: string) => void;
-  options: readonly string[] | Array<{ value: string; label: string }>;
+  className?: string;
+  categories: Category[];
+  typeFilter: 'all' | TransactionType;
+  methodFilter: 'all' | Method;
+  categoryFilter: string;
+  onTypeFilterChange: (value: 'all' | TransactionType) => void;
+  onMethodFilterChange: (value: 'all' | Method) => void;
+  onCategoryFilterChange: (value: string) => void;
 }) {
   return (
-    <label className="grid gap-1 text-xs font-medium uppercase tracking-normal text-slate-500">
-      {label}
-      <select
-        value={value}
-        onChange={(event) => onChange(event.target.value)}
-        className="rounded-md border border-slate-300 px-3 py-2 text-sm font-medium normal-case text-slate-950 outline-none focus:border-blue-500"
-      >
-        {options.map((option) => {
-          const value = typeof option === 'string' ? option : option.value;
-          const label = typeof option === 'string' ? option : option.label;
-          return (
-            <option key={value} value={value}>
-              {label}
+    <div className={className}>
+      <label className="grid gap-1.5">
+        <span className="text-sm font-medium text-secondary">Type</span>
+        <select
+          value={typeFilter}
+          onChange={(event) => onTypeFilterChange(event.target.value as 'all' | TransactionType)}
+          className={cn(
+            'min-h-11 w-full rounded-lg border border-subtle px-3 py-2 text-sm font-medium text-primary outline-none focus-visible:border-accent',
+            focusVisibleRing
+          )}
+        >
+          <option value="all">All</option>
+          {TRANSACTION_TYPES.map((type) => (
+            <option key={type} value={type}>
+              {type.charAt(0).toUpperCase() + type.slice(1)}
             </option>
-          );
-        })}
-      </select>
-    </label>
+          ))}
+        </select>
+      </label>
+      <label className="grid gap-1.5">
+        <span className="text-sm font-medium text-secondary">Method</span>
+        <select
+          value={methodFilter}
+          onChange={(event) => onMethodFilterChange(event.target.value as 'all' | Method)}
+          className={cn(
+            'min-h-11 w-full rounded-lg border border-subtle px-3 py-2 text-sm font-medium text-primary outline-none focus-visible:border-accent',
+            focusVisibleRing
+          )}
+        >
+          <option value="all">All</option>
+          {SUPPORTED_METHODS.map((method) => (
+            <option key={method} value={method}>
+              {method.charAt(0).toUpperCase() + method.slice(1)}
+            </option>
+          ))}
+        </select>
+      </label>
+      <label className="grid gap-1.5">
+        <span className="text-sm font-medium text-secondary">Category</span>
+        <select
+          value={categoryFilter}
+          onChange={(event) => onCategoryFilterChange(event.target.value)}
+          className={cn(
+            'min-h-11 w-full rounded-lg border border-subtle px-3 py-2 text-sm font-medium text-primary outline-none focus-visible:border-accent',
+            focusVisibleRing
+          )}
+        >
+          <option value="all">All</option>
+          {categories.map((category) => (
+            <option key={category.id} value={category.id}>
+              {category.name}
+            </option>
+          ))}
+        </select>
+      </label>
+    </div>
   );
 }

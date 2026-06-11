@@ -75,7 +75,7 @@ export function DatabaseProvider({ children }: { children: ReactNode }) {
     <>
       {children}
       {error ? (
-        <div className="fixed bottom-4 left-4 right-4 rounded border border-red-200 bg-red-50 p-3 text-sm text-red-700 shadow">
+        <div className="fixed bottom-4 left-4 right-4 rounded border border-subtle bg-danger-muted p-3 text-sm text-danger shadow">
           Local database failed to initialize or sync: {error}
         </div>
       ) : null}

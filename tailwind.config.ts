@@ -2,6 +2,7 @@ import type { Config } from 'tailwindcss';
 import tailwindcssAnimate from 'tailwindcss-animate';
 
 const config: Config = {
+  darkMode: 'class',
   content: [
     './app/**/*.{js,ts,jsx,tsx,mdx}',
     './pages/**/*.{js,ts,jsx,tsx,mdx}',
@@ -11,13 +12,42 @@ const config: Config = {
   theme: {
     extend: {
       colors: {
-        background: 'var(--background)',
-        foreground: 'var(--foreground)',
+        background: 'var(--bg)',
+        foreground: 'var(--text-primary)',
+        surface: {
+          DEFAULT: 'var(--surface)',
+          muted: 'var(--surface-muted)',
+          raised: 'var(--surface-raised)',
+        },
+        primary: 'var(--text-primary)',
+        secondary: 'var(--text-secondary)',
+        muted: 'var(--text-muted)',
+        subtle: 'var(--border)',
+        accent: {
+          DEFAULT: 'var(--accent)',
+          muted: 'var(--accent-muted)',
+        },
+        danger: {
+          DEFAULT: 'var(--danger)',
+          muted: 'var(--danger-muted)',
+        },
+        success: {
+          DEFAULT: 'var(--success)',
+          muted: 'var(--success-muted)',
+        },
+        warning: {
+          DEFAULT: 'var(--warning)',
+          muted: 'var(--warning-muted)',
+        },
+        ai: {
+          DEFAULT: 'var(--ai)',
+          muted: 'var(--ai-muted)',
+          border: 'var(--ai-border)',
+          text: 'var(--ai-text)',
+        },
       },
-      backgroundImage: {
-        'gradient-brand': 'linear-gradient(135deg, #2563eb 0%, #7c3aed 100%)',
-        'gradient-emerald': 'linear-gradient(135deg, #059669 0%, #0284c7 100%)',
-        'gradient-card': 'linear-gradient(145deg, rgba(255,255,255,0.9) 0%, rgba(248,250,252,0.7) 100%)',
+      borderColor: {
+        DEFAULT: 'var(--border)',
       },
       keyframes: {
         'count-up': {
@@ -32,14 +62,6 @@ const config: Config = {
       animation: {
         'count-up': 'count-up 0.4s ease-out both',
         shimmer: 'shimmer 1.5s ease-in-out infinite',
-      },
-      boxShadow: {
-        glass: '0 4px 24px -4px rgba(15,23,42,0.08), 0 1px 2px rgba(15,23,42,0.04)',
-        'glass-lg': '0 8px 40px -8px rgba(15,23,42,0.12), 0 2px 4px rgba(15,23,42,0.06)',
-        highlight: 'inset 0 1px 0 rgba(255,255,255,0.6)',
-      },
-      backdropBlur: {
-        xs: '2px',
       },
     },
   },

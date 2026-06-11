@@ -9,10 +9,13 @@ interface AnimatedNumberProps {
   className?: string;
 }
 
+function prefersReducedMotion(): boolean {
+  if (typeof window === 'undefined') return false;
+  return window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+}
+
 /**
- * Counts up (or down) to `value` using a smooth easing animation.
- * On first render it animates from 0; on subsequent changes it animates
- * from the previous displayed value.
+ * Renders the final value immediately on first mount, then animates between updates.
  */
 export function AnimatedNumber({
   value,
@@ -20,23 +23,34 @@ export function AnimatedNumber({
   format = (v) => v.toFixed(2),
   className,
 }: AnimatedNumberProps) {
-  const [displayValue, setDisplayValue] = useState(0);
-  const startRef = useRef(0);
-  const startTimeRef = useRef<number | null>(null);
+  const [displayValue, setDisplayValue] = useState(value);
+  const prevValueRef = useRef(value);
+  const isFirstMountRef = useRef(true);
   const rafRef = useRef<number | null>(null);
-  const prevValueRef = useRef(0);
 
   useEffect(() => {
-    startRef.current = prevValueRef.current;
-    startTimeRef.current = null;
+    if (isFirstMountRef.current) {
+      isFirstMountRef.current = false;
+      setDisplayValue(value);
+      prevValueRef.current = value;
+      return;
+    }
+
+    if (prefersReducedMotion()) {
+      setDisplayValue(value);
+      prevValueRef.current = value;
+      return;
+    }
+
+    const start = prevValueRef.current;
+    let startTime: number | null = null;
 
     const animate = (now: number) => {
-      if (startTimeRef.current === null) startTimeRef.current = now;
-      const elapsed = now - startTimeRef.current;
+      if (startTime === null) startTime = now;
+      const elapsed = now - startTime;
       const progress = Math.min(elapsed / duration, 1);
-      // Ease-out-cubic
       const eased = 1 - Math.pow(1 - progress, 3);
-      const current = startRef.current + (value - startRef.current) * eased;
+      const current = start + (value - start) * eased;
       setDisplayValue(current);
 
       if (progress < 1) {

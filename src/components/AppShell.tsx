@@ -3,15 +3,15 @@
 import Link from 'next/link';
 import { usePathname, useRouter } from 'next/navigation';
 import type { ReactNode } from 'react';
-import { AnimatePresence, motion } from 'framer-motion';
-import { createSupabaseBrowserClient } from '@/lib/supabase';
+import { motion } from 'framer-motion';
+import { signOutUser } from '@/lib/auth';
+import { Button } from '@/components/ui/Button';
+import { cn, focusVisibleRing } from '@/lib/cn';
 
-const NAV_ITEMS = [
+const MOBILE_NAV_ITEMS = [
   { href: '/app', label: 'Home', icon: 'M3 12l2-2m0 0l7-7 7 7M5 10v10a1 1 0 001 1h3m10-11l2 2m-2-2v10a1 1 0 01-1 1h-3m-6 0a1 1 0 001-1v-4a1 1 0 011-1h2a1 1 0 011 1v4a1 1 0 001 1m-6 0h6' },
   { href: '/app/transactions', label: 'History', icon: 'M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2' },
   { href: '/app/conversions', label: 'Transfer', icon: 'M8 7h12m0 0l-4-4m4 4l-4 4m0 6H4m0 0l4 4m-4-4l4-4' },
-  { href: '/app/budgets', label: 'Budgets', icon: 'M12 8c-1.657 0-3 .895-3 2s1.343 2 3 2 3 .895 3 2-1.343 2-3 2m0-8c1.11 0 2.08.402 2.599 1M12 8V7m0 1v8m0 0v1m0-1c-1.11 0-2.08-.402-2.599-1M21 12a9 9 0 11-18 0 9 9 0 0118 0z' },
-  { href: '/app/recurring', label: 'Recurring', icon: 'M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z' },
   { href: '/app/reports', label: 'Reports', icon: 'M9 19v-6a2 2 0 00-2-2H5a2 2 0 00-2 2v6a2 2 0 002 2h2a2 2 0 002-2zm0 0V9a2 2 0 012-2h2a2 2 0 012 2v10m-6 0a2 2 0 002 2h2a2 2 0 002-2m0 0V5a2 2 0 012-2h2a2 2 0 012 2v14a2 2 0 01-2 2h-2a2 2 0 01-2-2z' },
   { href: '/app/settings', label: 'Settings', icon: 'M10.325 4.317c.426-1.756 2.924-1.756 3.35 0a1.724 1.724 0 002.573 1.066c1.543-.94 3.31.826 2.37 2.37a1.724 1.724 0 001.065 2.572c1.756.426 1.756 2.924 0 3.35a1.724 1.724 0 00-1.066 2.573c.94 1.543-.826 3.31-2.37 2.37a1.724 1.724 0 00-2.572 1.065c-.426 1.756-2.924 1.756-3.35 0a1.724 1.724 0 00-2.573-1.066c-1.543.94-3.31-.826-2.37-2.37a1.724 1.724 0 00-1.065-2.572c-1.756-.426-1.756-2.924 0-3.35a1.724 1.724 0 001.066-2.573c-.94-1.543.826-3.31 2.37-2.37zM9 5a3 3 0 100-6 3 3 0 000 6z' },
 ];
@@ -26,12 +26,6 @@ const HEADER_NAV = [
   { href: '/app/settings', label: 'Settings' },
 ];
 
-const pageVariants = {
-  initial: { opacity: 0, y: 8 },
-  animate: { opacity: 1, y: 0 },
-  exit: { opacity: 0, y: -8 },
-};
-
 function Icon({ d, className }: { d: string; className?: string }) {
   return (
     <svg className={className} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={1.5} strokeLinecap="round" strokeLinejoin="round">
@@ -45,22 +39,21 @@ export default function AppShell({ children }: { children: ReactNode }) {
   const router = useRouter();
 
   const handleSignOut = async () => {
-    const supabase = createSupabaseBrowserClient();
-    await supabase.auth.signOut();
+    await signOutUser();
     router.replace('/login');
     router.refresh();
   };
 
   return (
-    <div className="min-h-screen bg-slate-50 text-slate-950" style={{ paddingBottom: 'env(safe-area-inset-bottom, 0px)' }}>
+    <div className="min-h-screen bg-background text-primary" style={{ paddingBottom: 'env(safe-area-inset-bottom, 0px)' }}>
       {/* Desktop header — glassmorphism */}
-      <header className="sticky top-0 z-30 hidden border-b border-white/60 bg-white/95 shadow-sm shadow-slate-200/30 backdrop-blur-md md:block">
+      <header className="sticky top-0 z-30 hidden border-b border-subtle bg-surface md:block">
         <div className="mx-auto flex max-w-7xl flex-col gap-3 px-4 py-3 md:flex-row md:items-center md:justify-between">
           <div>
-            <Link href="/app" className="bg-gradient-to-r from-blue-600 to-violet-600 bg-clip-text text-xl font-bold tracking-tight text-transparent">
+            <Link href="/app" className={cn('rounded-lg text-xl font-bold tracking-tight text-accent', focusVisibleRing)}>
               TapTrack
             </Link>
-            <p className="text-xs font-medium text-slate-500">Local-first finance console</p>
+            <p className="text-xs font-medium text-muted">Personal finance tracker</p>
           </div>
           <div className="flex items-center gap-2">
             <nav className="flex gap-1 overflow-x-auto pb-1 md:pb-0" aria-label="Primary">
@@ -70,60 +63,49 @@ export default function AppShell({ children }: { children: ReactNode }) {
                   <Link
                     key={item.href}
                     href={item.href}
-                    className={`relative whitespace-nowrap rounded-lg px-3 py-2 text-sm font-medium transition-all ${
+                    className={cn(
+                      'relative inline-flex min-h-11 items-center whitespace-nowrap rounded-lg px-3 py-2 text-sm font-medium transition-colors',
+                      focusVisibleRing,
                       active
-                        ? 'bg-gradient-to-r from-blue-600 to-violet-600 text-white shadow-sm shadow-blue-500/20'
-                        : 'text-slate-600 hover:bg-slate-100 hover:text-slate-950'
-                    }`}
+                        ? 'bg-accent text-white'
+                        : 'text-secondary hover:bg-surface-muted hover:text-primary'
+                    )}
                   >
                     {item.label}
                   </Link>
                 );
               })}
             </nav>
-            <button
-              type="button"
-              onClick={handleSignOut}
-              className="rounded-lg border border-slate-200 px-3 py-2 text-sm font-medium text-slate-600 hover:bg-slate-100 hover:text-slate-950"
-            >
+            <Button variant="secondary" size="sm" onClick={handleSignOut}>
               Sign out
-            </button>
+            </Button>
           </div>
         </div>
       </header>
 
-      {/* Page content with transition */}
-      <AnimatePresence mode="wait" initial={false}>
-        <motion.main
-          key={pathname}
-          variants={pageVariants}
-          initial="initial"
-          animate="animate"
-          exit="exit"
-          transition={{ duration: 0.18, ease: 'easeOut' }}
-          className="mx-auto max-w-7xl px-4 pt-5 pb-36 md:py-7"
-        >
-          {children}
-        </motion.main>
-      </AnimatePresence>
+      <main className="mx-auto max-w-7xl px-4 pt-5 pb-36 md:py-7">
+        {children}
+      </main>
 
-      {/* Mobile bottom nav — glassmorphism + gradient pill */}
+      {/* Mobile bottom nav */}
       <nav className="fixed inset-x-1 bottom-2 z-40 md:hidden" aria-label="Mobile">
-        <div className="grid grid-cols-[repeat(5,minmax(0,1fr))_3rem] items-stretch gap-1 overflow-visible rounded-2xl border border-white/60 bg-white/95 px-2 pt-2 pb-[calc(0.25rem+env(safe-area-inset-bottom,0px))] shadow-glass backdrop-blur-md">
-          {NAV_ITEMS.slice(0, 5).map((item) => {
+        <div className="grid grid-cols-5 items-stretch gap-1 rounded-2xl border border-subtle bg-surface px-2 pt-2 pb-[calc(0.25rem+env(safe-area-inset-bottom,0px))] shadow-sm">
+          {MOBILE_NAV_ITEMS.map((item) => {
             const active = item.href === '/app' ? pathname === '/app' : pathname.startsWith(item.href);
             return (
               <Link
                 key={item.href}
                 href={item.href}
-                className={`relative flex min-w-0 flex-col items-center justify-center gap-0.5 rounded-xl px-1 py-1.5 text-xs leading-none transition-all ${
-                  active ? 'text-white' : 'text-slate-400 hover:text-slate-600'
-                }`}
+                className={cn(
+                  'relative flex min-h-11 min-w-0 flex-col items-center justify-center gap-0.5 rounded-xl px-1 py-1.5 text-xs leading-none transition-all',
+                  focusVisibleRing,
+                  active ? 'text-white' : 'text-muted hover:text-secondary'
+                )}
               >
                 {active && (
                   <motion.span
                     layoutId="mobile-pill"
-                    className="absolute inset-0 rounded-xl bg-gradient-to-br from-blue-600 to-violet-600"
+                    className="absolute inset-0 rounded-xl bg-accent"
                     transition={{ type: 'spring', stiffness: 500, damping: 35 }}
                   />
                 )}
@@ -132,45 +114,6 @@ export default function AppShell({ children }: { children: ReactNode }) {
               </Link>
             );
           })}
-          {/* Overflow dropdown for remaining items */}
-          <div className="relative flex items-center justify-center overflow-visible">
-            <details className="group relative">
-              <summary className="flex cursor-pointer list-none flex-col items-center justify-center gap-0.5 rounded-xl px-1 py-1.5 text-xs leading-none text-slate-400 select-none hover:text-slate-600 [&::-webkit-details-marker]:hidden">
-                <Icon d="M4 6h16M4 12h16M4 18h16" className="h-5 w-5" />
-                <span className="relative z-10 truncate">More</span>
-                <motion.svg
-                  className="h-3 w-3 transition-transform group-open:rotate-180"
-                  fill="none"
-                  stroke="currentColor"
-                  strokeWidth={2}
-                  viewBox="0 0 24 24"
-                >
-                  <path d="M6 9l6 6 6-6" />
-                </motion.svg>
-              </summary>
-
-              <div className="absolute right-0 bottom-full z-50 mb-3 w-40 overflow-hidden rounded-xl border border-slate-200 bg-white shadow-xl">
-                {NAV_ITEMS.slice(5).map((item) => {
-                  const active = item.href === '/app' ? pathname === '/app' : pathname.startsWith(item.href);
-
-                  return (
-                    <Link
-                      key={item.href}
-                      href={item.href}
-                      className={`flex items-center gap-2 px-3 py-2 text-xs font-medium transition-colors ${
-                        active
-                          ? 'bg-gradient-to-r from-blue-600 to-violet-600 text-white'
-                          : 'text-slate-700 hover:bg-slate-50'
-                      }`}
-                    >
-                      <Icon d={item.icon} className="h-4 w-4" />
-                      <span>{item.label}</span>
-                    </Link>
-                  );
-                })}
-              </div>
-            </details>
-          </div>
         </div>
       </nav>
     </div>

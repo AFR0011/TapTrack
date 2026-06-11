@@ -15,15 +15,10 @@ export default function Home() {
   }, []);
 
   return (
-    <div className="space-y-5">
-      <header className="flex flex-col gap-1 md:flex-row md:items-end md:justify-between">
-        <div>
-          <h1 className="text-2xl font-semibold text-slate-950">Dashboard</h1>
-          <p className="text-sm font-medium text-slate-500">{currentMonth}</p>
-        </div>
-        <p className="max-w-lg text-sm leading-6 text-slate-500">
-          Command-first logging with live balances, budget status, and recent activity.
-        </p>
+    <div className="mx-auto max-w-2xl space-y-5">
+      <header>
+        <h1 className="text-2xl font-semibold text-primary">Dashboard</h1>
+        {currentMonth ? <p className="text-sm font-medium text-muted">{currentMonth}</p> : null}
       </header>
 
       <CommandInput />

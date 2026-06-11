@@ -3,13 +3,68 @@
 @tailwind utilities;
 
 :root {
-  --background: #f8fafc;
-  --foreground: #0f172a;
+  --bg: #f8fafc;
+  --surface: #ffffff;
+  --surface-muted: #f1f5f9;
+  --surface-raised: #e2e8f0;
+  --text-primary: #0f172a;
+  --text-secondary: #475569;
+  --text-muted: #64748b;
+  --border: #e2e8f0;
+  --accent: #2563eb;
+  --accent-muted: #dbeafe;
+  --danger: #dc2626;
+  --danger-muted: #fef2f2;
+  --success: #059669;
+  --success-muted: #ecfdf5;
+  --warning: #d97706;
+  --warning-muted: #fffbeb;
+  --chart-1: #2563eb;
+  --chart-2: #059669;
+  --chart-3: #db2777;
+  --chart-4: #d97706;
+  --chart-5: #64748b;
+  --chart-6: #7c3aed;
+  --ai: #7c3aed;
+  --ai-muted: #f5f3ff;
+  --ai-border: #ddd6fe;
+  --ai-text: #6d28d9;
+
+  /* Legacy aliases used by body */
+  --background: var(--bg);
+  --foreground: var(--text-primary);
 }
 
 .dark {
-  --background: #020617;
-  --foreground: #e2e8f0;
+  --bg: #0b1220;
+  --surface: #111a2c;
+  --surface-muted: #1a2334;
+  --surface-raised: #283349;
+  --text-primary: #f1f5f9;
+  --text-secondary: #b6c2d4;
+  --text-muted: #8a98ad;
+  --border: #283349;
+  --accent: #3b82f6;
+  --accent-muted: #1e3a5f;
+  --danger: #f87171;
+  --danger-muted: #3f1515;
+  --success: #34d399;
+  --success-muted: #052e1f;
+  --warning: #fbbf24;
+  --warning-muted: #3b2a06;
+  --chart-1: #3b82f6;
+  --chart-2: #34d399;
+  --chart-3: #f472b6;
+  --chart-4: #fbbf24;
+  --chart-5: #94a3b8;
+  --chart-6: #a78bfa;
+  --ai: #a78bfa;
+  --ai-muted: #2e1f5e;
+  --ai-border: #4c3d8f;
+  --ai-text: #c4b5fd;
+
+  --background: var(--bg);
+  --foreground: var(--text-primary);
 }
 
 html {
@@ -19,41 +74,12 @@ html {
 }
 
 body {
-  color: var(--foreground);
-  background: var(--background);
-}
-
-/* Dark-mode utility overrides for existing light-first classes */
-.dark .bg-white,
-.dark .bg-slate-50,
-.dark .bg-white\/90,
-.dark .bg-white\/95 {
-  background-color: #0f172a;
-}
-
-.dark .text-slate-950 {
-  color: #f8fafc;
-}
-
-.dark .text-slate-700,
-.dark .text-slate-600,
-.dark .text-slate-500,
-.dark .text-slate-400 {
-  color: #94a3b8;
-}
-
-.dark .border-slate-100,
-.dark .border-slate-200,
-.dark .border-slate-300 {
-  border-color: #334155;
-}
-
-.dark .bg-slate-100 {
-  background-color: #1e293b;
+  color: var(--text-primary);
+  background: var(--bg);
 }
 
 ::selection {
-  background: #2563eb;
+  background: var(--accent);
   color: white;
 }
 
@@ -66,9 +92,9 @@ body {
   background: transparent;
 }
 ::-webkit-scrollbar-thumb {
-  background: #cbd5e1;
+  background: var(--surface-raised);
   border-radius: 999px;
 }
 ::-webkit-scrollbar-thumb:hover {
-  background: #94a3b8;
+  background: var(--text-muted);
 }

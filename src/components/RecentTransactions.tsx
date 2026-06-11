@@ -6,6 +6,8 @@ import { AnimatePresence, motion } from 'framer-motion';
 import { useLiveQuery } from 'dexie-react-hooks';
 import { db } from '@/database';
 import { formatMoney } from '@/format';
+import { Skeleton } from '@/components/ui/Skeleton';
+import { cn, focusVisibleRing } from '@/lib/cn';
 import type { Transaction } from '@/types';
 
 const itemVariants = {
@@ -16,17 +18,17 @@ const itemVariants = {
 
 export default function RecentTransactions() {
   const [filter, setFilter] = useState<'all' | 'income' | 'expense'>('all');
-  const transactions = useLiveQuery(() => db.transactions.toArray(), [], []);
-  const categories = useLiveQuery(() => db.categories.toArray(), [], []);
+  const transactions = useLiveQuery(() => db.transactions.toArray());
+  const categories = useLiveQuery(() => db.categories.toArray());
 
   const categoryMap = useMemo(
-    () => new Map(categories.map((category) => [category.id, category])),
+    () => new Map((categories ?? []).map((category) => [category.id, category])),
     [categories]
   );
 
   const sortedTransactions = useMemo(
     () =>
-      [...transactions].sort((a, b) => {
+      [...(transactions ?? [])].sort((a, b) => {
         const dateDiff = b.date.localeCompare(a.date);
         if (dateDiff !== 0) return dateDiff;
         return b.createdAt.localeCompare(a.createdAt);
@@ -44,27 +46,26 @@ export default function RecentTransactions() {
       initial={{ opacity: 0, y: 16 }}
       animate={{ opacity: 1, y: 0 }}
       transition={{ duration: 0.35, ease: 'easeOut', delay: 0.14 }}
-      className="rounded-2xl border border-white/60 bg-white/90 shadow-glass backdrop-blur-sm transition-shadow hover:shadow-glass-lg"
+      className="rounded-2xl border border-subtle bg-surface"
     >
-      <div className="flex flex-col gap-3 border-b border-slate-100 p-4 md:flex-row md:items-center md:justify-between">
-        <div>
-          <h2 className="text-base font-semibold text-slate-950">Recent transactions</h2>
-          <p className="text-sm text-slate-500">Latest local activity across all currencies.</p>
-        </div>
+      <div className="flex flex-col gap-3 border-b border-subtle p-4 sm:flex-row sm:items-center sm:justify-between">
+        <h2 className="text-base font-semibold text-primary">Recent transactions</h2>
         <div className="flex gap-1">
           {(['all', 'income', 'expense'] as const).map((option) => (
             <button
               key={option}
               type="button"
               onClick={() => setFilter(option)}
-              className={`relative rounded-lg px-3 py-2 text-sm font-semibold capitalize transition-all ${
-                filter === option ? 'text-white' : 'bg-slate-100 text-slate-600 hover:bg-slate-200'
-              }`}
+              className={cn(
+                'relative min-h-11 min-w-11 rounded-lg px-3 py-2 text-sm font-semibold capitalize transition-all',
+                focusVisibleRing,
+                filter === option ? 'text-white' : 'bg-surface-muted text-secondary hover:bg-surface-raised'
+              )}
             >
               {filter === option && (
                 <motion.span
                   layoutId="filter-pill"
-                  className="absolute inset-0 rounded-lg bg-gradient-to-r from-blue-600 to-violet-600"
+                  className="absolute inset-0 rounded-lg bg-accent"
                   transition={{ type: 'spring', stiffness: 500, damping: 35 }}
                 />
               )}
@@ -74,11 +75,23 @@ export default function RecentTransactions() {
         </div>
       </div>
 
-      <div className="divide-y divide-slate-50">
-        {filteredTransactions.length === 0 ? (
+      <div className="divide-y divide-subtle">
+        {transactions === undefined || categories === undefined ? (
+          <div className="space-y-3 p-4" aria-busy="true" aria-label="Loading recent transactions">
+            {Array.from({ length: 4 }).map((_, index) => (
+              <div key={index} className="grid grid-cols-[1fr_auto] gap-3">
+                <div className="space-y-2">
+                  <Skeleton className="h-4 w-32" />
+                  <Skeleton className="h-3 w-48" />
+                </div>
+                <Skeleton className="h-4 w-16" />
+              </div>
+            ))}
+          </div>
+        ) : filteredTransactions.length === 0 ? (
           <div className="p-6 text-center">
-            <p className="text-sm font-semibold text-slate-700">No matching activity yet.</p>
-            <p className="mt-1 text-sm font-medium text-slate-500">Log a transaction with the quick command above.</p>
+            <p className="text-sm font-semibold text-secondary">No matching activity yet.</p>
+            <p className="mt-1 text-sm font-medium text-muted">Log a transaction with the quick command above.</p>
           </div>
         ) : (
           <AnimatePresence initial={false}>
@@ -94,23 +107,23 @@ export default function RecentTransactions() {
                   animate="visible"
                   exit="exit"
                   transition={{ duration: 0.22, ease: 'easeOut', delay: index * 0.025 }}
-                  className="grid grid-cols-[1fr_auto] gap-3 px-4 py-3 transition-colors hover:bg-slate-50/70"
+                  className="grid grid-cols-[1fr_auto] gap-3 px-4 py-3 transition-colors hover:bg-surface-muted/70"
                 >
                   <div>
-                    <p className="text-sm font-semibold text-slate-950">{transaction.title}</p>
-                    <div className="mt-1 flex flex-wrap items-center gap-2 text-xs font-medium uppercase tracking-normal text-slate-400">
+                    <p className="text-sm font-semibold text-primary">{transaction.title}</p>
+                    <div className="mt-1 flex flex-wrap items-center gap-2 text-xs font-medium text-muted">
                       <span>{transaction.date}</span>
                       <span>{transaction.method}</span>
-                      <span className="flex items-center gap-1 normal-case text-slate-500">
+                      <span className="flex items-center gap-1 normal-case text-muted">
                         <span className="h-2.5 w-2.5 rounded-full" style={{ background: category?.color ?? '#64748b' }} />
                         {category?.name ?? 'Unknown category'}
-                        {category?.icon ? <span className="text-slate-400">({category.icon})</span> : null}
+                        {category?.icon ? <span className="text-muted">({category.icon})</span> : null}
                       </span>
                     </div>
                   </div>
                   <p
                     className={`text-right text-sm font-bold tabular-nums transition-colors ${
-                      transaction.type === 'income' ? 'text-emerald-600' : 'text-red-500'
+                      transaction.type === 'income' ? 'text-success' : 'text-danger'
                     }`}
                   >
                     {transaction.type === 'income' ? '+' : '-'}
@@ -123,8 +136,11 @@ export default function RecentTransactions() {
         )}
       </div>
 
-      <div className="border-t border-slate-100 p-4">
-        <Link href="/app/transactions" className="text-sm font-semibold text-blue-600 transition-colors hover:text-blue-700">
+      <div className="border-t border-subtle p-4">
+        <Link
+          href="/app/transactions"
+          className={cn('inline-flex min-h-11 items-center rounded-lg text-sm font-semibold text-accent transition-colors hover:text-accent', focusVisibleRing)}
+        >
           Open transactions
         </Link>
       </div>

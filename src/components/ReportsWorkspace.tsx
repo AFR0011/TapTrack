@@ -1,15 +1,13 @@
 'use client';
 
 import { useEffect, useMemo, useState } from 'react';
+import { useRouter } from 'next/navigation';
 import type { ReactNode } from 'react';
 import {
   Bar,
   BarChart,
-  Cell,
   Line,
   LineChart,
-  Pie,
-  PieChart,
   ResponsiveContainer,
   Tooltip,
   XAxis,
@@ -22,9 +20,29 @@ import { exportPDF, type ReportExportOptions } from '@/exports/exportService';
 import { clampPercent, formatMoney } from '@/format';
 import { calculateIncomeVsExpense } from '@/reports/reportService';
 import { getBudgetPerformance } from '@/reports/reportTransforms';
+import { Button } from '@/components/ui/Button';
+import { ProgressBar } from '@/components/ui/ProgressBar';
+import { SkeletonCard } from '@/components/ui/Skeleton';
+import { ToggleRow } from '@/components/ui/Toggle';
+import { cn, focusVisibleRing } from '@/lib/cn';
 import type { ExchangeRates, Transaction } from '@/types';
 
-const COLORS = ['#2563eb', '#16a34a', '#db2777', '#f59e0b', '#64748b', '#7c3aed'];
+const COLORS = [
+  'var(--chart-1)',
+  'var(--chart-2)',
+  'var(--chart-3)',
+  'var(--chart-4)',
+  'var(--chart-5)',
+  'var(--chart-6)',
+];
+
+const CHART_Y_AXIS = {
+  tick: { fill: 'var(--text-muted)', fontSize: 12 },
+  tickLine: false,
+  axisLine: false,
+  width: 56,
+  tickFormatter: (value: number) => formatCompactAxisMoney(Number(value)),
+} as const;
 
 type ReportMode = 'month' | 'range' | 'year';
 
@@ -49,6 +67,7 @@ function calculateReportTotals(transactions: Transaction[], rates: ExchangeRates
 }
 
 export default function ReportsWorkspace() {
+  const router = useRouter();
   const currentMonth = getCurrentMonth();
   const [reportMode, setReportMode] = useState<ReportMode>('month');
   const [month, setMonth] = useState(currentMonth);
@@ -61,17 +80,18 @@ export default function ReportsWorkspace() {
   const [exporting, setExporting] = useState(false);
   const [exportError, setExportError] = useState('');
 
-  const transactions = useLiveQuery(() => db.transactions.toArray(), [], []);
-  const categories = useLiveQuery(() => db.categories.toArray(), [], []);
+  const transactions = useLiveQuery(() => db.transactions.toArray());
+  const categories = useLiveQuery(() => db.categories.toArray());
   const monthlyBudget = useLiveQuery(
     () => db.monthlyBudgets.where('month').equals(month).first(),
     [month]
   );
   const categoryBudgets = useLiveQuery(
     () => db.categoryBudgets.where('month').equals(month).toArray(),
-    [month],
-    []
+    [month]
   );
+  const isLoading =
+    transactions === undefined || categories === undefined || categoryBudgets === undefined;
 
   useEffect(() => {
     if (!unifyToTRY || rates) return;
@@ -85,24 +105,25 @@ export default function ReportsWorkspace() {
 
   const activeRates = unifyToTRY ? rates : null;
   const categoryById = useMemo(
-    () => new Map(categories.map((category) => [category.id, category])),
+    () => new Map((categories ?? []).map((category) => [category.id, category])),
     [categories]
   );
 
   const activeTransactions = useMemo(() => {
+    const rows = transactions ?? [];
     if (reportMode === 'month') {
-      return transactions.filter((transaction) => transaction.date.startsWith(month));
+      return rows.filter((transaction) => transaction.date.startsWith(month));
     }
     if (reportMode === 'year') {
-      return transactions.filter((transaction) => transaction.date.startsWith(year));
+      return rows.filter((transaction) => transaction.date.startsWith(year));
     }
 
     const [start, end] = rangeStart <= rangeEnd ? [rangeStart, rangeEnd] : [rangeEnd, rangeStart];
-    return transactions.filter((transaction) => transaction.date >= start && transaction.date <= end);
+    return rows.filter((transaction) => transaction.date >= start && transaction.date <= end);
   }, [month, rangeEnd, rangeStart, reportMode, transactions, year]);
 
   const previousMonthTransactions = useMemo(
-    () => transactions.filter((transaction) => transaction.date.startsWith(getPreviousMonth(month))),
+    () => (transactions ?? []).filter((transaction) => transaction.date.startsWith(getPreviousMonth(month))),
     [month, transactions]
   );
 
@@ -163,7 +184,7 @@ export default function ReportsWorkspace() {
       return Array.from({ length: 12 }, (_, index) => {
         const itemMonth = `${year}-${String(index + 1).padStart(2, '0')}`;
         const totals = calculateReportTotals(
-          transactions.filter((transaction) => transaction.date.startsWith(itemMonth)),
+          (transactions ?? []).filter((transaction) => transaction.date.startsWith(itemMonth)),
           activeRates
         );
         return { label: itemMonth.slice(5), income: totals.income, expense: totals.expense };
@@ -176,8 +197,8 @@ export default function ReportsWorkspace() {
   const budgetPerformance = getBudgetPerformance(
     month,
     monthlyBudget ?? null,
-    categoryBudgets,
-    transactions
+    categoryBudgets ?? [],
+    transactions ?? []
   );
   const budgetPercent =
     budgetPerformance.available > 0
@@ -210,13 +231,34 @@ export default function ReportsWorkspace() {
     }
   };
 
+  if (isLoading) {
+    return (
+      <div className="space-y-5" aria-busy="true" aria-label="Loading reports">
+        <header>
+          <h1 className="text-2xl font-semibold text-primary">Reports</h1>
+          <p className="text-sm font-medium text-muted">
+            Review income and spending by month, date range, or year.
+          </p>
+        </header>
+        <div className="flex flex-col gap-5">
+          <div className="order-1 grid gap-4 md:order-2 md:grid-cols-3">
+            <SkeletonCard />
+            <SkeletonCard />
+            <SkeletonCard />
+          </div>
+          <SkeletonCard className="order-2 md:order-1" />
+        </div>
+      </div>
+    );
+  }
+
   return (
     <div className="space-y-5">
       <header className="flex flex-col gap-3 md:flex-row md:items-end md:justify-between">
         <div>
-          <h1 className="text-2xl font-semibold text-slate-950">Reports</h1>
-          <p className="text-sm font-medium text-slate-500">
-            Monthly, date-range, and yearly review using local transaction data.
+          <h1 className="text-2xl font-semibold text-primary">Reports</h1>
+          <p className="text-sm font-medium text-muted">
+            Review income and spending by month, date range, or year.
           </p>
         </div>
         <div className="flex flex-wrap items-center gap-2">
@@ -226,77 +268,78 @@ export default function ReportsWorkspace() {
         </div>
       </header>
 
-      <section className="rounded-2xl border border-slate-200 bg-white p-5 shadow-xs shadow-slate-200/50 transition-all hover:shadow-md">
-        <div className="grid gap-3 lg:grid-cols-[1fr_auto_auto] lg:items-end">
-          <div className="grid gap-3 sm:grid-cols-3">
-            {reportMode === 'month' ? (
-              <DateInput label="Month" type="month" value={month} onChange={setMonth} />
-            ) : null}
-            {reportMode === 'range' ? (
-              <>
-                <DateInput label="Start" type="date" value={rangeStart} onChange={setRangeStart} />
-                <DateInput label="End" type="date" value={rangeEnd} onChange={setRangeEnd} />
-              </>
-            ) : null}
-            {reportMode === 'year' ? (
-              <DateInput label="Year" type="number" value={year} onChange={setYear} min="2000" max="2100" />
-            ) : null}
+      <div className="flex flex-col gap-5">
+        <section className="order-1 grid gap-4 md:order-2 md:grid-cols-3">
+          <Metric label="Income" value={formatMoney(incomeVsExpense.income)} tone="good" />
+          <Metric label="Expenses" value={formatMoney(incomeVsExpense.expense)} tone="bad" />
+          <Metric label="Net" value={formatMoney(incomeVsExpense.net)} tone={incomeVsExpense.net >= 0 ? 'good' : 'bad'} />
+        </section>
+
+        <section className="order-2 rounded-2xl border border-subtle bg-surface p-5 md:order-1">
+          <div className="flex flex-col gap-3 sm:flex-row sm:items-end sm:justify-between">
+            <div className="grid flex-1 gap-3 sm:grid-cols-3">
+              {reportMode === 'month' ? (
+                <DateInput label="Month" type="month" value={month} onChange={setMonth} />
+              ) : null}
+              {reportMode === 'range' ? (
+                <>
+                  <DateInput label="Start" type="date" value={rangeStart} onChange={setRangeStart} />
+                  <DateInput label="End" type="date" value={rangeEnd} onChange={setRangeEnd} />
+                </>
+              ) : null}
+              {reportMode === 'year' ? (
+                <DateInput label="Year" type="number" value={year} onChange={setYear} min="2000" max="2100" />
+              ) : null}
+            </div>
+
+            <Button
+              type="button"
+              variant="secondary"
+              size="sm"
+              onClick={handleExportPDF}
+              loading={exporting}
+              disabled={exporting}
+            >
+              Export PDF
+            </Button>
           </div>
 
-          <button
-            type="button"
-            onClick={() => setUnifyToTRY((value) => !value)}
+          <ToggleRow
+            className="mt-4"
+            label="Convert all to TRY"
+            description={
+              ratesLoading
+                ? 'Loading exchange rates…'
+                : unifyToTRY && rateLabel
+                  ? rateLabel
+                  : undefined
+            }
+            checked={unifyToTRY}
+            onChange={() => setUnifyToTRY((value) => !value)}
             disabled={ratesLoading}
-            title={rateLabel || 'Convert USD and EUR to TRY for this report view'}
-            className={`rounded-lg border px-3 py-2 text-sm font-semibold transition-all disabled:opacity-60 ${
-              unifyToTRY
-                ? 'border-blue-500 bg-blue-50 text-blue-700'
-                : 'border-slate-300 bg-white text-slate-600 hover:bg-slate-50'
-            }`}
-          >
-            {ratesLoading ? 'Loading rates' : unifyToTRY ? 'All in TRY' : 'Unify to TRY'}
-          </button>
+          />
 
-          <button
-            type="button"
-            onClick={handleExportPDF}
-            disabled={exporting}
-            className="rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm font-semibold text-slate-700 transition-all hover:bg-slate-100 disabled:opacity-60"
-          >
-            {exporting ? 'Exporting PDF' : 'Export PDF'}
-          </button>
-        </div>
-        {unifyToTRY && rateLabel ? <p className="mt-3 text-xs font-medium text-slate-400">{rateLabel}</p> : null}
-        {exportError ? <p className="mt-3 text-sm font-medium text-red-600">{exportError}</p> : null}
-      </section>
+          <p className="mt-3 text-sm font-medium text-muted" role="status">
+            {unifyToTRY
+              ? 'Including USD and EUR converted to TRY in this report view.'
+              : 'Showing TRY transactions only. Enable "Convert all to TRY" to include USD/EUR.'}
+          </p>
 
-      <section className="grid gap-4 md:grid-cols-3">
-        <Metric label="Income" value={formatMoney(incomeVsExpense.income)} tone="good" />
-        <Metric label="Expenses" value={formatMoney(incomeVsExpense.expense)} tone="bad" />
-        <Metric label="Net" value={formatMoney(incomeVsExpense.net)} tone={incomeVsExpense.net >= 0 ? 'good' : 'bad'} />
-      </section>
+          {exportError ? <p className="mt-3 text-sm font-medium text-danger">{exportError}</p> : null}
+        </section>
 
-      <section className="grid gap-4 lg:grid-cols-2">
+        <section className="order-3 grid gap-4 lg:grid-cols-2">
         <ChartPanel title="Spending by category" empty={categoryData.length === 0}>
-          <ResponsiveContainer width="100%" height={260}>
-            <PieChart>
-              <Pie data={categoryData} dataKey="amount" nameKey="name" innerRadius={58} outerRadius={92} paddingAngle={3}>
-                {categoryData.map((entry, index) => (
-                  <Cell key={entry.categoryId} fill={COLORS[index % COLORS.length]} />
-                ))}
-              </Pie>
-              <Tooltip formatter={(value) => formatMoney(Number(value))} />
-            </PieChart>
-          </ResponsiveContainer>
+          <CategorySpendingList items={categoryData} />
         </ChartPanel>
 
         <ChartPanel title="Spending over time" empty={spendingOverTime.length === 0}>
           <ResponsiveContainer width="100%" height={260}>
             <LineChart data={spendingOverTime}>
-              <XAxis dataKey="date" tickLine={false} axisLine={false} minTickGap={18} />
-              <YAxis tickLine={false} axisLine={false} width={48} />
-              <Tooltip formatter={(value) => formatMoney(Number(value))} />
-              <Line type="monotone" dataKey="amount" stroke="#2563eb" strokeWidth={3} dot={false} />
+              <XAxis dataKey="date" tick={{ fill: 'var(--text-muted)', fontSize: 12 }} tickLine={false} axisLine={false} minTickGap={18} />
+              <YAxis {...CHART_Y_AXIS} />
+              <Tooltip content={<ChartTooltip />} />
+              <Line type="monotone" dataKey="amount" name="Spent" stroke="var(--accent)" strokeWidth={3} dot={false} />
             </LineChart>
           </ResponsiveContainer>
         </ChartPanel>
@@ -307,17 +350,22 @@ export default function ReportsWorkspace() {
         >
           <ResponsiveContainer width="100%" height={260}>
             <BarChart data={comparisonData}>
-              <XAxis dataKey="label" tickLine={false} axisLine={false} />
-              <YAxis tickLine={false} axisLine={false} width={48} />
-              <Tooltip formatter={(value) => formatMoney(Number(value))} />
-              <Bar dataKey="income" fill="#16a34a" radius={[4, 4, 0, 0]} />
-              <Bar dataKey="expense" fill="#dc2626" radius={[4, 4, 0, 0]} />
+              <XAxis dataKey="label" tick={{ fill: 'var(--text-muted)', fontSize: 12 }} tickLine={false} axisLine={false} />
+              <YAxis {...CHART_Y_AXIS} />
+              <Tooltip content={<ChartTooltip />} />
+              <Bar dataKey="income" name="Income" fill="var(--success)" radius={[4, 4, 0, 0]} />
+              <Bar dataKey="expense" name="Expenses" fill="var(--danger)" radius={[4, 4, 0, 0]} />
             </BarChart>
           </ResponsiveContainer>
         </ChartPanel>
 
-        <div className="rounded-2xl border border-slate-200 bg-white p-5 shadow-xs shadow-slate-200/50 transition-all hover:shadow-md">
-          <h2 className="text-base font-semibold text-slate-950">Budget performance</h2>
+        <div className="rounded-2xl border border-subtle bg-surface p-5 ">
+          <div className="flex items-center justify-between gap-3">
+            <h2 className="text-base font-semibold text-primary">Budget performance</h2>
+            <Button type="button" variant="secondary" size="sm" className="shrink-0" onClick={() => router.push('/app/budgets')}>
+              Manage budgets
+            </Button>
+          </div>
           {reportMode !== 'month' ? (
             <EmptyState
               title="Budget view is monthly."
@@ -325,9 +373,20 @@ export default function ReportsWorkspace() {
             />
           ) : (
             <>
-              <div className="mt-4 h-2 overflow-hidden rounded-full bg-slate-100">
-                <div className="h-full rounded-full bg-blue-500" style={{ width: `${budgetPercent}%` }} />
-              </div>
+              <ProgressBar
+                className="mt-4"
+                percent={budgetPercent}
+                usedLabel={
+                  budgetPerformance.available > 0
+                    ? `${Math.round(budgetPercent)}% used`
+                    : undefined
+                }
+                remainingLabel={
+                  budgetPerformance.available > 0
+                    ? `${formatMoney(Math.max(budgetPerformance.remaining, 0))} remaining`
+                    : 'Set a monthly total on Budgets'
+                }
+              />
               <div className="mt-4 grid gap-2">
                 <MetricRow label="Available" value={formatMoney(budgetPerformance.available)} />
                 <MetricRow label="Spent" value={formatMoney(budgetPerformance.totalSpent)} />
@@ -337,14 +396,14 @@ export default function ReportsWorkspace() {
                   tone={budgetPerformance.remaining >= 0 ? 'good' : 'bad'}
                 />
               </div>
-              <div className="mt-4 divide-y divide-slate-100">
+              <div className="mt-4 divide-y divide-subtle">
                 {budgetPerformance.categoryBudgets.length === 0 ? (
                   <EmptyState title="No category budgets yet." action="Set category limits on Budgets." compact />
                 ) : (
                   budgetPerformance.categoryBudgets.map((item) => (
                     <div key={item.categoryId} className="flex items-center justify-between py-3 text-sm">
-                      <span className="font-medium text-slate-600">{categoryById.get(item.categoryId)?.name ?? item.categoryId}</span>
-                      <span className="font-semibold text-slate-950">
+                      <span className="font-medium text-secondary">{categoryById.get(item.categoryId)?.name ?? item.categoryId}</span>
+                      <span className="font-semibold text-primary">
                         {formatMoney(item.spent)} / {formatMoney(item.budget)}
                       </span>
                     </div>
@@ -354,7 +413,8 @@ export default function ReportsWorkspace() {
             </>
           )}
         </div>
-      </section>
+        </section>
+      </div>
     </div>
   );
 }
@@ -372,15 +432,14 @@ function ModeButton({
   const label = mode === 'month' ? 'Month' : mode === 'range' ? 'Range' : 'Year';
 
   return (
-    <button
+    <Button
       type="button"
+      variant={active ? 'primary' : 'subtle'}
+      size="sm"
       onClick={() => onClick(mode)}
-      className={`rounded-lg px-3 py-2 text-sm font-semibold transition-all ${
-        active ? 'bg-blue-500 text-white' : 'bg-slate-100 text-slate-600 hover:bg-slate-200'
-      }`}
     >
       {label}
-    </button>
+    </Button>
   );
 }
 
@@ -400,15 +459,18 @@ function DateInput({
   max?: string;
 }) {
   return (
-    <label className="grid gap-1 text-xs font-medium uppercase tracking-normal text-slate-500">
-      {label}
+    <label className="grid gap-1.5">
+      <span className="text-sm font-medium text-secondary">{label}</span>
       <input
         type={type}
         min={min}
         max={max}
         value={value}
         onChange={(event) => onChange(event.target.value)}
-        className="rounded-md border border-slate-300 px-3 py-2 text-sm font-medium normal-case text-slate-950 outline-none focus:border-blue-500"
+        className={cn(
+          'min-h-11 rounded-lg border border-subtle px-3 py-2 text-sm font-medium text-primary outline-none focus-visible:border-accent',
+          focusVisibleRing
+        )}
       />
     </label>
   );
@@ -416,17 +478,104 @@ function DateInput({
 
 function Metric({ label, value, tone }: { label: string; value: string; tone: 'good' | 'bad' }) {
   return (
-    <div className="rounded-2xl border border-slate-200 bg-white p-5 shadow-xs shadow-slate-200/50 transition-all hover:shadow-md">
-      <p className="text-sm font-semibold text-slate-500">{label}</p>
-      <p className={`mt-2 text-2xl font-semibold ${tone === 'good' ? 'text-emerald-600' : 'text-red-600'}`}>{value}</p>
+    <div className="rounded-2xl border border-subtle bg-surface p-5 ">
+      <p className="text-sm font-semibold text-muted">{label}</p>
+      <p className={`mt-2 text-2xl font-semibold ${tone === 'good' ? 'text-success' : 'text-danger'}`}>{value}</p>
+    </div>
+  );
+}
+
+function formatCompactAxisMoney(amount: number) {
+  const abs = Math.abs(amount);
+  const sign = amount < 0 ? '-' : '';
+
+  if (abs >= 1_000_000) {
+    return `${sign}${(abs / 1_000_000).toLocaleString(undefined, { maximumFractionDigits: 1 })}M ₺`;
+  }
+  if (abs >= 1_000) {
+    return `${sign}${(abs / 1_000).toLocaleString(undefined, { maximumFractionDigits: 1 })}k ₺`;
+  }
+  return `${sign}${abs.toLocaleString(undefined, { maximumFractionDigits: 0 })} ₺`;
+}
+
+function formatTooltipSeriesName(name?: string) {
+  if (!name) return 'Amount';
+  if (name === 'income' || name === 'Income') return 'Income';
+  if (name === 'expense' || name === 'Expenses') return 'Expenses';
+  if (name === 'amount' || name === 'Spent') return 'Spent';
+  return name;
+}
+
+function ChartTooltip({
+  active,
+  payload,
+  label,
+}: {
+  active?: boolean;
+  payload?: Array<{ name?: string; value?: number | string; color?: string }>;
+  label?: string | number;
+}) {
+  if (!active || !payload?.length) return null;
+
+  return (
+    <div className="rounded-lg border border-subtle bg-surface px-3 py-2 text-sm shadow-sm">
+      {label ? <p className="mb-1.5 font-medium text-muted">{label}</p> : null}
+      <div className="space-y-1">
+        {payload.map((entry) => (
+          <div key={entry.name} className="flex items-center justify-between gap-4">
+            <span className="flex items-center gap-2 font-medium text-secondary">
+              {entry.color ? (
+                <span className="h-2 w-2 rounded-full" style={{ background: entry.color }} aria-hidden />
+              ) : null}
+              {formatTooltipSeriesName(entry.name)}
+            </span>
+            <span className="font-semibold tabular-nums text-primary">{formatMoney(Number(entry.value))}</span>
+          </div>
+        ))}
+      </div>
+    </div>
+  );
+}
+
+function CategorySpendingList({
+  items,
+}: {
+  items: Array<{ categoryId: string; name: string; amount: number }>;
+}) {
+  const total = items.reduce((sum, item) => sum + item.amount, 0);
+
+  return (
+    <div className="space-y-4">
+      {items.map((item, index) => {
+        const percent = total > 0 ? (item.amount / total) * 100 : 0;
+        const barColor = COLORS[index % COLORS.length];
+
+        return (
+          <div key={item.categoryId}>
+            <div className="flex items-baseline justify-between gap-3">
+              <span className="min-w-0 truncate text-sm font-semibold text-primary">{item.name}</span>
+              <div className="flex shrink-0 items-baseline gap-2 text-sm tabular-nums">
+                <span className="font-semibold text-primary">{formatMoney(item.amount)}</span>
+                <span className="font-medium text-muted">{Math.round(percent)}%</span>
+              </div>
+            </div>
+            <div className="mt-1.5 h-2 overflow-hidden rounded-full bg-surface-muted">
+              <div
+                className="h-full rounded-full transition-[width] duration-300"
+                style={{ width: `${percent}%`, background: barColor }}
+              />
+            </div>
+          </div>
+        );
+      })}
     </div>
   );
 }
 
 function ChartPanel({ title, empty, children }: { title: string; empty: boolean; children: ReactNode }) {
   return (
-    <div className="rounded-2xl border border-slate-200 bg-white p-5 shadow-xs shadow-slate-200/50 transition-all hover:shadow-md">
-      <h2 className="text-base font-semibold text-slate-950">{title}</h2>
+    <div className="rounded-2xl border border-subtle bg-surface p-5 ">
+      <h2 className="text-base font-semibold text-primary">{title}</h2>
       {empty ? (
         <EmptyState title="No report data yet." action="Log a transaction for this period." />
       ) : (
@@ -439,19 +588,19 @@ function ChartPanel({ title, empty, children }: { title: string; empty: boolean;
 function EmptyState({ title, action, compact = false }: { title: string; action: string; compact?: boolean }) {
   return (
     <div className={`${compact ? 'py-4' : 'mt-6 py-8'} text-center`}>
-      <p className="text-sm font-semibold text-slate-700">{title}</p>
-      <p className="mt-1 text-sm font-medium text-slate-500">{action}</p>
+      <p className="text-sm font-semibold text-secondary">{title}</p>
+      <p className="mt-1 text-sm font-medium text-muted">{action}</p>
     </div>
   );
 }
 
 function MetricRow({ label, value, tone }: { label: string; value: string; tone?: 'good' | 'bad' }) {
   return (
-    <div className="flex items-center justify-between rounded-md bg-slate-50 px-3 py-2">
-      <span className="text-sm font-medium text-slate-500">{label}</span>
+    <div className="flex items-center justify-between rounded-md bg-surface-muted px-3 py-2">
+      <span className="text-sm font-medium text-muted">{label}</span>
       <span
         className={`text-sm font-semibold ${
-          tone === 'good' ? 'text-emerald-600' : tone === 'bad' ? 'text-red-600' : 'text-slate-950'
+          tone === 'good' ? 'text-success' : tone === 'bad' ? 'text-danger' : 'text-primary'
         }`}
       >
         {value}

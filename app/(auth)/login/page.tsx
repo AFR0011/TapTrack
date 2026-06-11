@@ -2,6 +2,10 @@
 
 import { useState } from 'react';
 import { useRouter } from 'next/navigation';
+import { Button } from '@/components/ui/Button';
+import { Card } from '@/components/ui/Card';
+import { Field } from '@/components/ui/Field';
+import { cn } from '@/lib/cn';
 import { createSupabaseBrowserClient } from '@/lib/supabase';
 
 type Mode = 'signin' | 'register';
@@ -43,97 +47,86 @@ export default function LoginPage() {
   };
 
   return (
-    <div className="flex min-h-screen items-center justify-center bg-slate-50 p-4">
-      <div className="w-full max-w-sm rounded-2xl border border-slate-200 bg-white p-8 shadow-sm">
+    <div className="flex min-h-screen items-center justify-center bg-background p-4">
+      <Card className="w-full max-w-sm">
         <div className="mb-6">
-          <h1 className="bg-gradient-to-r from-blue-600 to-violet-600 bg-clip-text text-xl font-bold text-transparent">
-            TapTrack
-          </h1>
-          <p className="mt-1 text-sm text-slate-500">Personal finance tracker</p>
+          <h1 className="text-xl font-semibold text-primary">TapTrack</h1>
+          <p className="mt-1 text-sm text-muted">Personal finance tracker</p>
         </div>
 
         {registered ? (
           <div className="space-y-4">
-            <div className="rounded-xl border border-emerald-200 bg-emerald-50 p-4 text-sm text-emerald-800">
+            <div className="rounded-lg border border-success bg-success-muted p-4 text-sm font-medium text-success">
               Account created! You can now sign in with your email and password.
             </div>
-            <button
-              onClick={() => { setRegistered(false); setMode('signin'); }}
-              className="w-full rounded-lg bg-blue-500 px-4 py-2 text-sm font-semibold text-white transition-all hover:bg-blue-600"
+            <Button
+              type="button"
+              fullWidth
+              onClick={() => {
+                setRegistered(false);
+                setMode('signin');
+              }}
             >
               Sign in
-            </button>
+            </Button>
           </div>
         ) : (
           <>
-            {/* Tab switcher */}
-            <div className="mb-5 flex rounded-lg border border-slate-200 p-1">
+            <div className="mb-5 flex rounded-lg border border-subtle bg-surface-muted p-1">
               {(['signin', 'register'] as Mode[]).map((m) => (
                 <button
                   key={m}
                   type="button"
-                  onClick={() => { setMode(m); setError(''); }}
-                  className={`flex-1 rounded-md py-1.5 text-sm font-semibold transition-all ${
-                    mode === m
-                      ? 'bg-slate-950 text-white shadow-sm'
-                      : 'text-slate-500 hover:text-slate-950'
-                  }`}
+                  onClick={() => {
+                    setMode(m);
+                    setError('');
+                  }}
+                  className={cn(
+                    'min-h-11 flex-1 rounded-md text-sm font-semibold transition-colors focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-accent',
+                    mode === m ? 'bg-accent text-white' : 'text-muted hover:text-secondary'
+                  )}
                 >
                   {m === 'signin' ? 'Sign in' : 'Register'}
                 </button>
               ))}
             </div>
 
-            <form onSubmit={handleSubmit} className="flex flex-col gap-3">
-              <div>
-                <label className="mb-1 block text-xs font-semibold text-slate-700" htmlFor="email">
-                  Email address
-                </label>
-                <input
-                  id="email"
-                  type="email"
-                  value={email}
-                  onChange={(e) => setEmail(e.target.value)}
-                  placeholder="you@example.com"
-                  required
-                  autoComplete="email"
-                  disabled={loading}
-                  className="w-full rounded-lg border border-slate-300 px-4 py-2 text-sm outline-none transition-all placeholder:text-slate-400 focus:border-blue-500 focus:ring-2 focus:ring-blue-100/50 disabled:opacity-60"
-                />
-              </div>
-              <div>
-                <label className="mb-1 block text-xs font-semibold text-slate-700" htmlFor="password">
-                  Password
-                </label>
-                <input
-                  id="password"
-                  type="password"
-                  value={password}
-                  onChange={(e) => setPassword(e.target.value)}
-                  placeholder={mode === 'register' ? 'At least 6 characters' : '••••••••'}
-                  required
-                  minLength={6}
-                  autoComplete={mode === 'register' ? 'new-password' : 'current-password'}
-                  disabled={loading}
-                  className="w-full rounded-lg border border-slate-300 px-4 py-2 text-sm outline-none transition-all placeholder:text-slate-400 focus:border-blue-500 focus:ring-2 focus:ring-blue-100/50 disabled:opacity-60"
-                />
-              </div>
-              {error && (
-                <p className="rounded-lg border border-red-200 bg-red-50 px-3 py-2 text-sm text-red-700">
+            <form onSubmit={handleSubmit} className="flex flex-col gap-4">
+              <Field
+                id="email"
+                label="Email address"
+                type="email"
+                value={email}
+                onChange={(e) => setEmail(e.target.value)}
+                placeholder="you@example.com"
+                required
+                autoComplete="email"
+                disabled={loading}
+              />
+              <Field
+                id="password"
+                label="Password"
+                type="password"
+                value={password}
+                onChange={(e) => setPassword(e.target.value)}
+                placeholder={mode === 'register' ? 'At least 6 characters' : '••••••••'}
+                required
+                minLength={6}
+                autoComplete={mode === 'register' ? 'new-password' : 'current-password'}
+                disabled={loading}
+              />
+              {error ? (
+                <p role="alert" className="rounded-lg border border-danger bg-danger-muted px-3 py-2 text-sm font-medium text-danger">
                   {error}
                 </p>
-              )}
-              <button
-                type="submit"
-                disabled={loading || !email || !password}
-                className="rounded-lg bg-gradient-to-r from-blue-600 to-violet-600 px-4 py-2 text-sm font-semibold text-white transition-all hover:opacity-90 disabled:opacity-60"
-              >
-                {loading ? (mode === 'signin' ? 'Signing in…' : 'Creating account…') : (mode === 'signin' ? 'Sign in' : 'Create account')}
-              </button>
+              ) : null}
+              <Button type="submit" fullWidth loading={loading} disabled={loading || !email || !password}>
+                {mode === 'signin' ? 'Sign in' : 'Create account'}
+              </Button>
             </form>
           </>
         )}
-      </div>
+      </Card>
     </div>
   );
 }

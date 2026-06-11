@@ -13,7 +13,14 @@ import {
   type ConversionDraft,
 } from '@/conversions/conversionService';
 import { SUPPORTED_CURRENCIES, SUPPORTED_METHODS, type Currency, type Method } from '@/types';
+import { Button } from '@/components/ui/Button';
+import { Card, CardHeader } from '@/components/ui/Card';
+import { Field } from '@/components/ui/Field';
+import { SelectField } from '@/components/ui/SelectField';
+import { SkeletonCard } from '@/components/ui/Skeleton';
 import { toast } from 'sonner';
+
+const ARROW_DOWN_ICON = 'M19 14l-7 7m0 0l-7-7m7 7V3';
 
 type OpKind = 'exchange' | 'transfer';
 
@@ -36,15 +43,12 @@ export default function ConversionsWorkspace() {
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState('');
 
-  const balances = useLiveQuery(() => db.balances.toArray(), [], []);
-  const conversions = useLiveQuery(
-    () => db.conversions.orderBy('date').reverse().limit(30).toArray(),
-    [],
-    []
-  );
+  const balances = useLiveQuery(() => db.balances.toArray());
+  const conversions = useLiveQuery(() => db.conversions.orderBy('date').reverse().limit(30).toArray());
+  const isLoading = balances === undefined || conversions === undefined;
 
   const balanceMap = useMemo(
-    () => new Map(balances.map((b) => [b.id, b.amount])),
+    () => new Map((balances ?? []).map((b) => [b.id, b.amount])),
     [balances]
   );
 
@@ -106,194 +110,196 @@ export default function ConversionsWorkspace() {
       ? toAmount / fromAmount
       : null;
 
+  if (isLoading) {
+    return (
+      <div className="space-y-5" aria-busy="true" aria-label="Loading transfers and exchanges">
+        <header>
+          <h1 className="text-2xl font-semibold text-primary">Transfers & Exchanges</h1>
+          <p className="text-sm font-medium text-muted">
+            Move money between card and cash, or exchange currencies.
+          </p>
+        </header>
+        <div className="grid gap-4 lg:grid-cols-2">
+          <SkeletonCard />
+          <SkeletonCard />
+        </div>
+      </div>
+    );
+  }
+
   return (
     <div className="space-y-5">
       <header>
-        <h1 className="text-2xl font-semibold text-slate-950">Transfers & Exchanges</h1>
-        <p className="text-sm font-medium text-slate-500">
+        <h1 className="text-2xl font-semibold text-primary">Transfers & Exchanges</h1>
+        <p className="text-sm font-medium text-muted">
           Move money between card and cash, or exchange currencies.
         </p>
       </header>
 
       <section className="grid gap-4 lg:grid-cols-[minmax(0,1fr)_minmax(0,1fr)]">
-        {/* New operation form */}
-        <div className="min-w-0 rounded-2xl border border-white/60 bg-white/90 p-4 shadow-glass backdrop-blur-sm sm:p-5">
-          <h2 className="text-base font-semibold text-slate-950">
-            {kindLabel({ fromCurrency, toCurrency, fromMethod, toMethod })}
-          </h2>
+        <Card className="min-w-0" padding="sm">
+          <CardHeader title={kindLabel({ fromCurrency, toCurrency, fromMethod, toMethod })} />
 
           <form onSubmit={handleSubmit} className="mt-4 space-y-4">
-            {/* FROM */}
-            <fieldset className="space-y-2">
-              <legend className="text-xs font-semibold uppercase tracking-wider text-slate-400">From</legend>
-              <div className="grid grid-cols-2 gap-2 sm:grid-cols-[minmax(0,1fr)_96px_96px]">
-                <input
+            <fieldset className="space-y-3 rounded-lg border border-accent bg-accent-muted/40 p-3">
+              <legend className="px-1 text-sm font-semibold text-secondary">From</legend>
+              <div className="grid grid-cols-1 gap-3 sm:grid-cols-[minmax(0,1fr)_96px_96px]">
+                <Field
+                  label="Amount"
                   inputMode="decimal"
                   value={fromAmountRaw}
                   onChange={(e) => setFromAmountRaw(e.target.value)}
-                  placeholder="Amount"
+                  placeholder="0.00"
                   required
                   disabled={saving}
-                  className="col-span-2 min-w-0 rounded-lg border border-slate-300 px-3 py-2 text-sm font-medium text-slate-950 outline-none placeholder:text-slate-400 focus:border-blue-500 focus:ring-2 focus:ring-blue-100/50 disabled:opacity-60 sm:col-span-1"
+                  autoComplete="off"
                 />
-                <select
+                <SelectField
+                  label="Currency"
                   value={fromCurrency}
                   onChange={(e) => setFromCurrency(e.target.value as Currency)}
                   disabled={saving}
-                  className="min-w-0 rounded-lg border border-slate-300 px-2 py-2 text-sm font-medium text-slate-950 outline-none focus:border-blue-500 disabled:opacity-60"
-                >
-                  {SUPPORTED_CURRENCIES.map((c) => <option key={c} value={c}>{c}</option>)}
-                </select>
-                <select
+                  options={SUPPORTED_CURRENCIES}
+                />
+                <SelectField
+                  label="Method"
                   value={fromMethod}
                   onChange={(e) => setFromMethod(e.target.value as Method)}
                   disabled={saving}
-                  className="min-w-0 rounded-lg border border-slate-300 px-2 py-2 text-sm font-medium text-slate-950 outline-none focus:border-blue-500 disabled:opacity-60"
-                >
-                  {SUPPORTED_METHODS.map((m) => <option key={m} value={m}>{m}</option>)}
-                </select>
+                  options={SUPPORTED_METHODS.map((method) => ({
+                    value: method,
+                    label: method.charAt(0).toUpperCase() + method.slice(1),
+                  }))}
+                />
               </div>
-              <p className="text-xs font-medium text-slate-400">
-                Available: <span className="font-semibold text-slate-600">{formatMoney(fromAvailable, fromCurrency)}</span>
+              <p className="text-xs font-medium text-muted">
+                Available: <span className="font-semibold text-secondary">{formatMoney(fromAvailable, fromCurrency)}</span>
               </p>
             </fieldset>
 
-            {/* Arrow */}
-            <div className="flex items-center gap-3">
-              <div className="h-px flex-1 bg-slate-200" />
-              <span className="select-none text-slate-400">↓</span>
-              <div className="h-px flex-1 bg-slate-200" />
-            </div>
+            <TransferDivider />
 
-            {/* TO */}
-            <fieldset className="space-y-2">
-              <legend className="text-xs font-semibold uppercase tracking-wider text-slate-400">To</legend>
-              <div className="grid grid-cols-2 gap-2 sm:grid-cols-[minmax(0,1fr)_96px_96px]">
-                <input
+            <fieldset className="space-y-3 rounded-lg border border-success bg-success-muted/40 p-3">
+              <legend className="px-1 text-sm font-semibold text-secondary">To</legend>
+              <div className="grid grid-cols-1 gap-3 sm:grid-cols-[minmax(0,1fr)_96px_96px]">
+                <Field
+                  label="Amount"
                   inputMode="decimal"
                   value={toAmountRaw}
                   onChange={(e) => setToAmountRaw(e.target.value)}
-                  placeholder="Amount"
+                  placeholder="0.00"
                   required
                   disabled={saving}
-                  className="col-span-2 min-w-0 rounded-lg border border-slate-300 px-3 py-2 text-sm font-medium text-slate-950 outline-none placeholder:text-slate-400 focus:border-blue-500 focus:ring-2 focus:ring-blue-100/50 disabled:opacity-60 sm:col-span-1"
+                  autoComplete="off"
                 />
-                <select
+                <SelectField
+                  label="Currency"
                   value={toCurrency}
                   onChange={(e) => setToCurrency(e.target.value as Currency)}
                   disabled={saving}
-                  className="min-w-0 rounded-lg border border-slate-300 px-2 py-2 text-sm font-medium text-slate-950 outline-none focus:border-blue-500 disabled:opacity-60"
-                >
-                  {SUPPORTED_CURRENCIES.map((c) => <option key={c} value={c}>{c}</option>)}
-                </select>
-                <select
+                  options={SUPPORTED_CURRENCIES}
+                />
+                <SelectField
+                  label="Method"
                   value={toMethod}
                   onChange={(e) => setToMethod(e.target.value as Method)}
                   disabled={saving}
-                  className="min-w-0 rounded-lg border border-slate-300 px-2 py-2 text-sm font-medium text-slate-950 outline-none focus:border-blue-500 disabled:opacity-60"
-                >
-                  {SUPPORTED_METHODS.map((m) => <option key={m} value={m}>{m}</option>)}
-                </select>
+                  options={SUPPORTED_METHODS.map((method) => ({
+                    value: method,
+                    label: method.charAt(0).toUpperCase() + method.slice(1),
+                  }))}
+                />
               </div>
-              {impliedRate !== null && (
-                <p className="text-xs font-medium text-violet-600">
+              {impliedRate !== null ? (
+                <p className="text-xs font-medium text-ai">
                   Implied rate: 1 {fromCurrency} = {impliedRate.toFixed(4)} {toCurrency}
                 </p>
-              )}
+              ) : null}
             </fieldset>
 
-            {/* Date + note */}
-            <div className="grid gap-2 sm:grid-cols-2">
-              <div>
-                <label className="mb-1 block text-xs font-semibold uppercase tracking-wider text-slate-400">Date</label>
-                <input
-                  type="date"
-                  value={date}
-                  onChange={(e) => setDate(e.target.value)}
-                  required
-                  disabled={saving}
-                  className="w-full min-w-0 rounded-lg border border-slate-300 px-3 py-2 text-sm font-medium text-slate-950 outline-none focus:border-blue-500 disabled:opacity-60"
-                />
-              </div>
-              <div>
-                <label className="mb-1 block text-xs font-semibold uppercase tracking-wider text-slate-400">Note (optional)</label>
-                <input
-                  type="text"
-                  value={note}
-                  onChange={(e) => setNote(e.target.value)}
-                  placeholder="ATM, Papara…"
-                  disabled={saving}
-                  className="w-full min-w-0 rounded-lg border border-slate-300 px-3 py-2 text-sm font-medium text-slate-950 outline-none placeholder:text-slate-400 focus:border-blue-500 disabled:opacity-60"
-                />
-              </div>
+            <div className="grid gap-3 sm:grid-cols-2">
+              <Field
+                label="Date"
+                type="date"
+                value={date}
+                onChange={(e) => setDate(e.target.value)}
+                required
+                disabled={saving}
+              />
+              <Field
+                label="Note (optional)"
+                value={note}
+                onChange={(e) => setNote(e.target.value)}
+                placeholder="ATM, Papara…"
+                disabled={saving}
+              />
             </div>
 
             <AnimatePresence>
-              {error && (
+              {error ? (
                 <motion.p
                   initial={{ opacity: 0, y: -4 }}
                   animate={{ opacity: 1, y: 0 }}
                   exit={{ opacity: 0 }}
-                  className="rounded-lg border border-red-200 bg-red-50 px-3 py-2 text-sm font-medium text-red-700"
+                  role="alert"
+                  className="rounded-lg border border-danger bg-danger-muted px-3 py-2 text-sm font-medium text-danger"
                 >
                   {error}
                 </motion.p>
-              )}
+              ) : null}
             </AnimatePresence>
 
-            <button
+            <Button
               type="submit"
+              fullWidth
+              loading={saving}
               disabled={saving || fromAmount <= 0 || toAmount <= 0}
-              className="min-h-11 w-full rounded-lg bg-gradient-to-r from-blue-600 to-violet-600 px-3 py-2.5 text-sm font-semibold leading-tight text-white transition-all hover:opacity-90 disabled:opacity-60"
+              className="leading-tight"
             >
-              {saving
-                ? 'Saving…'
-                : opKind === 'exchange'
-                  ? `Exchange ${fromCurrency} → ${toCurrency}`
-                  : `Transfer ${fromCurrency} ${fromMethod} → ${toMethod}`}
-            </button>
+              {opKind === 'exchange'
+                ? `Exchange ${fromCurrency} → ${toCurrency}`
+                : `Transfer ${fromCurrency} ${fromMethod} → ${toMethod}`}
+            </Button>
           </form>
-        </div>
+        </Card>
 
-        {/* Balances quick-view */}
-        <div className="min-w-0 rounded-2xl border border-white/60 bg-white/90 p-4 shadow-glass backdrop-blur-sm sm:p-5">
-          <h2 className="text-base font-semibold text-slate-950">Current balances</h2>
+        <Card className="min-w-0" padding="sm">
+          <CardHeader title="Current balances" />
           <div className="mt-4 grid gap-2 sm:grid-cols-2">
             {balances.map((b) => (
               <div
                 key={b.id}
                 className={`min-w-0 rounded-xl px-3 py-2.5 transition-all ${
                   b.id === fromBalanceId
-                    ? 'border-2 border-blue-400 bg-blue-50'
+                    ? 'border-2 border-accent bg-accent-muted'
                     : b.id === toBalanceId
-                      ? 'border-2 border-emerald-400 bg-emerald-50'
-                      : 'border border-slate-100 bg-slate-50'
+                      ? 'border-2 border-success bg-success-muted'
+                      : 'border border-subtle bg-surface-muted'
                 }`}
               >
-                <p className="truncate text-xs font-semibold uppercase tracking-wider text-slate-400">
+                <p className="truncate text-xs font-medium text-muted">
                   {b.currency} {b.method}
                 </p>
-                <p className="mt-1 break-words text-sm font-bold text-slate-950">
+                <p className="mt-1 break-words text-sm font-bold text-primary">
                   {formatMoney(b.amount, b.currency)}
                 </p>
               </div>
             ))}
           </div>
-          <p className="mt-3 text-xs font-medium text-slate-400">
-            <span className="inline-block h-2.5 w-2.5 rounded-sm border-2 border-blue-400 bg-blue-50 align-text-bottom" /> Source &nbsp;
-            <span className="inline-block h-2.5 w-2.5 rounded-sm border-2 border-emerald-400 bg-emerald-50 align-text-bottom" /> Destination
+          <p className="mt-3 text-xs font-medium text-muted">
+            <span className="inline-block h-2.5 w-2.5 rounded-sm border-2 border-accent bg-accent-muted align-text-bottom" /> Source &nbsp;
+            <span className="inline-block h-2.5 w-2.5 rounded-sm border-2 border-success bg-success-muted align-text-bottom" /> Destination
           </p>
-        </div>
+        </Card>
       </section>
 
-      {/* History */}
-      <section className="min-w-0 overflow-hidden rounded-2xl border border-white/60 bg-white/90 shadow-glass backdrop-blur-sm">
-        <div className="border-b border-slate-100 px-4 py-4 sm:px-5">
-          <h2 className="text-base font-semibold text-slate-950">Recent transfers &amp; exchanges</h2>
+      <Card className="min-w-0 overflow-hidden" padding="none">
+        <div className="border-b border-subtle px-4 py-4 sm:px-5">
+          <h2 className="text-base font-semibold text-primary">Recent transfers &amp; exchanges</h2>
         </div>
-        <div className="divide-y divide-slate-50">
+        <div className="divide-y divide-subtle">
           {conversions.length === 0 ? (
-            <p className="p-6 text-center text-sm font-medium text-slate-500">No records yet.</p>
+            <p className="p-6 text-center text-sm font-medium text-muted">No records yet.</p>
           ) : (
             <AnimatePresence initial={false}>
               {conversions.map((c) => {
@@ -309,24 +315,24 @@ export default function ConversionsWorkspace() {
                     className="grid min-w-0 gap-2 px-4 py-3 sm:grid-cols-[minmax(0,1fr)_auto] sm:gap-3 sm:px-5"
                   >
                     <div className="min-w-0">
-                      <p className="break-words text-sm font-semibold text-slate-950">
+                      <p className="break-words text-sm font-semibold text-primary">
                         {isSameCurrency
                           ? `${c.fromMethod} → ${c.toMethod} transfer`
                           : `${c.fromCurrency} → ${c.toCurrency} exchange`}
                       </p>
-                      <p className="mt-0.5 break-words text-xs font-medium text-slate-400">
+                      <p className="mt-0.5 break-words text-xs font-medium text-muted">
                         {c.date}
                         {c.note ? ` · ${c.note}` : ''}
                       </p>
                     </div>
                     <div className="min-w-0 sm:text-right">
-                      <p className="break-words text-sm font-bold text-red-500">
+                      <p className="break-words text-sm font-bold text-danger">
                         −{formatMoney(c.fromAmount, c.fromCurrency)}
-                        <span className="font-medium text-slate-400"> {c.fromMethod}</span>
+                        <span className="font-medium text-muted"> {c.fromMethod}</span>
                       </p>
-                      <p className="break-words text-sm font-bold text-emerald-600">
+                      <p className="break-words text-sm font-bold text-success">
                         +{formatMoney(c.toAmount, c.toCurrency)}
-                        <span className="font-medium text-slate-400"> {c.toMethod}</span>
+                        <span className="font-medium text-muted"> {c.toMethod}</span>
                       </p>
                     </div>
                   </motion.div>
@@ -335,7 +341,27 @@ export default function ConversionsWorkspace() {
             </AnimatePresence>
           )}
         </div>
-      </section>
+      </Card>
+    </div>
+  );
+}
+
+function TransferDivider() {
+  return (
+    <div className="flex items-center gap-3" aria-hidden="true">
+      <div className="h-px flex-1 bg-border" />
+      <svg
+        className="h-5 w-5 shrink-0 text-muted"
+        viewBox="0 0 24 24"
+        fill="none"
+        stroke="currentColor"
+        strokeWidth={1.5}
+        strokeLinecap="round"
+        strokeLinejoin="round"
+      >
+        <path d={ARROW_DOWN_ICON} />
+      </svg>
+      <div className="h-px flex-1 bg-border" />
     </div>
   );
 }
