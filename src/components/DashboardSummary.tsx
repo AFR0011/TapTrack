@@ -1,13 +1,16 @@
 'use client';
 
+import Link from 'next/link';
 import { motion } from 'framer-motion';
 import { useLiveQuery } from 'dexie-react-hooks';
 import { db } from '@/database';
 import { formatLocalDate, getCurrentMonth } from '@/dates';
 import { clampPercent } from '@/format';
 import { AnimatedNumber } from '@/components/ui/AnimatedNumber';
+import { buttonVariants } from '@/components/ui/Button';
 import { ProgressBar } from '@/components/ui/ProgressBar';
 import { Skeleton, SkeletonCard } from '@/components/ui/Skeleton';
+import { cn } from '@/lib/cn';
 
 function formatTRY(value: number) {
   return new Intl.NumberFormat('tr-TR', { minimumFractionDigits: 2, maximumFractionDigits: 2 }).format(value) + ' ₺';
@@ -35,9 +38,9 @@ export default function DashboardSummary() {
         <SkeletonCard />
         <div>
           <Skeleton className="h-4 w-20" />
-          <div className="mt-2 flex flex-wrap gap-2">
+          <div className="mt-2 grid grid-cols-2 gap-2 sm:grid-cols-3">
             {Array.from({ length: 6 }).map((_, index) => (
-              <Skeleton key={index} className="h-14 min-w-[7.5rem] rounded-xl" />
+              <Skeleton key={index} className="h-14 min-w-0 rounded-xl" />
             ))}
           </div>
         </div>
@@ -87,32 +90,43 @@ export default function DashboardSummary() {
           }
         />
 
-        <div className="mt-3 flex justify-between text-xs font-medium text-muted">
-          <span>
-            Today:{' '}
-            <span className="font-semibold text-secondary">
-              <AnimatedNumber value={todaySpending} format={formatTRY} />
+        <div className="mt-4 flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+          <div className="flex flex-wrap items-center justify-between gap-x-4 gap-y-1 text-xs font-medium text-muted sm:flex-1">
+            <span>
+              Today:{' '}
+              <span className="font-semibold text-secondary">
+                <AnimatedNumber value={todaySpending} format={formatTRY} />
+              </span>
             </span>
-          </span>
-          <span>Budget: {budgetAvailable > 0 ? formatTRY(budgetAvailable) : 'Not set'}</span>
+            <span>Budget: {budgetAvailable > 0 ? formatTRY(budgetAvailable) : 'Not set'}</span>
+          </div>
+          <Link
+            href="/app/budgets"
+            className={cn(
+              buttonVariants({ variant: budgetAvailable > 0 ? 'secondary' : 'primary', size: 'sm' }),
+              'w-full sm:w-auto'
+            )}
+          >
+            {budgetAvailable > 0 ? 'Edit budget' : 'Set budget'}
+          </Link>
         </div>
       </motion.div>
 
       <div>
         <h2 className="text-sm font-semibold text-muted">Balances</h2>
-        <div className="mt-2 flex flex-wrap gap-2">
+        <div className="mt-2 grid grid-cols-2 gap-2 sm:grid-cols-3">
           {balances.map((balance, i) => (
             <motion.div
               key={balance.id}
               initial={{ opacity: 0, scale: 0.95 }}
               animate={{ opacity: 1, scale: 1 }}
               transition={{ delay: 0.05 + i * 0.04, duration: 0.25, ease: 'easeOut' }}
-              className="min-w-[7.5rem] rounded-xl border border-subtle bg-surface px-3 py-2"
+              className="min-w-0 rounded-xl border border-subtle bg-surface px-3 py-2"
             >
-              <p className="text-xs font-medium text-muted">
+              <p className="truncate text-xs font-medium text-muted">
                 {balance.currency} {balance.method}
               </p>
-              <p className="mt-0.5 text-sm font-bold text-primary">
+              <p className="mt-0.5 truncate text-sm font-bold tabular-nums text-primary">
                 <AnimatedNumber
                   value={balance.amount}
                   format={(v) => formatCurrency(v, balance.currency)}
