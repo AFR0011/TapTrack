@@ -110,7 +110,7 @@ export default function ReportsWorkspace() {
   const transactions = useLiveQuery(() => db.transactions.toArray());
   const categories = useLiveQuery(() => db.categories.toArray());
   const monthlyBudget = useLiveQuery(
-    () => db.monthlyBudgets.where('month').equals(month).first(),
+    async () => (await db.monthlyBudgets.where('month').equals(month).first()) ?? null,
     [month]
   );
   const categoryBudgets = useLiveQuery(

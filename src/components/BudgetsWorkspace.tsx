@@ -18,7 +18,7 @@ export default function BudgetsWorkspace() {
   const transactions = useLiveQuery(() => db.transactions.toArray());
   const categories = useLiveQuery(() => db.categories.where('type').equals('expense').toArray());
   const monthlyBudget = useLiveQuery(
-    () => db.monthlyBudgets.where('month').equals(month).first(),
+    async () => (await db.monthlyBudgets.where('month').equals(month).first()) ?? null,
     [month]
   );
   const categoryBudgets = useLiveQuery(

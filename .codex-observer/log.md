@@ -39,3 +39,17 @@
 **Evidence:** `/app` correctly redirected to `/login`; login desktop/mobile DOM checks passed, but dashboard/transactions/reports/settings browser checks could not be reached without a real session.
 **Risk if ignored:** QA reports may blur the difference between verified authenticated UI behavior and checks that were blocked by auth setup.
 **Next action:** discuss with user
+### Observation 004: Optional Dexie records need explicit null live-query results
+
+**Status:** OPEN  
+**Date:** 2026-07-07  
+**Type:** agents-md  
+**Scope:** repo  
+**Target:** AGENTS.md  
+**Trigger:** Budgets and Reports stayed on skeleton loading when the selected month had no monthly budget row.  
+**Issue:** UI useLiveQuery calls used Dexie first() directly, so an absent optional record returned undefined, the same sentinel used for loading.  
+**Suggested improvement:** Add repo guidance or a local helper pattern: optional live queries should coerce missing records to null and reserve undefined for loading.  
+**Evidence:** BudgetsWorkspace and ReportsWorkspace monthlyBudget queries now return null when no record exists.  
+**Risk if ignored:** Future optional IndexedDB reads may create infinite loading states for empty but valid app data.  
+**Next action:** discuss with user
+
