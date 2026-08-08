@@ -1,40 +1,70 @@
-# Dependency Security Upgrade Plan
+# Dependency Security Upgrade Record
 
-Last updated: 2026-05-20
+Last updated: 2026-08-08
 
-## Current Finding
+## Status
 
-`npm.cmd audit --omit=dev` reports production advisories in the current Next/PostCSS dependency set. The automated fix path requires a breaking framework upgrade to Next 16.
+The previously deferred framework/dependency security batch is complete on the TapTrack upgrade/publication branches.
 
-## Decision
+The application has been migrated from Next.js 14 / React 18 to:
 
-Do not mix the Next 16 upgrade with product or QA remediation work. Treat it as a dedicated branch and verification batch after the smaller product batches are clean.
+- Next.js **16.2.12**
+- React / React DOM **19.2.8**
+- Node.js 20.9+ (CI: Node 22)
+- ESLint **10.8.0** with the official `@eslint/compat` wrapper for the current Next plugin stack
+- Vitest **4.1.10**
 
-## Upgrade Batch
+The upgrade also moved `middleware.ts` to the Next 16 `proxy.ts` convention and replaced `next lint` with the ESLint flat-config CLI flow.
 
-1. Create a dedicated branch for the framework upgrade.
-2. Read the current official Next.js migration notes for the target version before changing packages.
-3. Upgrade Next and related framework dependencies.
-4. Run:
+## Security remediation
 
-```powershell
-npm.cmd run lint
-npm.cmd run typecheck
-npm.cmd run test
-npm.cmd run build
-npm.cmd audit --omit=dev
+The first Next 16 dependency graph still exposed advisory findings through transitive packages. The maintained graph now pins/overrides patched dependency lines where needed, including current Vite, PostCSS, Sharp, and Nano ID versions.
+
+The publication dependency refresh on 2026-08-08 produced:
+
+```text
+npm audit --audit-level=high
+found 0 vulnerabilities
 ```
 
-5. Start a fresh dev server.
-6. Run route smoke checks against the fresh server:
+The production-only audit is also clean.
 
-```powershell
-$env:TAPTRACK_SMOKE_BASE_URL="http://127.0.0.1:<port>"; npm.cmd run smoke:routes
+## Verification
+
+The committed upgrade source has passed:
+
+```text
+npm ci
+npm audit --omit=dev --audit-level=high
+npm run lint
+npm run typecheck
+npm run test
+npm run build
+npm run smoke:routes
 ```
 
-7. Browser-check desktop and mobile for login, setup, dashboard, transactions, reports, settings, and mobile nav overflow.
-8. Accept only when auth redirects, API JSON responses, PWA assets, and mobile layouts remain clean.
+Results:
 
-## Remaining Risk
+- lint: pass
+- typecheck: pass
+- Vitest: 14 files / 67 tests pass
+- Next.js 16.2.12 production build: pass
+- route/API smoke: 8/8 pass
+- production dependency audit: 0 vulnerabilities
 
-Next 16 may require App Router, middleware, metadata, lint, or build-tooling changes. This is intentionally deferred until the app-level remediation work is verified.
+The publication branch additionally gates the **full** dependency tree with `npm audit --audit-level=high`.
+
+## ESLint 10 compatibility note
+
+`eslint-config-next@16.2.12` currently pulls React/import/a11y plugins whose peer ranges and rule APIs target ESLint 9. Rather than disabling lint rules or reverting to the older dependency graph, TapTrack wraps the imported Next configs with the official `@eslint/compat` `fixupConfigRules()` compatibility layer.
+
+This is intentionally temporary infrastructure. Remove the wrapper when the upstream plugin stack natively supports ESLint 10 and the full verification/audit ladder remains green without it.
+
+## Remaining release work
+
+Framework security is no longer the blocker. Public visibility now depends on publication concerns rather than the Next upgrade itself:
+
+- explicit source-code license selection;
+- final Git-history/privacy review;
+- synthetic screenshots/demo data;
+- authenticated manual walkthrough with a disposable test account.
