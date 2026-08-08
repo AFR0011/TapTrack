@@ -6,11 +6,19 @@ from pathlib import Path
 ROOT = Path(__file__).resolve().parents[1]
 
 
-def replace_exact(path: Path, old: str, new: str, label: str) -> None:
+def replace_exact(
+    path: Path,
+    old: str,
+    new: str,
+    label: str,
+    *,
+    applied_marker: str | None = None,
+) -> None:
     text = path.read_text(encoding="utf-8")
     count = text.count(old)
     if count == 0:
-        if new and new in text:
+        marker = applied_marker if applied_marker is not None else new
+        if marker and marker in text:
             print(f"already applied: {label}")
             return
         raise SystemExit(f"migration pattern not found for {label}: {path}")
@@ -27,12 +35,14 @@ def migrate_reports() -> None:
         "  const [ratesLoading, setRatesLoading] = useState(false);\n",
         "",
         "remove effect-owned exchange-rate loading state",
+        applied_marker="  const ratesLoading = unifyToTRY && rates === null;\n",
     )
     replace_exact(
         path,
         """  useEffect(() => {\n    if (!unifyToTRY || rates) return;\n    setRatesLoading(true);\n    fetch('/api/exchange-rates')\n      .then((response) => response.json())\n      .then((data: ExchangeRates) => setRates(data))\n      .catch(() => setRates({ USD: 38.5, EUR: 42 }))\n      .finally(() => setRatesLoading(false));\n  }, [rates, unifyToTRY]);\n\n  const activeRates = unifyToTRY ? rates : null;\n""",
         """  useEffect(() => {\n    if (!unifyToTRY || rates) return;\n    fetch('/api/exchange-rates')\n      .then((response) => response.json())\n      .then((data: ExchangeRates) => setRates(data))\n      .catch(() => setRates({ USD: 38.5, EUR: 42 }));\n  }, [rates, unifyToTRY]);\n\n  const ratesLoading = unifyToTRY && rates === null;\n  const activeRates = unifyToTRY ? rates : null;\n""",
         "derive exchange-rate loading state",
+        applied_marker="  const ratesLoading = unifyToTRY && rates === null;\n",
     )
 
 
@@ -49,6 +59,7 @@ def migrate_settings() -> None:
         """  useEffect(() => {\n    void refreshSyncStatus();\n    window.addEventListener('online', refreshSyncStatus);\n""",
         """  useEffect(() => {\n    queueMicrotask(() => {\n      void refreshSyncStatus();\n    });\n    window.addEventListener('online', refreshSyncStatus);\n""",
         "defer initial sync-status refresh",
+        applied_marker="    queueMicrotask(() => {\n      void refreshSyncStatus();\n    });\n",
     )
     replace_exact(
         path,
@@ -61,6 +72,7 @@ def migrate_settings() -> None:
         """\n  useEffect(() => {\n    setInput(String(amount));\n    setError('');\n  }, [amount]);\n\n""",
         "\n",
         "remove prop-to-state balance synchronization effect",
+        applied_marker="              key={`${balance.id}:${balance.amount}`}\n",
     )
 
 
