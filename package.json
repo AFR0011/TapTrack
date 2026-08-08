@@ -45,15 +45,16 @@
     "@types/pdfmake": "^0.2.1",
     "@types/react": "19.2.17",
     "@types/react-dom": "19.2.3",
-    "eslint": "9.39.5",
+    "eslint": "10.8.0",
     "eslint-config-next": "16.2.12",
     "fake-indexeddb": "^6.2.5",
     "ts-node": "^10.9.2",
-    "vitest": "^4.1.5"
+    "vitest": "4.1.10"
   },
   "overrides": {
     "nanoid": "6.0.0",
     "postcss": "8.5.23",
-    "sharp": "0.35.3"
+    "sharp": "0.35.3",
+    "vite": "8.1.5"
   }
 }
