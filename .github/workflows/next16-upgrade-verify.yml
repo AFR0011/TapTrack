@@ -1,0 +1,73 @@
+name: Next 16 Upgrade Verify
+
+on:
+  push:
+    branches:
+      - upgrade/next-16-lts
+
+permissions:
+  contents: write
+
+jobs:
+  verify-and-lock:
+    runs-on: ubuntu-latest
+    env:
+      NEXT_PUBLIC_SUPABASE_URL: https://example.supabase.co
+      NEXT_PUBLIC_SUPABASE_ANON_KEY: test-anon-key
+      SUPABASE_SERVICE_ROLE_KEY: test-service-role-key
+      TELEGRAM_BOT_TOKEN: test-bot-token
+      TELEGRAM_WEBHOOK_SECRET: test-webhook-secret
+      TAPTRACK_OWNER_TELEGRAM_CHAT_ID: "1"
+      TAPTRACK_OWNER_USER_ID: 00000000-0000-0000-0000-000000000000
+      OLLAMA_BASE_URL: http://127.0.0.1:11434
+      OLLAMA_MODEL: qwen2.5:1.5b
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          ref: upgrade/next-16-lts
+
+      - uses: actions/setup-node@v5
+        with:
+          node-version: "22"
+          cache: npm
+
+      - name: Regenerate lockfile
+        run: npm install --package-lock-only
+
+      - name: Install locked dependencies
+        run: npm ci
+
+      - name: Production dependency audit
+        run: npm audit --omit=dev --audit-level=high
+
+      - name: Full verification ladder
+        run: npm run check
+
+      - name: Route smoke against production build
+        run: |
+          npm run start > /tmp/taptrack-next.log 2>&1 &
+          server_pid=$!
+          trap 'kill $server_pid || true' EXIT
+          for attempt in {1..30}; do
+            if curl --fail --silent http://127.0.0.1:3000/login > /dev/null; then
+              break
+            fi
+            if [ "$attempt" -eq 30 ]; then
+              cat /tmp/taptrack-next.log
+              exit 1
+            fi
+            sleep 1
+          done
+          npm run smoke:routes
+
+      - name: Commit generated lock/config changes
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add package-lock.json package.json tsconfig.json next-env.d.ts || true
+          if git diff --cached --quiet; then
+            echo "No generated dependency/config changes to commit."
+          else
+            git commit -m "Regenerate lockfile for Next 16 LTS"
+            git push origin HEAD:upgrade/next-16-lts
+          fi
