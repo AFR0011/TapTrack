@@ -27,17 +27,16 @@ export function AnimatedNumber({
   const prevValueRef = useRef(value);
   const isFirstMountRef = useRef(true);
   const rafRef = useRef<number | null>(null);
+  const reducedMotion = prefersReducedMotion();
 
   useEffect(() => {
     if (isFirstMountRef.current) {
       isFirstMountRef.current = false;
-      setDisplayValue(value);
       prevValueRef.current = value;
       return;
     }
 
     if (prefersReducedMotion()) {
-      setDisplayValue(value);
       prevValueRef.current = value;
       return;
     }
@@ -68,5 +67,5 @@ export function AnimatedNumber({
     };
   }, [value, duration]);
 
-  return <span className={className}>{format(displayValue)}</span>;
+  return <span className={className}>{format(reducedMotion ? value : displayValue)}</span>;
 }
