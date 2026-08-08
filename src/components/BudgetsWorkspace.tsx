@@ -1,6 +1,6 @@
 'use client';
 
-import { useEffect, useMemo, useState } from 'react';
+import { useMemo, useState } from 'react';
 import { useLiveQuery } from 'dexie-react-hooks';
 import { db } from '@/database';
 import { getCurrentMonth } from '@/dates';
@@ -25,15 +25,10 @@ export default function BudgetsWorkspace() {
     () => db.categoryBudgets.where('month').equals(month).toArray(),
     [month]
   );
-  const [totalBudgetInput, setTotalBudgetInput] = useState('0');
   const [saving, setSaving] = useState('');
   const [error, setError] = useState('');
 
   const savedTotalBudget = monthlyBudget?.totalBudget ?? 0;
-
-  useEffect(() => {
-    setTotalBudgetInput(String(savedTotalBudget));
-  }, [month, savedTotalBudget]);
 
   const isLoading =
     transactions === undefined ||
@@ -57,15 +52,14 @@ export default function BudgetsWorkspace() {
   const remaining = budgetAvailable - totalSpent;
   const totalPercent = budgetAvailable > 0 ? clampPercent((totalSpent / budgetAvailable) * 100) : 0;
   const categoryBudgetByCategory = new Map((categoryBudgets ?? []).map((budget) => [budget.categoryId, budget]));
-  const monthlyDirty = parseAmountInput(totalBudgetInput) !== savedTotalBudget;
 
-  const saveMonthlyBudget = async () => {
+  const saveMonthlyBudget = async (value: string) => {
     setSaving('monthly');
     setError('');
     try {
       await upsertMonthlyBudget({
         month,
-        totalBudget: parseAmountInput(totalBudgetInput),
+        totalBudget: parseAmountInput(value),
       });
       toast.success('Monthly budget saved.');
     } catch (err) {
@@ -121,25 +115,12 @@ export default function BudgetsWorkspace() {
       <section className="grid gap-4 lg:grid-cols-[0.9fr_1.1fr]">
         <div className="rounded-2xl border border-subtle bg-surface p-5 ">
           <h2 className="text-base font-semibold text-primary">Monthly total</h2>
-          <div className="mt-4 grid gap-3 sm:grid-cols-[1fr_auto]">
-            <input
-              inputMode="decimal"
-              value={totalBudgetInput}
-              onChange={(event) => setTotalBudgetInput(event.target.value)}
-              className={cn(
-            'min-h-11 rounded-lg border border-subtle px-3 py-2 text-sm font-medium text-primary outline-none focus-visible:border-accent',
-            focusVisibleRing
-          )}
-            />
-            <Button
-              type="button"
-              onClick={saveMonthlyBudget}
-              loading={saving === 'monthly'}
-              disabled={saving === 'monthly' || !monthlyDirty}
-            >
-              Save total
-            </Button>
-          </div>
+          <MonthlyBudgetEditor
+            key={`${month}:${savedTotalBudget}`}
+            savedValue={savedTotalBudget}
+            saving={saving === 'monthly'}
+            onSave={saveMonthlyBudget}
+          />
           {error ? <p className="mt-3 text-sm font-medium text-danger">{error}</p> : null}
 
           <div className="mt-5">
@@ -195,8 +176,7 @@ export default function BudgetsWorkspace() {
 
               return (
                 <CategoryBudgetRow
-                  key={category.id}
-                  categoryId={category.id}
+                  key={`${category.id}:${budget}`}
                   name={category.name}
                   spent={spent}
                   budget={budget}
@@ -213,8 +193,42 @@ export default function BudgetsWorkspace() {
   );
 }
 
+function MonthlyBudgetEditor({
+  savedValue,
+  saving,
+  onSave,
+}: {
+  savedValue: number;
+  saving: boolean;
+  onSave: (value: string) => void;
+}) {
+  const [value, setValue] = useState(String(savedValue));
+  const dirty = parseAmountInput(value) !== savedValue;
+
+  return (
+    <div className="mt-4 grid gap-3 sm:grid-cols-[1fr_auto]">
+      <input
+        inputMode="decimal"
+        value={value}
+        onChange={(event) => setValue(event.target.value)}
+        className={cn(
+          'min-h-11 rounded-lg border border-subtle px-3 py-2 text-sm font-medium text-primary outline-none focus-visible:border-accent',
+          focusVisibleRing
+        )}
+      />
+      <Button
+        type="button"
+        onClick={() => onSave(value)}
+        loading={saving}
+        disabled={saving || !dirty}
+      >
+        Save total
+      </Button>
+    </div>
+  );
+}
+
 function CategoryBudgetRow({
-  categoryId,
   name,
   spent,
   budget,
@@ -222,7 +236,6 @@ function CategoryBudgetRow({
   saving,
   onSave,
 }: {
-  categoryId: string;
   name: string;
   spent: number;
   budget: number;
@@ -232,10 +245,6 @@ function CategoryBudgetRow({
 }) {
   const [value, setValue] = useState(String(budget));
   const dirty = parseAmountInput(value) !== budget;
-
-  useEffect(() => {
-    setValue(String(budget));
-  }, [budget, categoryId]);
 
   return (
     <div className="grid gap-3 py-3 md:grid-cols-[1fr_160px_auto] md:items-center">
