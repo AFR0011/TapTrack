@@ -1,15 +1,15 @@
 name: Next 16 Upgrade Verify
 
 on:
-  push:
+  pull_request:
     branches:
-      - upgrade/next-16-lts
+      - main
 
 permissions:
-  contents: write
+  contents: read
 
 jobs:
-  verify-and-lock:
+  verify-and-export:
     runs-on: ubuntu-latest
     env:
       NEXT_PUBLIC_SUPABASE_URL: https://example.supabase.co
@@ -23,8 +23,6 @@ jobs:
       OLLAMA_MODEL: qwen2.5:1.5b
     steps:
       - uses: actions/checkout@v7
-        with:
-          ref: upgrade/next-16-lts
 
       - uses: actions/setup-node@v5
         with:
@@ -60,14 +58,13 @@ jobs:
           done
           npm run smoke:routes
 
-      - name: Commit generated lock/config changes
-        run: |
-          git config user.name "github-actions[bot]"
-          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
-          git add package-lock.json package.json tsconfig.json next-env.d.ts || true
-          if git diff --cached --quiet; then
-            echo "No generated dependency/config changes to commit."
-          else
-            git commit -m "Regenerate lockfile for Next 16 LTS"
-            git push origin HEAD:upgrade/next-16-lts
-          fi
+      - name: Export generated dependency/config files
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: next16-generated-files
+          if-no-files-found: error
+          path: |
+            package-lock.json
+            tsconfig.json
+            next-env.d.ts
