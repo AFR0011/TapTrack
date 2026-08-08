@@ -1,6 +1,6 @@
 # Publication Readiness
 
-TapTrack is being prepared as a public engineering portfolio repository. The public presentation should focus on the implemented local-first finance architecture, sync and integration boundaries, data validation, responsive application design, and automated verification without presenting the project as a commercial finance product.
+TapTrack is being prepared as a public engineering portfolio repository. The public presentation focuses on the implemented local-first finance architecture, synchronization and integration boundaries, data validation, responsive application design, and automated verification.
 
 ## Required before public visibility
 
@@ -9,16 +9,16 @@ TapTrack is being prepared as a public engineering portfolio repository. The pub
 - [x] Pass lint, typecheck, 67 automated tests, production build, and route smoke on the publication branch.
 - [x] Rewrite the README to distinguish local IndexedDB storage, Supabase Auth, optional Supabase data sync, and optional integrations.
 - [x] Add a security policy describing finance-data and secret boundaries.
-- [ ] Choose and add an explicit source-code license.
+- [x] License the source code under the MIT License.
 - [ ] Finish the historical Git review for old environment files, credentials, real finance data, screenshots, or provider identifiers.
 - [ ] Use only synthetic/demo financial values and transaction descriptions in public screenshots.
 - [ ] Perform a final authenticated manual walkthrough using a disposable test Supabase account before presenting screenshots as release evidence.
 
-## Supported portfolio claims
+## Project scope
 
-TapTrack can truthfully be described as a mobile-first local-first personal finance application built with Next.js, React, TypeScript, Dexie/IndexedDB, and Supabase Auth, with optional remote sync and integrations.
+TapTrack is a mobile-first, local-first personal finance application built with Next.js, React, TypeScript, Dexie/IndexedDB, and Supabase Auth, with optional remote sync and integrations.
 
-Implemented engineering evidence includes:
+Implemented engineering features include:
 
 - command and multi-entry transaction parsing;
 - balance-aware finance mutations;
@@ -33,24 +33,14 @@ Implemented engineering evidence includes:
 - responsive/PWA presentation and accessibility work;
 - automated lint, typecheck, tests, production build, route smoke, and dependency auditing.
 
-## Claims to avoid
+## Product boundaries
 
-Do not describe TapTrack as:
-
-- a commercial/client finance product;
-- a bank or payment-network integration;
-- an accounting, tax, investment, or financial-advice service;
-- fully offline or backend-free;
-- end-to-end encrypted finance storage;
-- a multi-user/team finance platform;
-- a system with a durable server-side synchronization queue;
-- a background recurring-payment scheduler;
-- proof of production readiness for handling other people's financial data.
+TapTrack does not implement bank or payment-network integrations, accounting/tax/investment advice, end-to-end encrypted finance storage, team finance workflows, a durable server-side synchronization queue, or background recurring-payment scheduling.
 
 ## Privacy presentation rule
 
-Screenshots, GIFs, demo exports, and sample database content intended for the public repository must use synthetic names, amounts, account balances, Telegram identifiers, and transaction histories. Do not use cropped real data and assume nobody will notice. Humans invented zoom.
+Screenshots, GIFs, demo exports, and sample database content intended for the public repository should use synthetic names, amounts, account balances, Telegram identifiers, and transaction histories.
 
-## License blocker
+## License
 
-No source-code license is currently committed. Keeping the repository private until a license is intentionally selected avoids creating an ambiguous public-use situation.
+TapTrack source code is released under the MIT License. See `LICENSE`.
