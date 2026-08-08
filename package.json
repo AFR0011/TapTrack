@@ -26,10 +26,10 @@
     "dexie-react-hooks": "^1.1.7",
     "framer-motion": "^12.38.0",
     "js-base64": "^3.7.7",
-    "next": "16.2.11",
+    "next": "16.2.12",
     "papaparse": "^5.4.1",
     "pdfmake": "^0.2.15",
-    "postcss": "^8.4.45",
+    "postcss": "8.5.23",
     "react": "19.2.8",
     "react-dom": "19.2.8",
     "recharts": "^2.13.0",
@@ -46,9 +46,14 @@
     "@types/react": "19.2.17",
     "@types/react-dom": "19.2.3",
     "eslint": "9.39.5",
-    "eslint-config-next": "16.2.11",
+    "eslint-config-next": "16.2.12",
     "fake-indexeddb": "^6.2.5",
     "ts-node": "^10.9.2",
     "vitest": "^4.1.5"
+  },
+  "overrides": {
+    "nanoid": "6.0.0",
+    "postcss": "8.5.23",
+    "sharp": "0.35.3"
   }
 }
