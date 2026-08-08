@@ -33,6 +33,9 @@ jobs:
       - name: Install locked dependencies
         run: npm ci
 
+      - name: Publication guard
+        run: node scripts/publication-guard.mjs
+
       - name: Audit all dependencies
         run: npm audit --audit-level=high
 
