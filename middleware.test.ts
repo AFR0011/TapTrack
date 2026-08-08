@@ -6,7 +6,7 @@ vi.mock('@supabase/ssr', () => ({
 }));
 
 import { createServerClient } from '@supabase/ssr';
-import { middleware } from './middleware';
+import { proxy } from './proxy';
 
 function mockUser(user: { id: string } | null) {
   vi.mocked(createServerClient).mockReturnValue({
@@ -20,7 +20,7 @@ function request(path: string) {
   return new NextRequest(`http://localhost${path}`);
 }
 
-describe('middleware route policy', () => {
+describe('proxy route policy', () => {
   beforeEach(() => {
     vi.clearAllMocks();
   });
@@ -28,7 +28,7 @@ describe('middleware route policy', () => {
   it('redirects unauthenticated app routes to login', async () => {
     mockUser(null);
 
-    const response = await middleware(request('/app'));
+    const response = await proxy(request('/app'));
 
     expect(response.status).toBe(307);
     expect(response.headers.get('location')).toBe('http://localhost/login');
@@ -37,7 +37,7 @@ describe('middleware route policy', () => {
   it('keeps login reachable for unauthenticated users', async () => {
     mockUser(null);
 
-    const response = await middleware(request('/login'));
+    const response = await proxy(request('/login'));
 
     expect(response.status).toBe(200);
     expect(response.headers.get('location')).toBeNull();
@@ -46,8 +46,8 @@ describe('middleware route policy', () => {
   it('does not redirect public integration API routes', async () => {
     mockUser(null);
 
-    const exchange = await middleware(request('/api/exchange-rates'));
-    const webhook = await middleware(request('/api/telegram/webhook'));
+    const exchange = await proxy(request('/api/exchange-rates'));
+    const webhook = await proxy(request('/api/telegram/webhook'));
 
     expect(exchange.status).toBe(200);
     expect(webhook.status).toBe(200);
@@ -58,8 +58,8 @@ describe('middleware route policy', () => {
   it('does not redirect PWA assets', async () => {
     mockUser(null);
 
-    const manifest = await middleware(request('/manifest.webmanifest'));
-    const serviceWorker = await middleware(request('/sw.js'));
+    const manifest = await proxy(request('/manifest.webmanifest'));
+    const serviceWorker = await proxy(request('/sw.js'));
 
     expect(manifest.status).toBe(200);
     expect(serviceWorker.status).toBe(200);
@@ -70,8 +70,8 @@ describe('middleware route policy', () => {
   it('sends authenticated users away from login and root to the app', async () => {
     mockUser({ id: 'user-1' });
 
-    const login = await middleware(request('/login'));
-    const root = await middleware(request('/'));
+    const login = await proxy(request('/login'));
+    const root = await proxy(request('/'));
 
     expect(login.status).toBe(307);
     expect(login.headers.get('location')).toBe('http://localhost/app');

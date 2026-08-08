@@ -103,7 +103,6 @@ export default function ReportsWorkspace() {
   const [year, setYear] = useState(currentMonth.slice(0, 4));
   const [unifyToTRY, setUnifyToTRY] = useState(false);
   const [rates, setRates] = useState<ExchangeRates | null>(null);
-  const [ratesLoading, setRatesLoading] = useState(false);
   const [exporting, setExporting] = useState(false);
   const [exportError, setExportError] = useState('');
 
@@ -125,14 +124,13 @@ export default function ReportsWorkspace() {
 
   useEffect(() => {
     if (!unifyToTRY || rates) return;
-    setRatesLoading(true);
     fetch('/api/exchange-rates')
       .then((response) => response.json())
       .then((data: ExchangeRates) => setRates(data))
-      .catch(() => setRates({ USD: 38.5, EUR: 42 }))
-      .finally(() => setRatesLoading(false));
+      .catch(() => setRates({ USD: 38.5, EUR: 42 }));
   }, [rates, unifyToTRY]);
 
+  const ratesLoading = unifyToTRY && rates === null;
   const activeRates = unifyToTRY ? rates : null;
   const categoryById = useMemo(
     () => new Map((categories ?? []).map((category) => [category.id, category])),

@@ -1,7 +1,7 @@
 import { type NextRequest, NextResponse } from 'next/server';
 import { createServerClient } from '@supabase/ssr';
 
-export async function middleware(request: NextRequest) {
+export async function proxy(request: NextRequest) {
   let supabaseResponse = NextResponse.next({ request });
 
   const supabase = createServerClient(
@@ -23,7 +23,7 @@ export async function middleware(request: NextRequest) {
     }
   );
 
-  // Refreshes the auth token so the session stays alive
+  // Refreshes the auth token so the session stays alive.
   const {
     data: { user },
   } = await supabase.auth.getUser();
@@ -31,7 +31,10 @@ export async function middleware(request: NextRequest) {
   const { pathname } = request.nextUrl;
   const isAuthRoute = pathname.startsWith('/login') || pathname.startsWith('/auth');
   const isApiRoute = pathname.startsWith('/api/telegram') || pathname.startsWith('/api/exchange-rates');
-  const isPublicPwaAsset = pathname === '/manifest.webmanifest' || pathname === '/sw.js' || pathname.startsWith('/icons/');
+  const isPublicPwaAsset =
+    pathname === '/manifest.webmanifest' ||
+    pathname === '/sw.js' ||
+    pathname.startsWith('/icons/');
 
   if (!user && !isAuthRoute && !isApiRoute && !isPublicPwaAsset) {
     const loginUrl = request.nextUrl.clone();
