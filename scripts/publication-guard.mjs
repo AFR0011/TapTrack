@@ -16,6 +16,8 @@ function read(relativePath) {
 const readme = read('README.md');
 const security = read('SECURITY.md');
 const publication = read('PUBLICATION.md');
+const license = read('LICENSE');
+const packageJson = read('package.json');
 const envExample = read('.env.example');
 const gitignore = read('.gitignore');
 const projectState = read('docs/PROJECT_STATE.md');
@@ -34,8 +36,17 @@ for (const phrase of ['SUPABASE_SERVICE_ROLE_KEY', 'TELEGRAM_BOT_TOKEN', 'Indexe
   if (!security.includes(phrase)) failures.push(`SECURITY.md missing boundary: ${phrase}`);
 }
 
-if (!publication.includes('source-code license')) {
-  failures.push('PUBLICATION.md must retain the explicit license blocker');
+if (!publication.includes('MIT License')) {
+  failures.push('PUBLICATION.md must document the MIT License');
+}
+if (!license.startsWith('MIT License') || !license.includes('Copyright (c) 2026 Ali Farrokhnejad')) {
+  failures.push('LICENSE must contain the project MIT license and copyright notice');
+}
+try {
+  const parsedPackage = JSON.parse(packageJson);
+  if (parsedPackage.license !== 'MIT') failures.push('package.json must declare MIT');
+} catch {
+  failures.push('package.json is not valid JSON');
 }
 
 if (readme.includes('Next.js 14') || projectState.includes('Next.js 14')) {
