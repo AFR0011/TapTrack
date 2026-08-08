@@ -6,7 +6,7 @@ import { useLiveQuery } from 'dexie-react-hooks';
 import { db, ensureDatabaseSeeded } from '@/database';
 import { DEFAULT_SETTINGS_ID } from '@/defaultData';
 import { getCurrentMonth } from '@/dates';
-import { formatMoney, parseAmountInput } from '@/format';
+import { parseAmountInput } from '@/format';
 import { exportCSV, exportJSON, exportPDF, importJSON } from '@/exports/exportService';
 import { deleteCategory, updateCategory } from '@/budgets/budgetService';
 import { SUPPORTED_METHODS, type Category, type Method, type TransactionType } from '@/types';
@@ -77,7 +77,9 @@ export default function SettingsWorkspace() {
   }, []);
 
   useEffect(() => {
-    void refreshSyncStatus();
+    queueMicrotask(() => {
+      void refreshSyncStatus();
+    });
     window.addEventListener('online', refreshSyncStatus);
     window.addEventListener('offline', refreshSyncStatus);
     return () => {
@@ -343,7 +345,7 @@ export default function SettingsWorkspace() {
         <div className="mt-4 grid gap-3">
           {balances.map((balance) => (
             <BalanceRow
-              key={balance.id}
+              key={`${balance.id}:${balance.amount}`}
               label={`${balance.currency} ${balance.method}`}
               amount={balance.amount}
               onSave={(value) => updateBalance(balance.id, value)}
@@ -582,11 +584,6 @@ function BalanceRow({
   const [input, setInput] = useState(String(amount));
   const [error, setError] = useState('');
   const [saving, setSaving] = useState(false);
-
-  useEffect(() => {
-    setInput(String(amount));
-    setError('');
-  }, [amount]);
 
   const parsed = parseBalanceAmount(input);
   const dirty = parsed !== null && parsed !== amount;
