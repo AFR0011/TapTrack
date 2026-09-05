@@ -31,7 +31,7 @@ export async function createTransaction(
     updatedAt: now,
   };
 
-  await database.transaction('rw', database.transactions, database.balances, database.settings, async () => {
+  const syncPayload = await database.transaction('rw', database.transactions, database.balances, database.settings, async () => {
     const balanceId = getBalanceId(input.currency, input.method);
     const currentBalance =
       (await database.balances.get(balanceId)) ??
@@ -65,11 +65,12 @@ export async function createTransaction(
     };
     await database.settings.put(updatedSettings);
 
-    // Push records after all writes in the transaction
-    void pushRecord('transactions', transaction as unknown as Record<string, unknown>);
-    void pushRecord('balances', updatedBalance as unknown as Record<string, unknown>);
-    void pushRecord('settings', updatedSettings as unknown as Record<string, unknown>);
+    return { updatedBalance, updatedSettings };
   });
+
+  void pushRecord('transactions', transaction as unknown as Record<string, unknown>, database);
+  void pushRecord('balances', syncPayload.updatedBalance as unknown as Record<string, unknown>, database);
+  void pushRecord('settings', syncPayload.updatedSettings as unknown as Record<string, unknown>, database);
 
   return transaction;
 }
@@ -118,18 +119,18 @@ export async function updateTransaction(
     };
     await database.settings.put(updatedSettings);
 
-    // Push records after all writes in the transaction
-    void pushRecord('transactions', updatedTransaction as unknown as Record<string, unknown>);
-    balanceUpdates.forEach((balance) => {
-      void pushRecord('balances', balance as unknown as Record<string, unknown>);
-    });
-    if (updatedSettings) {
-      void pushRecord('settings', updatedSettings as unknown as Record<string, unknown>);
-    }
   });
 
   if (!updatedTransaction) {
     throw new Error('Transaction was not updated');
+  }
+
+  void pushRecord('transactions', updatedTransaction as unknown as Record<string, unknown>, database);
+  balanceUpdates.forEach((balance) => {
+    void pushRecord('balances', balance as unknown as Record<string, unknown>, database);
+  });
+  if (updatedSettings) {
+    void pushRecord('settings', updatedSettings as unknown as Record<string, unknown>, database);
   }
 
   return updatedTransaction;
@@ -143,7 +144,7 @@ export async function deleteTransaction(
 
   const now = new Date().toISOString();
 
-  await database.transaction('rw', database.transactions, database.balances, async () => {
+  const updatedBalance = await database.transaction('rw', database.transactions, database.balances, async () => {
     const transaction = await database.transactions.get(id);
     if (!transaction) {
       throw new Error('Transaction not found');
@@ -165,18 +166,18 @@ export async function deleteTransaction(
       throw new InsufficientBalanceError(transaction.currency, transaction.method, currentBalance.amount);
     }
 
-    const updatedBalance: Balance = {
+    const nextBalance: Balance = {
       ...currentBalance,
       amount: nextAmount,
       updatedAt: now,
     };
-    await database.balances.put(updatedBalance);
+    await database.balances.put(nextBalance);
     await database.transactions.delete(id);
-
-    // Push balance update
-    void pushRecord('balances', updatedBalance as unknown as Record<string, unknown>);
-    void deleteRecord('transactions', id);
+    return nextBalance;
   });
+
+  void pushRecord('balances', updatedBalance as unknown as Record<string, unknown>, database);
+  void deleteRecord('transactions', id, database);
 }
 
 /**
@@ -201,7 +202,7 @@ export async function createTransactions(
     updatedAt: now,
   }));
 
-  await database.transaction('rw', database.transactions, database.balances, database.settings, async () => {
+  const syncPayload = await database.transaction('rw', database.transactions, database.balances, database.settings, async () => {
     // Collect every unique balance row this batch touches
     const balanceIds = [...new Set(inputs.map((input) => getBalanceId(input.currency, input.method)))];
     const balanceMap = new Map<string, Balance>();
@@ -248,15 +249,16 @@ export async function createTransactions(
     };
     await database.settings.put(updatedSettings);
 
-    // Push records after all writes in the transaction
-    for (const t of transactions) {
-      void pushRecord('transactions', t as unknown as Record<string, unknown>);
-    }
-    for (const balance of balanceMap.values()) {
-      void pushRecord('balances', balance as unknown as Record<string, unknown>);
-    }
-    void pushRecord('settings', updatedSettings as unknown as Record<string, unknown>);
+    return { balances: [...balanceMap.values()], updatedSettings };
   });
+
+  for (const transaction of transactions) {
+    void pushRecord('transactions', transaction as unknown as Record<string, unknown>, database);
+  }
+  for (const balance of syncPayload.balances) {
+    void pushRecord('balances', balance as unknown as Record<string, unknown>, database);
+  }
+  void pushRecord('settings', syncPayload.updatedSettings as unknown as Record<string, unknown>, database);
 
   return transactions;
 }

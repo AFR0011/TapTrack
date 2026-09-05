@@ -110,6 +110,12 @@ export interface Settings {
   updatedAt: string;
 }
 
+export interface DeviceMetadata {
+  id: string;
+  syncOwnerUserId: string;
+  linkedAt: string;
+}
+
 /** Live exchange rates: values are "1 unit of currency = X TRY" */
 export type ExchangeRates = {
   USD: number;

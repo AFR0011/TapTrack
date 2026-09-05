@@ -31,6 +31,21 @@ const baseExpense: TransactionDraft = {
 };
 
 describe('createTransaction', () => {
+  it('does not leak an unhandled sync rejection from the committed local write', async () => {
+    const unhandled: unknown[] = [];
+    const listener = (reason: unknown) => unhandled.push(reason);
+    process.on('unhandledRejection', listener);
+
+    try {
+      await database.balances.update(getBalanceId('TRY', 'cash'), { amount: 200 });
+      await createTransaction(baseExpense, database);
+      await new Promise((resolve) => setTimeout(resolve, 0));
+      expect(unhandled).toEqual([]);
+    } finally {
+      process.off('unhandledRejection', listener);
+    }
+  });
+
   it('creates an income transaction and updates the matching balance', async () => {
     const transaction = await createTransaction(
       {

@@ -126,7 +126,11 @@ describe('budgetService', () => {
       color: '#db2777',
       type: 'expense',
     });
-    expect(pushSpy).toHaveBeenCalledWith('categories', expect.objectContaining({ id: 'cat-custom' }));
+    expect(pushSpy).toHaveBeenCalledWith(
+      'categories',
+      expect.objectContaining({ id: 'cat-custom' }),
+      database
+    );
   });
 
   it('prevents changing default category type', async () => {
@@ -225,7 +229,11 @@ describe('budgetService', () => {
       categoryId: 'cat-income',
     });
     await expect(database.categories.get('cat-bonus')).resolves.toBeUndefined();
-    expect(pushSpy).toHaveBeenCalledWith('transactions', expect.objectContaining({ id: transaction.id, categoryId: 'cat-income' }));
-    expect(deleteSpy).toHaveBeenCalledWith('categories', 'cat-bonus');
+    expect(pushSpy).toHaveBeenCalledWith(
+      'transactions',
+      expect.objectContaining({ id: transaction.id, categoryId: 'cat-income' }),
+      database
+    );
+    expect(deleteSpy).toHaveBeenCalledWith('categories', 'cat-bonus', database);
   });
 });

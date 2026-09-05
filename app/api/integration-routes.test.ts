@@ -4,6 +4,15 @@ import { GET as getExchangeRates } from './exchange-rates/route';
 import { GET as registerTelegram } from './telegram/register/route';
 import { POST as telegramWebhook } from './telegram/webhook/route';
 
+function stubCompleteTelegramEnvironment() {
+  vi.stubEnv('TELEGRAM_WEBHOOK_SECRET', 'expected-secret');
+  vi.stubEnv('TELEGRAM_BOT_TOKEN', 'test-token');
+  vi.stubEnv('TAPTRACK_OWNER_TELEGRAM_CHAT_ID', '1001');
+  vi.stubEnv('TAPTRACK_OWNER_USER_ID', 'test-owner');
+  vi.stubEnv('NEXT_PUBLIC_SUPABASE_URL', 'https://example.invalid');
+  vi.stubEnv('SUPABASE_SERVICE_ROLE_KEY', 'test-service-role');
+}
+
 describe('integration API route responses', () => {
   afterEach(() => {
     vi.unstubAllGlobals();
@@ -22,7 +31,7 @@ describe('integration API route responses', () => {
   });
 
   it('rejects Telegram webhook requests with an invalid secret', async () => {
-    vi.stubEnv('TELEGRAM_WEBHOOK_SECRET', 'expected-secret');
+    stubCompleteTelegramEnvironment();
     const request = new NextRequest('http://localhost/api/telegram/webhook', {
       method: 'POST',
       headers: {
@@ -40,7 +49,7 @@ describe('integration API route responses', () => {
   });
 
   it('rejects Telegram webhook registration with an invalid admin secret', async () => {
-    vi.stubEnv('TELEGRAM_WEBHOOK_SECRET', 'expected-secret');
+    stubCompleteTelegramEnvironment();
     const request = new NextRequest('http://localhost/api/telegram/register', {
       headers: {
         'x-admin-secret': 'wrong-secret',
@@ -52,5 +61,42 @@ describe('integration API route responses', () => {
 
     expect(response.status).toBe(401);
     expect(body).toEqual({ error: 'Unauthorized' });
+  });
+
+  it('fails closed before downstream work when Telegram configuration is incomplete', async () => {
+    const fetchMock = vi.fn();
+    vi.stubGlobal('fetch', fetchMock);
+    const request = new NextRequest('http://localhost/api/telegram/webhook', {
+      method: 'POST',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({ update_id: 1 }),
+    });
+
+    const response = await telegramWebhook(request);
+
+    expect(response.status).toBe(503);
+    expect(fetchMock).not.toHaveBeenCalled();
+  });
+
+  it('rejects a non-owner Telegram chat without sending or accessing data', async () => {
+    stubCompleteTelegramEnvironment();
+    const fetchMock = vi.fn();
+    vi.stubGlobal('fetch', fetchMock);
+    const request = new NextRequest('http://localhost/api/telegram/webhook', {
+      method: 'POST',
+      headers: {
+        'content-type': 'application/json',
+        'x-telegram-bot-api-secret-token': 'expected-secret',
+      },
+      body: JSON.stringify({
+        update_id: 2,
+        message: { message_id: 1, chat: { id: 2002 }, text: '/balance' },
+      }),
+    });
+
+    const response = await telegramWebhook(request);
+
+    expect(response.status).toBe(403);
+    expect(fetchMock).not.toHaveBeenCalled();
   });
 });

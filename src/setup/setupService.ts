@@ -58,10 +58,10 @@ export async function completeInitialSetup(
   );
 
   seededBalances.forEach((balance) => {
-    void pushRecord('balances', balance as unknown as Record<string, unknown>);
+    void pushRecord('balances', balance as unknown as Record<string, unknown>, database);
   });
   if (updatedSettings) {
-    void pushRecord('settings', updatedSettings as unknown as Record<string, unknown>);
+    void pushRecord('settings', updatedSettings as unknown as Record<string, unknown>, database);
   }
 
   const settings = await database.settings.get(DEFAULT_SETTINGS_ID);

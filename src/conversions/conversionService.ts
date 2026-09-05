@@ -70,7 +70,7 @@ export async function createConversion(
     updatedAt: now,
   };
 
-  await database.transaction('rw', database.conversions, database.balances, async () => {
+  const syncBalances = await database.transaction('rw', database.conversions, database.balances, async () => {
     const fromId = getBalanceId(draft.fromCurrency, draft.fromMethod);
     const toId = getBalanceId(draft.toCurrency, draft.toMethod);
 
@@ -122,11 +122,12 @@ export async function createConversion(
 
     await database.conversions.add(conversion);
 
-    // Push records after all writes in the transaction
-    void pushRecord('conversions', conversion as unknown as Record<string, unknown>);
-    void pushRecord('balances', updatedFromBalance as unknown as Record<string, unknown>);
-    void pushRecord('balances', updatedToBalance as unknown as Record<string, unknown>);
+    return { updatedFromBalance, updatedToBalance };
   });
+
+  void pushRecord('conversions', conversion as unknown as Record<string, unknown>, database);
+  void pushRecord('balances', syncBalances.updatedFromBalance as unknown as Record<string, unknown>, database);
+  void pushRecord('balances', syncBalances.updatedToBalance as unknown as Record<string, unknown>, database);
 
   return conversion;
 }

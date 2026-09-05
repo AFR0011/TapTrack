@@ -3,49 +3,41 @@ import { createServerClient } from '@supabase/ssr';
 
 export async function proxy(request: NextRequest) {
   let supabaseResponse = NextResponse.next({ request });
-
-  const supabase = createServerClient(
-    process.env.NEXT_PUBLIC_SUPABASE_URL!,
-    process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!,
-    {
-      cookies: {
-        getAll() {
-          return request.cookies.getAll();
-        },
-        setAll(cookiesToSet) {
-          cookiesToSet.forEach(({ name, value }) => request.cookies.set(name, value));
-          supabaseResponse = NextResponse.next({ request });
-          cookiesToSet.forEach(({ name, value, options }) =>
-            supabaseResponse.cookies.set(name, value, options)
-          );
-        },
-      },
-    }
-  );
-
-  // Refreshes the auth token so the session stays alive.
-  const {
-    data: { user },
-  } = await supabase.auth.getUser();
+  const url = process.env.NEXT_PUBLIC_SUPABASE_URL;
+  const key = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY;
 
   const { pathname } = request.nextUrl;
-  const isAuthRoute = pathname.startsWith('/login') || pathname.startsWith('/auth');
-  const isApiRoute = pathname.startsWith('/api/telegram') || pathname.startsWith('/api/exchange-rates');
-  const isPublicPwaAsset =
-    pathname === '/manifest.webmanifest' ||
-    pathname === '/sw.js' ||
-    pathname.startsWith('/icons/');
 
-  if (!user && !isAuthRoute && !isApiRoute && !isPublicPwaAsset) {
-    const loginUrl = request.nextUrl.clone();
-    loginUrl.pathname = '/login';
-    return NextResponse.redirect(loginUrl);
-  }
+  // Authentication enables optional sync; it never gates the device-local app.
+  if (url && key) {
+    try {
+      const supabase = createServerClient(url, key, {
+        cookies: {
+          getAll() {
+            return request.cookies.getAll();
+          },
+          setAll(cookiesToSet) {
+            cookiesToSet.forEach(({ name, value }) => request.cookies.set(name, value));
+            supabaseResponse = NextResponse.next({ request });
+            cookiesToSet.forEach(({ name, value, options }) =>
+              supabaseResponse.cookies.set(name, value, options)
+            );
+          },
+        },
+      });
 
-  if (user && (pathname === '/login' || pathname === '/')) {
-    const appUrl = request.nextUrl.clone();
-    appUrl.pathname = '/app';
-    return NextResponse.redirect(appUrl);
+      const {
+        data: { user },
+      } = await supabase.auth.getUser();
+
+      if (user && pathname === '/login') {
+        const appUrl = request.nextUrl.clone();
+        appUrl.pathname = '/app';
+        return NextResponse.redirect(appUrl);
+      }
+    } catch {
+      // Provider availability must not block the local ledger.
+    }
   }
 
   return supabaseResponse;

@@ -6,7 +6,7 @@ import { Button } from '@/components/ui/Button';
 import { Card } from '@/components/ui/Card';
 import { Field } from '@/components/ui/Field';
 import { cn } from '@/lib/cn';
-import { createSupabaseBrowserClient } from '@/lib/supabase';
+import { createSupabaseBrowserClient, isSupabaseConfigured } from '@/lib/supabase';
 
 type Mode = 'signin' | 'register';
 
@@ -18,6 +18,7 @@ export default function LoginPage() {
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
   const [registered, setRegistered] = useState(false);
+  const providerConfigured = isSupabaseConfigured();
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -25,6 +26,11 @@ export default function LoginPage() {
     setError('');
 
     const supabase = createSupabaseBrowserClient();
+    if (!supabase) {
+      setError('Cloud accounts are not configured. Continue with the local ledger.');
+      setLoading(false);
+      return;
+    }
 
     if (mode === 'register') {
       const { error: signUpError } = await supabase.auth.signUp({ email, password });
@@ -54,7 +60,19 @@ export default function LoginPage() {
           <p className="mt-1 text-sm text-muted">Personal finance tracker</p>
         </div>
 
-        {registered ? (
+        <Button type="button" fullWidth onClick={() => router.replace('/app')}>
+          Continue with local ledger
+        </Button>
+        <p className="mt-2 text-xs text-muted">
+          Local data belongs to this browser profile. An account is optional and is used only for
+          explicitly linked cloud sync.
+        </p>
+
+        {!providerConfigured ? (
+          <p className="mt-5 rounded-lg border border-subtle bg-surface-muted p-3 text-sm text-muted">
+            Cloud accounts are not configured on this installation.
+          </p>
+        ) : registered ? (
           <div className="space-y-4">
             <div className="rounded-lg border border-success bg-success-muted p-4 text-sm font-medium text-success">
               Account created! You can now sign in with your email and password.
@@ -72,7 +90,7 @@ export default function LoginPage() {
           </div>
         ) : (
           <>
-            <div className="mb-5 flex rounded-lg border border-subtle bg-surface-muted p-1">
+            <div className="mt-5 mb-5 flex rounded-lg border border-subtle bg-surface-muted p-1">
               {(['signin', 'register'] as Mode[]).map((m) => (
                 <button
                   key={m}

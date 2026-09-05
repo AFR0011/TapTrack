@@ -8,10 +8,13 @@ vi.mock('@supabase/ssr', () => ({
 import { createServerClient } from '@supabase/ssr';
 import { proxy } from './proxy';
 
-function mockUser(user: { id: string } | null) {
+function mockUser(user: { id: string } | null, error?: Error) {
   vi.mocked(createServerClient).mockReturnValue({
     auth: {
-      getUser: vi.fn(async () => ({ data: { user } })),
+      getUser: vi.fn(async () => {
+        if (error) throw error;
+        return { data: { user } };
+      }),
     },
   } as unknown as ReturnType<typeof createServerClient>);
 }
@@ -23,15 +26,17 @@ function request(path: string) {
 describe('proxy route policy', () => {
   beforeEach(() => {
     vi.clearAllMocks();
+    vi.stubEnv('NEXT_PUBLIC_SUPABASE_URL', 'https://example.invalid');
+    vi.stubEnv('NEXT_PUBLIC_SUPABASE_ANON_KEY', 'test-key');
   });
 
-  it('redirects unauthenticated app routes to login', async () => {
+  it('keeps unauthenticated app routes available', async () => {
     mockUser(null);
 
     const response = await proxy(request('/app'));
 
-    expect(response.status).toBe(307);
-    expect(response.headers.get('location')).toBe('http://localhost/login');
+    expect(response.status).toBe(200);
+    expect(response.headers.get('location')).toBeNull();
   });
 
   it('keeps login reachable for unauthenticated users', async () => {
@@ -67,7 +72,7 @@ describe('proxy route policy', () => {
     expect(serviceWorker.headers.get('location')).toBeNull();
   });
 
-  it('sends authenticated users away from login and root to the app', async () => {
+  it('sends authenticated users away from login while leaving root to its page redirect', async () => {
     mockUser({ id: 'user-1' });
 
     const login = await proxy(request('/login'));
@@ -75,7 +80,25 @@ describe('proxy route policy', () => {
 
     expect(login.status).toBe(307);
     expect(login.headers.get('location')).toBe('http://localhost/app');
-    expect(root.status).toBe(307);
-    expect(root.headers.get('location')).toBe('http://localhost/app');
+    expect(root.status).toBe(200);
+    expect(root.headers.get('location')).toBeNull();
+  });
+
+  it('does not construct a provider client when configuration is absent', async () => {
+    vi.unstubAllEnvs();
+
+    const response = await proxy(request('/app'));
+
+    expect(response.status).toBe(200);
+    expect(createServerClient).not.toHaveBeenCalled();
+  });
+
+  it('keeps the local app available when the provider fails', async () => {
+    mockUser(null, new Error('provider down'));
+
+    const response = await proxy(request('/app'));
+
+    expect(response.status).toBe(200);
+    expect(response.headers.get('location')).toBeNull();
   });
 });

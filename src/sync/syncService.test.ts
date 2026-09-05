@@ -1,11 +1,18 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
-vi.mock('@/lib/supabase', () => ({
-  createSupabaseBrowserClient: vi.fn(),
+vi.mock('@/sync/syncBinding', () => ({
+  getSyncAccess: vi.fn(),
+  requireLinkedSyncAccess: vi.fn(),
 }));
 
-import { createSupabaseBrowserClient } from '@/lib/supabase';
-import { getSyncStatus, processRetryQueue, pullUpdates, pushRecord } from './syncService';
+import { getSyncAccess, requireLinkedSyncAccess } from '@/sync/syncBinding';
+import {
+  getSyncStatus,
+  processRetryQueue,
+  pullUpdates,
+  pushRecord,
+  syncAllLocalData,
+} from './syncService';
 
 const RETRY_QUEUE_KEY = 'taptrack_retry_queue:user-1';
 const SYNC_CURSOR_KEY = 'taptrack_sync_cursor:user-1';
@@ -54,6 +61,14 @@ function createClientMock(options?: MockOptions) {
   };
 }
 
+function authorize(client = createClientMock()) {
+  vi.mocked(requireLinkedSyncAccess).mockResolvedValue({
+    client: client as never,
+    userId: 'user-1',
+  });
+  return client;
+}
+
 function installMemoryStorage() {
   const store = new Map<string, string>();
   const localStorageMock = {
@@ -82,6 +97,17 @@ function installMemoryStorage() {
 describe('syncService', () => {
   beforeEach(() => {
     installMemoryStorage();
+    authorize();
+    vi.mocked(getSyncAccess).mockResolvedValue({
+      state: 'linked',
+      client: createClientMock() as never,
+      userId: 'user-1',
+      binding: {
+        id: 'ledger-binding',
+        syncOwnerUserId: 'user-1',
+        linkedAt: '2026-05-18T00:00:00.000Z',
+      },
+    });
   });
 
   afterEach(() => {
@@ -93,11 +119,7 @@ describe('syncService', () => {
   });
 
   it('queues failed upserts for retry', async () => {
-    vi.mocked(createSupabaseBrowserClient).mockReturnValue(
-      createClientMock({ upsertError: { message: 'upsert failed' } }) as ReturnType<
-        typeof createSupabaseBrowserClient
-      >
-    );
+    authorize(createClientMock({ upsertError: { message: 'upsert failed' } }));
 
     await pushRecord('balances', {
       id: 'TRY-cash',
@@ -130,9 +152,7 @@ describe('syncService', () => {
       ])
     );
 
-    vi.mocked(createSupabaseBrowserClient).mockReturnValue(
-      createClientMock() as ReturnType<typeof createSupabaseBrowserClient>
-    );
+    authorize();
 
     await processRetryQueue();
 
@@ -144,12 +164,12 @@ describe('syncService', () => {
     const initialSync = '2026-05-18T00:00:00.000Z';
     localStorage.setItem(SYNC_CURSOR_KEY, initialSync);
 
-    vi.mocked(createSupabaseBrowserClient).mockReturnValue(
+    authorize(
       createClientMock({
         tableResponses: {
           balances: { data: null, error: { message: 'read failed' } },
         },
-      }) as ReturnType<typeof createSupabaseBrowserClient>
+      })
     );
 
     await pullUpdates();
@@ -174,10 +194,6 @@ describe('syncService', () => {
       ])
     );
 
-    vi.mocked(createSupabaseBrowserClient).mockReturnValue(
-      createClientMock() as ReturnType<typeof createSupabaseBrowserClient>
-    );
-
     await expect(getSyncStatus()).resolves.toMatchObject({
       authenticated: true,
       userId: 'user-1',
@@ -186,5 +202,21 @@ describe('syncService', () => {
       pendingRetryCount: 1,
       online: true,
     });
+  });
+
+  it('performs no remote work when the ledger is not authorized for sync', async () => {
+    vi.mocked(requireLinkedSyncAccess).mockResolvedValue(null);
+    const client = createClientMock();
+
+    await pushRecord('balances', { id: 'TRY-cash', updatedAt: '2026-05-18' });
+    await processRetryQueue();
+    await pullUpdates();
+
+    expect(client.from).not.toHaveBeenCalled();
+    expect(localStorage.getItem(RETRY_QUEUE_KEY)).toBeNull();
+  });
+
+  it('keeps destructive remote snapshot replacement disabled', async () => {
+    await expect(syncAllLocalData()).rejects.toThrow('Remote snapshot replacement is disabled');
   });
 });

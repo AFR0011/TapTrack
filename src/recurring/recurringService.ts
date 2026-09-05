@@ -27,7 +27,7 @@ export async function createRecurringTransaction(
   };
 
   await database.recurringTransactions.add(newRecurring);
-  void pushRecord('recurringTransactions', newRecurring as unknown as Record<string, unknown>);
+  void pushRecord('recurringTransactions', newRecurring as unknown as Record<string, unknown>, database);
   return newRecurring;
 }
 
@@ -48,7 +48,7 @@ export async function updateRecurringTransaction(
   if (!updated) {
     throw new Error('Recurring transaction not found');
   }
-  void pushRecord('recurringTransactions', updated as unknown as Record<string, unknown>);
+  void pushRecord('recurringTransactions', updated as unknown as Record<string, unknown>, database);
   return updated;
 }
 
@@ -76,7 +76,7 @@ export async function deleteRecurringTransaction(
 ): Promise<void> {
   await ensureDatabaseSeeded(database);
   await database.recurringTransactions.delete(id);
-  void deleteRecord('recurringTransactions', id);
+  void deleteRecord('recurringTransactions', id, database);
 }
 
 export function getInitialNextRunDate(startDate: string, currentDate = new Date()) {

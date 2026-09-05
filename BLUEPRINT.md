@@ -1617,3 +1617,146 @@ The MVP is successful only if:
 ```
 
 If these are not true, the MVP failed, even if the app looks polished.
+
+---
+
+## Active batch: TT-B001 — Offline/mobile local core and safe opt-in sync boundary
+
+### Objective
+
+Make the single-user, browser-profile-local ledger usable without authentication or provider
+connectivity. Seed and open local data before optional synchronization, require an explicit
+immutable ledger/account binding before finance data can cross the Supabase boundary, fail
+closed for account mismatch and incomplete Telegram ownership configuration, and verify the
+core application offline at 320 px and 390 px before any presentation work.
+
+### Facts
+
+- The current proxy redirects unauthenticated app routes to login.
+- The current bootstrap pulls remote data before seeding IndexedDB.
+- One global `TapTrackDB` ledger is shared by the browser profile and is not account-partitioned.
+- Sync entry points currently authorize whichever Supabase user is signed in.
+- Full snapshot sync deletes remote rows before recreating them and is invoked after import/reset.
+- The current service worker does not cache application route documents.
+- Mobile navigation omits Budgets and Recurring.
+- The locked dependency graph currently contains one High and one Low audit advisory.
+
+### Assumptions and unknowns
+
+- Device-local means browser-profile-local; another person using the same browser profile can
+  see the ledger. Encryption and OS/browser-profile access control are out of scope.
+- Supabase sign-in is optional and exists only for explicitly linked synchronization.
+- The first ledger/account binding is immutable in this batch. Sign-out preserves both local
+  data and the binding. Mismatched accounts may use the ledger locally but cannot sync.
+- Initial linking requires explicit confirmation and a successful read-only check that all
+  supported remote finance tables and tombstones are empty for that account.
+- Live Supabase schema/RLS, existing remote rows, iOS Safari PWA behavior, storage eviction,
+  and a future binding recovery workflow remain unknown and unverified.
+
+### Intended files
+
+- Governance/evidence: `BLUEPRINT.md`, `DEV_STATE.md`, `DEV_LOG.md`, `QA_REPORT.md`,
+  `RISK_REGISTER.md`, and the relevant files under `docs/` and `shared/`.
+- Local/auth boundary: `proxy.ts`, focused proxy tests, `app/providers/DatabaseProvider.tsx`,
+  `app/(auth)/login/page.tsx`, `src/lib/supabase.ts`, and `src/lib/auth.ts`.
+- Ledger binding/sync: `src/types.ts`, `src/database.ts`, a focused new binding module and tests,
+  `src/sync/syncService.ts`, `src/sync/syncService.test.ts`, and
+  `src/components/SettingsWorkspace.tsx`.
+- Offline/mobile: `src/components/AppShell.tsx`, `src/components/ServiceWorkerRegister.tsx`,
+  `public/sw.js`, `public/manifest.webmanifest`, and focused route/browser tests.
+- Fail-closed integration boundary: Telegram routes and their existing integration tests.
+- Verification/dependencies: `scripts/route-smoke.mjs`, `package.json`, `package-lock.json`,
+  Playwright configuration/specs, and `.github/workflows/ci.yml`.
+
+Allowed adjacent files are limited to `.env.example`, a small shared route/PWA constants module,
+test fixtures, or existing UI/configuration files strictly required to keep this contract
+testable. No broad restyling or unrelated dependency upgrades are allowed.
+
+### Out of scope
+
+- GitHub presentation metadata, screenshots, releases, deployment promotion, or portfolio polish.
+- Live provider calls, credentials, finance data, remote schema/RLS changes, or production data.
+- Account partitioning, merging, adopting non-empty cloud data, unbinding, rebinding, or recovery.
+- Atomic remote snapshot replacement; the destructive helper must be disabled or unreachable.
+- Telegram RPC transactionality/idempotency or bot redesign.
+- Import-schema redesign, retry-queue redesign, atomic cross-table pull, money representation
+  migration, native application work, or exhaustive Safari/iOS certification.
+
+### Preconditions
+
+- Preserve rewritten baseline `152c7879749dd5653f623e87da161cb7f3b3428f`, existing user
+  changes, governance files, and the v1/v2 IndexedDB migration path.
+- Use Node.js 22, the committed lockfile, absent/inert provider configuration, and synthetic data.
+- Do not execute live Supabase or Telegram requests. Keep presentation blocked.
+- Root is the only implementation writer; an independent tester may verify but not repair source.
+
+### Acceptance criteria
+
+1. Without Supabase variables or a session, `/` resolves to `/app`; all seven core routes are
+   usable and no fabricated or real provider host is contacted.
+2. Local database seeding and recurring work complete before optional sync eligibility checks.
+   Provider failure is never reported as local database failure.
+3. An additive database migration preserves existing finance rows and creates no binding
+   implicitly.
+4. Every remote finance read/write/delete/retry/manual/background entry point requires configured
+   Supabase, an authenticated user, an existing binding, and an exact user-ID match.
+5. Linking requires visible confirmation plus a fully successful empty-remote preflight. A failed,
+   malformed, or non-empty preflight makes no local binding and no remote mutation.
+6. The first binding is immutable; same-user linking is idempotent and other-user linking fails.
+7. Import and reset remain local and cannot invoke delete-before-upsert remote replacement.
+8. Missing Telegram ownership configuration and non-owner chats fail before admin/database/bot work.
+9. A warmed installed application relaunches offline at all seven core routes. An offline synthetic
+   transaction survives reload.
+10. At 320x720 and 390x844, all seven destinations are reachable, targets are at least 44x44 CSS
+    pixels, and the tested workflow has no document-level horizontal overflow.
+11. The service worker caches only same-origin GET shell/static resources, retains the prior
+    complete TapTrack cache until replacement, and deletes only obsolete TapTrack-owned caches.
+12. The current High/Low dependency advisories are absent; lint, typecheck, Vitest, build, route
+    smoke, and both browser viewport projects pass with no secrets or real finance data in evidence.
+13. Documentation records the remaining provider, browser-profile privacy, immutable-binding
+    recovery, Telegram atomicity, and native Safari risks. Presentation remains blocked.
+
+### Verification
+
+- Focused Vitest checks for auth-optional routing, database migration/binding, sync authorization,
+  local-only import/reset, and Telegram fail-closed behavior.
+- `npm.cmd audit --audit-level=high` and `npm.cmd audit --omit=dev --audit-level=high`.
+- `npm.cmd run lint`, `npm.cmd run typecheck`, `npm.cmd run test`, `npm.cmd run build`, and the
+  production route smoke command.
+- Credential-free Playwright Chromium tests at 320x720 and 390x844 covering setup, every route,
+  service-worker control, offline relaunch/navigation, local transaction persistence, target
+  dimensions, and overflow.
+- Full diff/status review plus an independent tester verdict. A tester `FAIL` remains `FAIL`.
+
+### Protected inputs
+
+- Rewritten history/baseline, private rollback artifacts outside this tree, user IndexedDB data,
+  all real credentials/account identifiers/finance data, `LICENSE`, public downloadable forms,
+  remote `main`, tags, releases, deployments, provider schema, and production data.
+
+### Risks and rollback
+
+- Empty-remote preflight retains a read/write race without a server-side transaction.
+- Immutable binding has no recovery path in this batch; IndexedDB remains unencrypted and scoped
+  to the browser profile.
+- Chromium does not prove native Safari behavior. Live provider schema/RLS stays unverified.
+- Telegram remains non-atomic and non-idempotent; this batch only closes unsafe entry conditions.
+- Database version advancement requires any deployed rollback to retain the new schema declaration.
+- Service-worker rollback must publish a new TapTrack cache version and never broadly clear origin
+  caches. Before deployment, ordinary commit reversion is sufficient because tests use inert data.
+
+### Evidence required for done
+
+The final record must include the changed-file inventory, focused and full command outputs, locked
+dependency versions, service-worker/offline browser evidence for both viewports, mocked zero-call
+proof for every unauthorized sync/Telegram state, independent tester verdict, reconciled workflow
+documents, final commit/CI identifiers if pushed, and an explicit list of unverified residuals.
+
+### Closure — 2026-09-05
+
+Status: `COMPLETE_WITH_RISKS`. Independent retest returned `PASS_WITH_RISKS` after Repair 1; the
+first tester `FAIL` remains in the evidence record. AC1–AC10, AC12, and AC13 pass. AC11 passes with
+residual risk because current versioned-cache behavior and offline routes were verified, but an
+explicit multi-version service-worker upgrade was not simulated. See `QA_REPORT.md` and
+`RISK_REGISTER.md`. This closure authorizes a reviewed feature branch/PR only; presentation,
+merge/release, and live-provider claims remain blocked.

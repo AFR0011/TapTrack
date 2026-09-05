@@ -1,7 +1,12 @@
 'use client';
 
-import { createSupabaseBrowserClient } from '@/lib/supabase';
+import type { SupabaseClient } from '@supabase/supabase-js';
 import { db, type TapTrackDatabase } from '@/database';
+import {
+  getSyncAccess,
+  requireLinkedSyncAccess,
+  type SyncBindingState,
+} from '@/sync/syncBinding';
 
 type DexieTableName = keyof Pick<
   TapTrackDatabase,
@@ -73,6 +78,8 @@ interface SupabaseRow extends Record<string, unknown> {
 export type SyncStatusSnapshot = {
   authenticated: boolean;
   userId: string | null;
+  bindingState: SyncBindingState;
+  syncAllowed: boolean;
   lastSyncAt: string | null;
   lastPushAt: string | null;
   pendingRetryCount: number;
@@ -267,29 +274,32 @@ function queueRetry(userId: string, item: RetryItem): void {
  */
 export async function pushRecord(
   tableName: DexieTableName,
-  record: Record<string, unknown>
+  record: Record<string, unknown>,
+  database: TapTrackDatabase = db
 ): Promise<void> {
   const recordId = getRecordId(record);
   if (!recordId) return;
 
-  const supabase = createSupabaseBrowserClient();
-  const {
-    data: { user },
-  } = await supabase.auth.getUser();
-  if (!user) return;
+  const access = await requireLinkedSyncAccess(database);
+  if (!access) return;
+  const { client: supabase, userId } = access;
 
-  const supabaseTable = DEXIE_TO_SUPABASE[tableName];
-  const serialized = serializeForSupabase(record, user.id);
-  const { error } = await supabase
-    .from(supabaseTable)
-    .upsert(serialized, { onConflict: 'user_id,id' });
+  try {
+    const supabaseTable = DEXIE_TO_SUPABASE[tableName];
+    const serialized = serializeForSupabase(record, userId);
+    const { error } = await supabase
+      .from(supabaseTable)
+      .upsert(serialized, { onConflict: 'user_id,id' });
 
-  if (!error) {
-    removeFromRetryQueue(user.id, tableName, recordId, 'upsert');
-    return;
+    if (!error) {
+      removeFromRetryQueue(userId, tableName, recordId, 'upsert');
+      return;
+    }
+  } catch {
+    // Queue below. Optional sync must never reject into a local write path.
   }
 
-  queueRetry(user.id, {
+  queueRetry(userId, {
     tableName,
     operation: 'upsert',
     recordId,
@@ -305,24 +315,28 @@ export async function pushRecord(
  */
 export async function deleteRecord(
   tableName: DexieTableName,
-  recordId: string
+  recordId: string,
+  database: TapTrackDatabase = db
 ): Promise<void> {
   if (!recordId) return;
 
-  const supabase = createSupabaseBrowserClient();
-  const {
-    data: { user },
-  } = await supabase.auth.getUser();
-  if (!user) return;
+  const access = await requireLinkedSyncAccess(database);
+  if (!access) return;
+  const { client: supabase, userId } = access;
 
-  const success = await pushDeleteToSupabase(tableName, recordId, user.id, supabase);
+  let success = false;
+  try {
+    success = await pushDeleteToSupabase(tableName, recordId, userId, supabase);
+  } catch {
+    // Queue below. Optional sync must never reject into a local delete path.
+  }
 
   if (success) {
-    removeFromRetryQueue(user.id, tableName, recordId, 'delete');
+    removeFromRetryQueue(userId, tableName, recordId, 'delete');
     return;
   }
 
-  queueRetry(user.id, {
+  queueRetry(userId, {
     tableName,
     operation: 'delete',
     recordId,
@@ -332,65 +346,14 @@ export async function deleteRecord(
 }
 
 /**
- * Replaces the remote snapshot with the current local snapshot.
- * Used after import/reset. Rows removed locally also get tombstoned so other
- * devices remove records that no longer exist locally.
+ * Legacy destructive snapshot entry point. Kept as an explicit fail-closed
+ * boundary until a transactional, versioned replacement workflow is approved.
  */
 export async function syncAllLocalData(database: TapTrackDatabase = db): Promise<void> {
-  const supabase = createSupabaseBrowserClient();
-  const {
-    data: { user },
-  } = await supabase.auth.getUser();
-  if (!user) return;
-
-  const snapshotTime = new Date().toISOString();
-
-  for (const [dexieTable, supabaseTable] of Object.entries(DEXIE_TO_SUPABASE) as [
-    DexieTableName,
-    string,
-  ][]) {
-    const { data: remoteRows, error: readError } = await supabase
-      .from(supabaseTable)
-      .select('id')
-      .eq('user_id', user.id);
-
-    if (readError) {
-      throw new Error(`Failed to read ${supabaseTable}: ${readError.message}`);
-    }
-
-    const rows = await getDexieTableRows(database, dexieTable);
-    const localIds = new Set(
-      rows.map((row) => getRecordId(row)).filter((id): id is string => typeof id === 'string')
-    );
-    const removedIds = ((remoteRows ?? []) as Array<{ id?: unknown }>)
-      .map((row: { id?: unknown }) => row.id)
-      .filter((id: unknown): id is string => typeof id === 'string' && !localIds.has(id));
-
-    if (removedIds.length > 0) {
-      await writeTombstones(supabase, supabaseTable, removedIds, user.id, snapshotTime);
-    }
-
-    const { error: deleteError } = await supabase.from(supabaseTable).delete().eq('user_id', user.id);
-    if (deleteError) {
-      throw new Error(`Failed to clear ${supabaseTable}: ${deleteError.message}`);
-    }
-
-    if (rows.length === 0) continue;
-
-    const serializedRows = rows.map((row) =>
-      serializeForSupabase(row, user.id, { forceUpdatedAt: snapshotTime })
-    );
-    const { error: upsertError } = await supabase
-      .from(supabaseTable)
-      .upsert(serializedRows, { onConflict: 'user_id,id' });
-
-    if (upsertError) {
-      throw new Error(`Failed to sync ${supabaseTable}: ${upsertError.message}`);
-    }
-  }
-
-  setSyncCursor(user.id, snapshotTime);
-  saveRetryQueue(user.id, []);
+  void database;
+  throw new Error(
+    'Remote snapshot replacement is disabled until an atomic, reviewed workflow is available.'
+  );
 }
 
 /**
@@ -413,34 +376,25 @@ export async function getSyncStatus(): Promise<SyncStatusSnapshot> {
   const online = typeof navigator === 'undefined' ? true : navigator.onLine !== false;
 
   try {
-    const supabase = createSupabaseBrowserClient();
-    const {
-      data: { user },
-    } = await supabase.auth.getUser();
-
-    if (!user) {
-      return {
-        authenticated: false,
-        userId: null,
-        lastSyncAt: null,
-        lastPushAt: null,
-        pendingRetryCount: 0,
-        online,
-      };
-    }
+    const access = await getSyncAccess();
+    const userId = access.userId;
 
     return {
-      authenticated: true,
-      userId: user.id,
-      lastSyncAt: normalizeCursor(getSyncCursor(user.id)),
-      lastPushAt: normalizeCursor(getPushCursor(user.id)),
-      pendingRetryCount: getRetryQueue(user.id).length,
+      authenticated: userId !== null,
+      userId,
+      bindingState: access.state,
+      syncAllowed: access.state === 'linked',
+      lastSyncAt: userId ? normalizeCursor(getSyncCursor(userId)) : null,
+      lastPushAt: userId ? normalizeCursor(getPushCursor(userId)) : null,
+      pendingRetryCount: userId ? getRetryQueue(userId).length : 0,
       online,
     };
   } catch {
     return {
       authenticated: false,
       userId: null,
+      bindingState: 'provider-unavailable',
+      syncAllowed: false,
       lastSyncAt: null,
       lastPushAt: null,
       pendingRetryCount: 0,
@@ -456,13 +410,11 @@ export async function getSyncStatus(): Promise<SyncStatusSnapshot> {
  * cursor so normal interval sync does not upload the full app forever.
  */
 export async function pushLocalChanges(database: TapTrackDatabase = db): Promise<void> {
-  const supabase = createSupabaseBrowserClient();
-  const {
-    data: { user },
-  } = await supabase.auth.getUser();
-  if (!user) return;
+  const access = await requireLinkedSyncAccess(database);
+  if (!access) return;
+  const { client: supabase, userId } = access;
 
-  const lastPushAt = getPushCursor(user.id);
+  const lastPushAt = getPushCursor(userId);
   let latestPushedTimestamp = lastPushAt;
   let allTablesSuccess = true;
 
@@ -474,7 +426,7 @@ export async function pushLocalChanges(database: TapTrackDatabase = db): Promise
 
     if (changedRows.length === 0) continue;
 
-    const serializedRows = changedRows.map((row) => serializeForSupabase(row, user.id));
+    const serializedRows = changedRows.map((row) => serializeForSupabase(row, userId));
     const { error } = await supabase
       .from(supabaseTable)
       .upsert(serializedRows, { onConflict: 'user_id,id' });
@@ -484,7 +436,7 @@ export async function pushLocalChanges(database: TapTrackDatabase = db): Promise
       for (const row of changedRows) {
         const recordId = getRecordId(row);
         if (!recordId) continue;
-        queueRetry(user.id, {
+        queueRetry(userId, {
           tableName: dexieTable,
           operation: 'upsert',
           recordId,
@@ -504,13 +456,13 @@ export async function pushLocalChanges(database: TapTrackDatabase = db): Promise
 
       const recordId = getRecordId(row);
       if (recordId) {
-        removeFromRetryQueue(user.id, dexieTable, recordId, 'upsert');
+        removeFromRetryQueue(userId, dexieTable, recordId, 'upsert');
       }
     }
   }
 
   if (allTablesSuccess && latestPushedTimestamp > lastPushAt) {
-    setPushCursor(user.id, latestPushedTimestamp);
+    setPushCursor(userId, latestPushedTimestamp);
   }
 }
 
@@ -519,13 +471,11 @@ export async function pushLocalChanges(database: TapTrackDatabase = db): Promise
  * syncNow().
  */
 export async function processRetryQueue(): Promise<void> {
-  const supabase = createSupabaseBrowserClient();
-  const {
-    data: { user },
-  } = await supabase.auth.getUser();
-  if (!user) return;
+  const access = await requireLinkedSyncAccess();
+  if (!access) return;
+  const { client: supabase, userId } = access;
 
-  const queue = getRetryQueue(user.id);
+  const queue = getRetryQueue(userId);
   const now = Date.now();
 
   for (let i = queue.length - 1; i >= 0; i--) {
@@ -534,7 +484,7 @@ export async function processRetryQueue(): Promise<void> {
       continue;
     }
 
-    const success = await retryQueueItem(item, user.id, supabase);
+    const success = await retryQueueItem(item, userId, supabase);
 
     if (success) {
       queue.splice(i, 1);
@@ -547,7 +497,7 @@ export async function processRetryQueue(): Promise<void> {
     }
   }
 
-  saveRetryQueue(user.id, queue);
+  saveRetryQueue(userId, queue);
 }
 
 /**
@@ -556,13 +506,11 @@ export async function processRetryQueue(): Promise<void> {
  */
 export async function pullUpdates(database: TapTrackDatabase = db): Promise<void> {
   try {
-    const supabase = createSupabaseBrowserClient();
-    const {
-      data: { user },
-    } = await supabase.auth.getUser();
-    if (!user) return;
+    const access = await requireLinkedSyncAccess(database);
+    if (!access) return;
+    const { client: supabase, userId } = access;
 
-    const lastSyncAt = getSyncCursor(user.id);
+    const lastSyncAt = getSyncCursor(userId);
     let allTablesSuccess = true;
     let latestSeenTimestamp = lastSyncAt;
 
@@ -572,7 +520,7 @@ export async function pullUpdates(database: TapTrackDatabase = db): Promise<void
       const { data, error } = await supabase
         .from(supabaseTable)
         .select('*')
-        .eq('user_id', user.id)
+        .eq('user_id', userId)
         .gt(SYNC_TIMESTAMP_COLUMN, lastSyncAt)
         .order(SYNC_TIMESTAMP_COLUMN, { ascending: true });
 
@@ -613,7 +561,7 @@ export async function pullUpdates(database: TapTrackDatabase = db): Promise<void
     const { data: tombstones, error: tombstoneError } = await supabase
       .from(SYNC_TOMBSTONES_TABLE)
       .select('table_name, record_id, deleted_at')
-      .eq('user_id', user.id)
+      .eq('user_id', userId)
       .gt('deleted_at', lastSyncAt)
       .order('deleted_at', { ascending: true });
 
@@ -658,7 +606,7 @@ export async function pullUpdates(database: TapTrackDatabase = db): Promise<void
     }
 
     if (allTablesSuccess && latestSeenTimestamp > lastSyncAt) {
-      setSyncCursor(user.id, latestSeenTimestamp);
+      setSyncCursor(userId, latestSeenTimestamp);
     }
   } catch {
     // Best-effort. Never break the local-first app because cloud sync stumbled.
@@ -678,7 +626,7 @@ async function pushDeleteToSupabase(
   tableName: DexieTableName,
   recordId: string,
   userId: string,
-  supabase: ReturnType<typeof createSupabaseBrowserClient>
+  supabase: SupabaseClient
 ): Promise<boolean> {
   const supabaseTable = DEXIE_TO_SUPABASE[tableName];
   const deletedAt = new Date().toISOString();
@@ -704,35 +652,10 @@ async function pushDeleteToSupabase(
   return !tombstoneError;
 }
 
-async function writeTombstones(
-  supabase: ReturnType<typeof createSupabaseBrowserClient>,
-  supabaseTable: string,
-  recordIds: string[],
-  userId: string,
-  deletedAt: string
-): Promise<void> {
-  if (recordIds.length === 0) return;
-
-  const tombstones = recordIds.map((recordId) => ({
-    user_id: userId,
-    table_name: supabaseTable,
-    record_id: recordId,
-    deleted_at: deletedAt,
-  }));
-
-  const { error } = await supabase
-    .from(SYNC_TOMBSTONES_TABLE)
-    .upsert(tombstones, { onConflict: 'user_id,table_name,record_id' });
-
-  if (error) {
-    throw new Error(`Failed to write delete tombstones for ${supabaseTable}: ${error.message}`);
-  }
-}
-
 async function retryQueueItem(
   item: RetryItem,
   userId: string,
-  supabase: ReturnType<typeof createSupabaseBrowserClient>
+  supabase: SupabaseClient
 ): Promise<boolean> {
   if (item.operation === 'delete') {
     return pushDeleteToSupabase(item.tableName, item.recordId, userId, supabase);

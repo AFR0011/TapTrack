@@ -1,0 +1,163 @@
+{
+  "schema_version": "agentic-workflow/v2",
+  "root": "C:\\Users\\farro\\Documents\\Codex\\2026-08-29\\go-x20\\runtime\\taptrack-post-rewrite-152c787",
+  "files_scanned": 127,
+  "scan_truncated": false,
+  "primary_type": "software",
+  "traits": [
+    "local-first-pwa",
+    "financial-data",
+    "optional-cloud-sync",
+    "mobile-first-ui"
+  ],
+  "confidence": "high",
+  "existing_profile": null,
+  "scores": {
+    "software": 52,
+    "writing": 4,
+    "documentation": 4
+  },
+  "evidence": {
+    "software": [
+      "file:package.json",
+      "dir:src",
+      "dir:lib",
+      "dir:api",
+      "dir:app",
+      "dir:test",
+      "ext:.ts(50)",
+      "ext:.tsx(40)",
+      "ext:.js(1)",
+      "keywords:route,component,service,migration"
+    ],
+    "writing": [
+      "dir:scripts"
+    ],
+    "documentation": [
+      "dir:docs"
+    ]
+  },
+  "extension_counts": {
+    ".ts": 50,
+    ".tsx": 40,
+    ".md": 14,
+    ".json": 5,
+    ".mjs": 4,
+    "": 2,
+    ".svg": 2,
+    ".example": 1,
+    ".yml": 1,
+    ".css": 1,
+    ".webmanifest": 1,
+    ".js": 1,
+    ".sql": 1
+  },
+  "existing_governance": [
+    "AGENTS.md",
+    "BLUEPRINT.md",
+    "docs/REPO_MAP.md",
+    "docs/PROJECT_STATE.md",
+    "README.md"
+  ],
+  "top_level": [
+    ".claude/",
+    ".env.example",
+    ".github/",
+    ".gitignore",
+    "AGENTS.md",
+    "BLUEPRINT.md",
+    "LICENSE",
+    "PUBLICATION.md",
+    "README.md",
+    "SECURITY.md",
+    "app/",
+    "docs/",
+    "eslint.config.mjs",
+    "global.d.ts",
+    "jsconfig.json",
+    "middleware.test.ts",
+    "modifications.md",
+    "next-env.d.ts",
+    "package-lock.json",
+    "package.json",
+    "postcss.config.mjs",
+    "proxy.ts",
+    "public/",
+    "scripts/",
+    "src/",
+    "supabase/",
+    "tailwind.config.ts",
+    "tsconfig.json",
+    "vitest.config.ts"
+  ],
+  "entry_points": [
+    "package.json",
+    "src\\components\\ui\\index.ts"
+  ],
+  "commands": [
+    {
+      "purpose": "dev",
+      "command": "npm run dev",
+      "evidence": "package.json scripts"
+    },
+    {
+      "purpose": "start",
+      "command": "npm run start",
+      "evidence": "package.json scripts"
+    },
+    {
+      "purpose": "build",
+      "command": "npm run build",
+      "evidence": "package.json scripts"
+    },
+    {
+      "purpose": "test",
+      "command": "npm run test",
+      "evidence": "package.json scripts"
+    },
+    {
+      "purpose": "lint",
+      "command": "npm run lint",
+      "evidence": "package.json scripts"
+    },
+    {
+      "purpose": "typecheck",
+      "command": "npm run typecheck",
+      "evidence": "package.json scripts"
+    },
+    {
+      "purpose": "check",
+      "command": "npm run check",
+      "evidence": "package.json scripts"
+    }
+  ],
+  "sensitive_paths": [
+    ".env*",
+    "src/database.ts",
+    "src/sync",
+    "supabase/migrations",
+    "app/api/telegram"
+  ],
+  "generated_output_roots": [
+    ".next",
+    "node_modules",
+    "coverage",
+    "playwright-report",
+    "test-results"
+  ],
+  "protected_input_roots": [
+    "src/database.ts",
+    "src/sync",
+    "supabase/migrations",
+    "app/api/telegram"
+  ],
+  "selected_profile": "software",
+  "selected_traits": [
+    "local-first-pwa",
+    "financial-data",
+    "optional-cloud-sync",
+    "mobile-first-ui"
+  ],
+  "selection_source": "explicit CLI selection",
+  "project_name": "TapTrack"
+}
