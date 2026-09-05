@@ -33,10 +33,13 @@ async function assertMobileLayout(page: import('@playwright/test').Page) {
 test('device-local ledger works across warmed offline mobile routes', async ({ page, context }) => {
   const externalRequests: string[] = [];
   const pageErrors: string[] = [];
+  const configuredBaseUrl = test.info().project.use.baseURL;
+  if (typeof configuredBaseUrl !== 'string') throw new Error('Playwright baseURL is required');
+  const appOrigin = new URL(configuredBaseUrl).origin;
   page.on('pageerror', (error) => pageErrors.push(error.message));
   page.on('request', (request) => {
     const url = new URL(request.url());
-    if (url.origin !== 'http://127.0.0.1:3000') externalRequests.push(request.url());
+    if (url.origin !== appOrigin) externalRequests.push(request.url());
   });
 
   await page.goto('/app');
@@ -72,7 +75,7 @@ test('device-local ledger works across warmed offline mobile routes', async ({ p
   });
   expect(cacheInventory.tapTrackKeys).toHaveLength(1);
   expect(cacheInventory.urls.some((url) => url.includes('/api/') || url.includes('/auth/'))).toBe(false);
-  expect(cacheInventory.urls.every((url) => new URL(url).origin === 'http://127.0.0.1:3000')).toBe(true);
+  expect(cacheInventory.urls.every((url) => new URL(url).origin === appOrigin)).toBe(true);
 
   await context.setOffline(true);
 

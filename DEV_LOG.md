@@ -76,3 +76,12 @@ Initialized: 2026-09-05
   overflow, external requests, and page errors using synthetic data.
 - Documentation QA recommended `COMPLETE_WITH_RISKS` after reconciliation. The first tester
   `FAIL` remains recorded; presentation/release remains blocked by the documented residuals.
+
+## 2026-09-05 - CI harness repair
+
+- The first push/PR CI executions reached the browser step after all preceding gates, then failed
+  before Playwright ran because the route-smoke server left a child process bound to port 3000.
+- Isolated the Playwright-managed production server on port 3100. This changes test orchestration
+  only; the same credential-free two-viewport scenario and product build remain in use.
+- Removed two hard-coded port-3000 assumptions from the browser test by deriving the configured
+  application origin. Local rerun: `mobile-320` PASS, `mobile-390` PASS, 2/2 in 51.4 seconds.

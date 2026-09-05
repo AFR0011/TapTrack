@@ -9,3 +9,5 @@
 [2026-09-05T15:45:00Z] [tester] [TEST] [PASS_WITH_RISKS] [TT-B001] [Former failure absent; full unit/build/smoke/audit and both browser projects pass.]
 [2026-09-05T16:00:00Z] [docs-qa] [QA] [COMPLETE] [TT-B001] [Closure recommended after records preserve the first FAIL and qualify residual evidence.]
 [2026-09-05T16:15:00Z] [root] [CLOSE] [COMPLETE_WITH_RISKS] [TT-B001] [Records reconciled; reviewed branch/PR allowed, presentation and release remain blocked.]
+[2026-09-05T17:15:00Z] [root] [CLOSE] [CI_REPAIR] [TT-B001] [Duplicate CI runs exposed a port-3000 smoke-server lifecycle collision; Playwright isolated to port 3100.]
+[2026-09-05T17:25:00Z] [root] [CLOSE] [CI_RETEST_PASS] [TT-B001] [Isolated-port Playwright rerun passed both mobile projects; GitHub rerun pending.]
