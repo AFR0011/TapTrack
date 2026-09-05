@@ -85,3 +85,6 @@ Initialized: 2026-09-05
   only; the same credential-free two-viewport scenario and product build remain in use.
 - Removed two hard-coded port-3000 assumptions from the browser test by deriving the configured
   application origin. Local rerun: `mobile-320` PASS, `mobile-390` PASS, 2/2 in 51.4 seconds.
+- Published repair head `fad68f42859c6e0eb3231b76f32bdd6166d85e0f`; push run
+  `33980471775` and pull-request run `33980469736` both passed the complete CI workflow. Vercel
+  preview checks also passed. PR #4 remains open and unmerged.

@@ -54,6 +54,15 @@ regression assertions.
   offline behavior passes, but an explicit multi-version upgrade simulation was not run.
 - AC13: PASS after this documentation reconciliation.
 
+## Published verification
+
+- Pull request: `AFR0011/TapTrack#4`.
+- CI-tested repair head: `fad68f42859c6e0eb3231b76f32bdd6166d85e0f`.
+- Push run `33980471775`: PASS.
+- Pull-request run `33980469736`: PASS.
+- Vercel preview and preview-comment checks: PASS.
+- The PR remains open and unmerged.
+
 ## Residual risks
 
 - Live disposable two-account Supabase schema, grants, and RLS behavior remain unverified.

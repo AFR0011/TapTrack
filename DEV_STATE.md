@@ -13,5 +13,5 @@ Initialized: 2026-09-05
 - Blockers: GitHub presentation/release remains blocked pending live disposable-provider/RLS verification, native Safari/iOS evidence, and the deferred portfolio review
 - Current risks: See RISK_REGISTER.md
 - Tester verdict: PASS_WITH_RISKS
-- Next action: Publish the reviewed remediation branch/PR, await CI, and do not merge or begin presentation work without explicit approval
+- Next action: Human review of PR #4; do not merge or begin presentation work without explicit approval
 - Last updated: 2026-09-05
