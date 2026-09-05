@@ -2,12 +2,12 @@ const baseUrl = process.env.TAPTRACK_SMOKE_BASE_URL ?? 'http://127.0.0.1:3000';
 
 const checks = [
   {
-    name: 'root redirects unauthenticated users',
+    name: 'root redirects to the local app',
     path: '/',
     init: { redirect: 'manual' },
     expect: (response) =>
       [307, 308].includes(response.status) &&
-      (response.headers.get('location') ?? '').includes('/login'),
+      (response.headers.get('location') ?? '').includes('/app'),
   },
   {
     name: 'login is reachable',
@@ -15,12 +15,9 @@ const checks = [
     expect: (response) => response.status === 200,
   },
   {
-    name: 'app redirects unauthenticated users',
+    name: 'app is reachable without authentication',
     path: '/app',
-    init: { redirect: 'manual' },
-    expect: (response) =>
-      [307, 308].includes(response.status) &&
-      (response.headers.get('location') ?? '').includes('/login'),
+    expect: (response) => response.status === 200,
   },
   {
     name: 'exchange API returns JSON, not login HTML',
@@ -46,7 +43,7 @@ const checks = [
     expect: (response) => response.status === 200 && response.headers.get('content-type')?.includes('javascript'),
   },
   {
-    name: 'telegram webhook rejects bad secret with JSON 401',
+    name: 'telegram webhook fails closed when integration is unconfigured',
     path: '/api/telegram/webhook',
     init: {
       method: 'POST',
@@ -56,17 +53,17 @@ const checks = [
       },
       body: JSON.stringify({ update_id: 1 }),
     },
-    expect: (response) => response.status === 401 && response.headers.get('content-type')?.includes('application/json'),
+    expect: (response) => response.status === 503 && response.headers.get('content-type')?.includes('application/json'),
   },
   {
-    name: 'telegram register rejects bad admin secret with JSON 401',
+    name: 'telegram register fails closed when integration is unconfigured',
     path: '/api/telegram/register',
     init: {
       headers: {
         'x-admin-secret': 'wrong',
       },
     },
-    expect: (response) => response.status === 401 && response.headers.get('content-type')?.includes('application/json'),
+    expect: (response) => response.status === 503 && response.headers.get('content-type')?.includes('application/json'),
   },
 ];
 

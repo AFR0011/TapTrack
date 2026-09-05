@@ -3,12 +3,13 @@
 import { useEffect, useState, type ReactNode } from 'react';
 import { ensureDatabaseSeeded } from '@/database';
 import { createDueRecurringTransactions } from '@/recurring/recurringService';
-import { pullUpdates, syncNow } from '@/sync/syncService';
+import { syncNow } from '@/sync/syncService';
 
 const AUTO_SYNC_INTERVAL_MS = 60_000;
 
 export function DatabaseProvider({ children }: { children: ReactNode }) {
-  const [error, setError] = useState('');
+  const [localError, setLocalError] = useState('');
+  const [syncError, setSyncError] = useState('');
 
   useEffect(() => {
     let mounted = true;
@@ -16,13 +17,15 @@ export function DatabaseProvider({ children }: { children: ReactNode }) {
 
     const runSync = async () => {
       if (syncing) return;
+      if (navigator.onLine === false) return;
       syncing = true;
 
       try {
         await syncNow();
+        if (mounted) setSyncError('');
       } catch (err: unknown) {
         if (!mounted) return;
-        setError(err instanceof Error ? err.message : 'Unknown sync error');
+        setSyncError(err instanceof Error ? err.message : 'Unknown sync error');
       } finally {
         syncing = false;
       }
@@ -30,16 +33,14 @@ export function DatabaseProvider({ children }: { children: ReactNode }) {
 
     const bootstrap = async () => {
       try {
-        // Pull remote rows before local seeding. Otherwise a fresh device can
-        // create newer zero balances/default categories and block older real
-        // remote records from being applied.
-        await pullUpdates();
+        // The local ledger is authoritative and must be ready before optional
+        // account/provider work is considered.
         await ensureDatabaseSeeded();
         await createDueRecurringTransactions();
         await runSync();
       } catch (err: unknown) {
         if (!mounted) return;
-        setError(err instanceof Error ? err.message : 'Unknown database error');
+        setLocalError(err instanceof Error ? err.message : 'Unknown database error');
       }
     };
 
@@ -74,9 +75,13 @@ export function DatabaseProvider({ children }: { children: ReactNode }) {
   return (
     <>
       {children}
-      {error ? (
+      {localError ? (
         <div className="fixed bottom-4 left-4 right-4 rounded border border-subtle bg-danger-muted p-3 text-sm text-danger shadow">
-          Local database failed to initialize or sync: {error}
+          Local database failed to initialize: {localError}
+        </div>
+      ) : syncError ? (
+        <div className="fixed bottom-4 left-4 right-4 rounded border border-subtle bg-surface p-3 text-sm text-secondary shadow">
+          Optional cloud sync is unavailable: {syncError}
         </div>
       ) : null}
     </>

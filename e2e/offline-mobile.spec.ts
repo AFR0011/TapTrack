@@ -1,0 +1,96 @@
+import { expect, test } from '@playwright/test';
+
+const CORE_ROUTES = [
+  { path: '/app', heading: 'Dashboard', nav: 'Home' },
+  { path: '/app/transactions', heading: 'Transactions', nav: 'History' },
+  { path: '/app/conversions', heading: 'Transfers & exchanges', nav: 'Transfer' },
+  { path: '/app/budgets', heading: 'Budgets', nav: 'Budgets' },
+  { path: '/app/recurring', heading: 'Recurring', nav: 'Recurring' },
+  { path: '/app/reports', heading: 'Reports', nav: 'Reports' },
+  { path: '/app/settings', heading: 'Settings', nav: 'Settings' },
+] as const;
+
+async function assertMobileLayout(page: import('@playwright/test').Page) {
+  const mobileNav = page.getByRole('navigation', { name: 'Mobile' });
+  await expect(mobileNav).toBeVisible();
+  const links = mobileNav.getByRole('link');
+  await expect(links).toHaveCount(CORE_ROUTES.length);
+
+  for (const route of CORE_ROUTES) {
+    const target = mobileNav.getByRole('link', { name: route.nav, exact: true });
+    await expect(target).toBeVisible();
+    const box = await target.boundingBox();
+    expect(box?.width ?? 0).toBeGreaterThanOrEqual(44);
+    expect(box?.height ?? 0).toBeGreaterThanOrEqual(44);
+  }
+
+  const hasHorizontalOverflow = await page.evaluate(
+    () => document.documentElement.scrollWidth > document.documentElement.clientWidth
+  );
+  expect(hasHorizontalOverflow).toBe(false);
+}
+
+test('device-local ledger works across warmed offline mobile routes', async ({ page, context }) => {
+  const externalRequests: string[] = [];
+  const pageErrors: string[] = [];
+  page.on('pageerror', (error) => pageErrors.push(error.message));
+  page.on('request', (request) => {
+    const url = new URL(request.url());
+    if (url.origin !== 'http://127.0.0.1:3000') externalRequests.push(request.url());
+  });
+
+  await page.goto('/app');
+  await expect(page.getByRole('heading', { name: 'Welcome to TapTrack' })).toBeVisible();
+  await page.getByLabel('TRY cash').fill('1000');
+  await page.getByRole('button', { name: 'Start tracking' }).click();
+  await expect(page.getByRole('heading', { name: 'Dashboard' })).toBeVisible();
+
+  await page.evaluate(async () => {
+    await navigator.serviceWorker.ready;
+    if (!navigator.serviceWorker.controller) {
+      await new Promise<void>((resolve) =>
+        navigator.serviceWorker.addEventListener('controllerchange', () => resolve(), { once: true })
+      );
+    }
+  });
+
+  for (const route of CORE_ROUTES) {
+    await page.goto(route.path);
+    await expect(page.getByRole('heading', { name: route.heading, exact: true })).toBeVisible();
+    await assertMobileLayout(page);
+  }
+
+  const cacheInventory = await page.evaluate(async () => {
+    const keys = await caches.keys();
+    const tapTrackKeys = keys.filter((key) => key.startsWith('taptrack-shell-'));
+    const urls = (
+      await Promise.all(
+        tapTrackKeys.map(async (key) => (await caches.open(key)).keys().then((requests) => requests.map((r) => r.url)))
+      )
+    ).flat();
+    return { keys, tapTrackKeys, urls };
+  });
+  expect(cacheInventory.tapTrackKeys).toHaveLength(1);
+  expect(cacheInventory.urls.some((url) => url.includes('/api/') || url.includes('/auth/'))).toBe(false);
+  expect(cacheInventory.urls.every((url) => new URL(url).origin === 'http://127.0.0.1:3000')).toBe(true);
+
+  await context.setOffline(true);
+
+  for (const route of CORE_ROUTES) {
+    await page.goto(route.path);
+    await expect(page.getByRole('heading', { name: route.heading, exact: true })).toBeVisible();
+    await assertMobileLayout(page);
+  }
+
+  await page.goto('/app');
+  await page.getByLabel('Quick transaction command').fill('-5 offlinecheck cash');
+  await page.getByRole('button', { name: 'Preview' }).click();
+  await page.getByRole('button', { name: 'Save', exact: true }).click();
+  await expect(page.getByText('offlinecheck', { exact: true }).last()).toBeVisible();
+  await page.reload();
+  await expect(page.getByRole('heading', { name: 'Dashboard' })).toBeVisible();
+  await expect(page.getByText('offlinecheck', { exact: true })).toBeVisible();
+
+  expect(externalRequests).toEqual([]);
+  expect(pageErrors).toEqual([]);
+});

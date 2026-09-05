@@ -1,125 +1,98 @@
 # TapTrack Project State
 
-Last updated: 2026-08-08
+Last updated: 2026-09-05
 
-## Current Status
+## Current status
 
-TapTrack V2 is implemented and has been migrated to a supported Next.js 16 / React 19 baseline. The application is a mobile-first, local-first personal finance tracker with Dexie/IndexedDB as the browser data source, Supabase Auth for the standard authenticated shell, optional Supabase data synchronization, and optional Telegram, Ollama, exchange-rate, and PWA integrations.
+TapTrack is a Next.js 16 / React 19 browser-profile-local personal finance application. TT-B001
+is `COMPLETE_WITH_RISKS`: the local core is auth-optional, all seven routes have warmed offline
+Chromium coverage at 320x720 and 390x844, cloud finance access is blocked until an explicit
+immutable account binding matches the authenticated user, destructive snapshot replacement is
+disabled, and the locked dependency graph reports zero vulnerabilities.
 
-The previous Next/PostCSS security-upgrade batch is complete. The publication branch now gates both runtime and development dependencies, lint, typecheck, tests, production build, and route smoke.
+This is not a presentation or release verdict. Live Supabase schema/RLS behavior, native
+Safari/iOS installed-PWA behavior, service-worker multi-version upgrade, and authorized Telegram
+transactionality/idempotency remain unverified or unresolved.
 
-Visual direction remains **Calm Personal Ledger**: semantic-token surfaces, shared UI primitives, responsive route-aware layouts, accessible feedback, skeleton loading states, and tokenized dark-mode overlays/toasts/charts/dialogs.
+## Implemented product surface
 
-## Implemented Product Surface
+- Dashboard, transactions, conversions, budgets, recurring items, reports, and settings.
+- First-time local setup for balances, TRY budget, and payment defaults.
+- Command-first and manual transaction capture with preview and balance validation.
+- TRY/USD/EUR cash/card balances, conversion/transfer workflows, budgets, and recurring entries.
+- Month/range/year reporting plus CSV/JSON import/export and lightweight PDF reports.
+- Optional local Ollama categorization and public exchange-rate lookup with fallback behavior.
+- Optional Supabase auth/sync behind explicit ledger/account linking.
+- Telegram register/webhook routes that fail closed when required configuration is incomplete.
 
-- Authenticated App Router shell with dashboard, transactions, conversions/transfers, budgets, recurring items, reports, and settings.
-- First-time setup for starting balances, monthly TRY budget, and default payment method.
-- Command-first transaction capture with multi-entry parsing, preview, batch save, balance validation, and optional AI category suggestions.
-- Manual transaction create/edit/delete with balance reversal validation.
-- TRY/USD/EUR balances with cash/card methods.
-- Currency exchange and cash/card transfer flows.
-- Monthly TRY budgets, category budgets, rollover calculation, and usage display.
-- Recurring transaction CRUD and app-open due/missed transaction creation.
-- Month, custom date-range, and yearly reporting plus an optional TRY-unified view.
-- CSV/JSON import/export and lightweight PDF report export.
-- Settings for balances, defaults, AI toggle, dark mode, categories, reset/import/export, and sync status.
-
-## Persistence and Integration Model
+## Persistence and integration model
 
 ### Local data
 
-Core finance data is stored in IndexedDB through Dexie and remains the browser application's normal read/write source.
+Dexie/IndexedDB is the normal source of truth. Schema v3 adds device metadata without changing
+existing finance rows or creating a binding implicitly. Data is browser-profile-local and is not
+encrypted by TapTrack; anyone with access to that profile may be able to inspect it.
+
+Local seeding and recurring work complete before optional synchronization. Import and reset affect
+only local data. Optional remote dispatch occurs after the enclosing local transaction commits.
 
 ### Supabase
 
-Supabase Auth protects the standard application shell. Optional remote synchronization mirrors supported user-scoped finance records and includes sync cursors, retry handling, delete tombstones, reset/import full replacement, and manual sync status.
+Local routes do not require Supabase configuration or authentication. Every remote finance
+read/write/delete/retry/manual/background entry point centrally requires configured Supabase, an
+authenticated user, an existing device-ledger binding, and an exact user-ID match.
 
-The current sync path is best-effort and browser-driven. There is no server-side durable job queue.
+First linking requires explicit confirmation and a successful read-only preflight showing every
+supported remote finance table and tombstone set is empty. The binding is immutable in this batch.
+Full delete-before-upsert snapshot replacement is disabled. The preflight and later writes are not
+atomic, live schema/RLS is unverified, and binding recovery is not implemented.
 
 ### Telegram
 
-Telegram webhook/register routes support remote transaction entry. Requests use a webhook secret, can be restricted to a configured owner chat ID, and map writes to a configured Supabase user. Telegram entry therefore changes the privacy boundary and is not equivalent to local-only browser entry.
+Register/webhook routes require bot, webhook, owner-chat, owner-user, and Supabase configuration
+before downstream work. Invalid secrets and non-owner chats fail before admin/database/bot work.
+Authorized mutation is still neither atomic nor idempotent and must remain disabled until repaired.
 
-### AI categorization
+### Offline/PWA and mobile
 
-A configured Ollama endpoint can provide category suggestions. Failure degrades to the deterministic/manual path; the feature is not required for core transaction capture.
+The service worker owns a versioned TapTrack-only shell cache for the seven route documents,
+manifest/icons, and eligible same-origin static GET resources. It excludes API/auth and
+cross-origin requests, keeps the existing complete cache until installation succeeds, and deletes
+only obsolete TapTrack-owned caches. Mobile navigation exposes all seven destinations in a
+two-row layout.
 
-### Exchange rates
+Credential-free production Playwright proves a warmed service-worker-controlled Chromium session
+can navigate all seven routes offline, retain an offline-created synthetic transaction after
+reload, keep targets at least 44x44 CSS pixels, avoid horizontal overflow, external requests, and
+page errors at 320x720 and 390x844. It does not prove native installed Safari/iOS behavior.
 
-The server route fetches public exchange-rate data and provides fallback values when the upstream service is unavailable.
+## Framework and security baseline
 
-### PWA
+- Next.js 16.2.12; React / React DOM 19.2.8; TypeScript.
+- Node.js 20.9+; CI and independent retest use Node 22.
+- ESLint 10.8.0; Vitest 4.1.10; Playwright 1.63.0.
+- Locked advisory repairs: `browserslist@4.28.9` and `postcss-selector-parser@6.1.4`.
+- Full and production dependency audits: 0 vulnerabilities.
 
-The project includes manifest/icon metadata and a static-asset service worker. Offline support is intentionally limited to the application shell; IndexedDB remains the finance data source.
+## Verification state
 
-## Framework and Security Baseline
+Independent retest verdict: `PASS_WITH_RISKS`.
 
-- Next.js 16.2.12
-- React / React DOM 19.2.8
-- TypeScript
-- Node.js 20.9+; CI uses Node 22
-- ESLint 10.8.0 with `@eslint/compat` around the current Next plugin configs
-- Vitest 4.1.10
+- Former Dexie failure reproduction: one transaction, zero unhandled rejections.
+- Focused Node 22: 7 files / 38 tests PASS.
+- Full Vitest: 16 files / 79 tests PASS.
+- ESLint, TypeScript, production build: PASS.
+- Production route smoke: 8/8 PASS.
+- Full/production dependency audits: 0 vulnerabilities.
+- Playwright Chromium at 320x720 and 390x844: PASS.
 
-The complete publication dependency graph has been refreshed and the full high-severity npm audit passes with zero reported vulnerabilities on the verified branch.
+The first independent tester verdict was `FAIL` due to unhandled Dexie rejections after a local
+transaction and remains recorded in `QA_REPORT.md`, `DEV_LOG.md`, and shared history.
 
-See `docs/DEPENDENCY_SECURITY_UPGRADE_PLAN.md` for the completed migration record.
+## Publication status
 
-## Verification State
-
-Permanent CI verifies the committed tree with:
-
-```text
-npm ci
-npm audit --audit-level=high
-npm audit --omit=dev --audit-level=high
-npm run lint
-npm run typecheck
-npm run test
-npm run build
-npm run smoke:routes
-```
-
-Verified automated results during the publication pass:
-
-- dependency audits: pass
-- lint: pass
-- typecheck: pass
-- Vitest: 14 files / 67 tests pass
-- production build: pass
-- route/API smoke: 8/8 pass
-
-The route smoke covers unauthenticated redirects, public login/PWA assets, exchange-rate JSON behavior, and invalid Telegram secret handling.
-
-## Manual Verification Still Recommended
-
-Before public screenshots or deployment claims:
-
-- Perform an authenticated walkthrough using a disposable Supabase test account.
-- Verify setup → transaction → budget → report flow.
-- Exercise transaction, conversion, recurring, category, export/import, and reset workflows.
-- Check light/dark modes, dialogs, toasts, chart tooltips, and loading states.
-- Check ~390px mobile layout, bottom navigation, filters, touch targets, and horizontal overflow.
-- Verify keyboard navigation and visible focus behavior.
-- Use synthetic finance data only for screenshots or demo exports.
-
-## Current Limitations
-
-- No bank or payment-network integration.
-- No receipt/photo OCR or attachment workflow.
-- No server-side durable synchronization queue.
-- No background recurring scheduler or push-notification layer.
-- Telegram writes become visible to the browser after synchronization rather than through a live shared client datastore.
-- Optional cloud sync means configured finance records leave local browser storage and enter the selected Supabase project.
-- IndexedDB finance data is not encrypted by TapTrack at rest.
-- PDF reporting remains intentionally lightweight.
-- Authenticated end-to-end browser automation requires a disposable real Supabase session and is not currently part of CI.
-
-## Publication Status
-
-The code and automated verification are substantially publication-ready. Remaining blockers are non-code release boundaries:
-
-1. choose and add an explicit source-code license;
-2. complete Git-history/privacy review for old secrets or real finance data;
-3. use synthetic screenshots/demo records;
-4. complete an authenticated manual walkthrough before presenting the repository as a polished portfolio release.
+A reviewed remediation branch/PR may be published, but do not merge, release, deploy, capture
+presentation evidence, or claim complete cloud/native safety until the remaining provider,
+Safari/iOS, service-worker-upgrade, and remote transaction risks are addressed. GitHub Support
+ticket `#4730630` continues to track residual read-only PR refs/cache cleanup from the earlier
+strict history rewrite.

@@ -88,7 +88,7 @@ export async function upsertMonthlyBudget(
   };
 
   await database.monthlyBudgets.put(budget);
-  void pushRecord('monthlyBudgets', budget as unknown as Record<string, unknown>);
+  void pushRecord('monthlyBudgets', budget as unknown as Record<string, unknown>, database);
   return budget;
 }
 
@@ -126,7 +126,7 @@ export async function upsertCategoryBudget(
   };
 
   await database.categoryBudgets.put(budget);
-  void pushRecord('categoryBudgets', budget as unknown as Record<string, unknown>);
+  void pushRecord('categoryBudgets', budget as unknown as Record<string, unknown>, database);
   return budget;
 }
 
@@ -275,12 +275,12 @@ export async function deleteCategory(
   });
 
   updatedTransactions.forEach((transaction) => {
-    void pushRecord('transactions', transaction as unknown as Record<string, unknown>);
+    void pushRecord('transactions', transaction as unknown as Record<string, unknown>, database);
   });
   deletedCategoryBudgetIds.forEach((budgetId) => {
-    void deleteRecord('categoryBudgets', budgetId);
+    void deleteRecord('categoryBudgets', budgetId, database);
   });
-  void deleteRecord('categories', categoryId);
+  void deleteRecord('categories', categoryId, database);
 }
 
 export async function updateCategory(
@@ -349,9 +349,9 @@ export async function updateCategory(
     throw new Error('Category was not updated.');
   }
 
-  void pushRecord('categories', updatedCategory as unknown as Record<string, unknown>);
+  void pushRecord('categories', updatedCategory as unknown as Record<string, unknown>, database);
   updatedTransactions.forEach((transaction) => {
-    void pushRecord('transactions', transaction);
+    void pushRecord('transactions', transaction, database);
   });
 
   return updatedCategory;

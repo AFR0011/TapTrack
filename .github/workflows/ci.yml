@@ -10,16 +10,6 @@ permissions:
 jobs:
   verify:
     runs-on: ubuntu-latest
-    env:
-      NEXT_PUBLIC_SUPABASE_URL: https://example.supabase.co
-      NEXT_PUBLIC_SUPABASE_ANON_KEY: test-anon-key
-      SUPABASE_SERVICE_ROLE_KEY: test-service-role-key
-      TELEGRAM_BOT_TOKEN: test-bot-token
-      TELEGRAM_WEBHOOK_SECRET: test-webhook-secret
-      TAPTRACK_OWNER_TELEGRAM_CHAT_ID: "1"
-      TAPTRACK_OWNER_USER_ID: 00000000-0000-0000-0000-000000000000
-      OLLAMA_BASE_URL: http://127.0.0.1:11434
-      OLLAMA_MODEL: qwen2.5:1.5b
     steps:
       - name: Check out repository
         uses: actions/checkout@v7
@@ -51,6 +41,9 @@ jobs:
       - name: Test
         run: npm run test
 
+      - name: Install Chromium for offline mobile verification
+        run: npx playwright install --with-deps chromium
+
       - name: Build
         run: npm run build
 
@@ -70,3 +63,6 @@ jobs:
             sleep 1
           done
           npm run smoke:routes
+
+      - name: Offline mobile browser verification
+        run: npm run test:e2e

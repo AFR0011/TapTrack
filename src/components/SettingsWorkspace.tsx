@@ -15,10 +15,10 @@ import { toast } from 'sonner';
 import {
   getSyncStatus,
   pushRecord,
-  syncAllLocalData,
   syncNow,
   type SyncStatusSnapshot,
 } from '@/sync/syncService';
+import { linkDeviceLedgerToCurrentUser } from '@/sync/syncBinding';
 import { applyTheme, resolveStoredTheme, setStoredTheme, type ThemeMode } from '@/theme';
 import { Button } from '@/components/ui/Button';
 import { Field } from '@/components/ui/Field';
@@ -63,6 +63,8 @@ export default function SettingsWorkspace() {
   const [categoryDeleteConfirm, setCategoryDeleteConfirm] = useState<Category | null>(null);
   const [accountEmail, setAccountEmail] = useState<string | null>(null);
   const [signingOut, setSigningOut] = useState(false);
+  const [linking, setLinking] = useState(false);
+  const [showLinkConfirm, setShowLinkConfirm] = useState(false);
   const darkModeEnabled = settings?.darkModeEnabled ?? (resolveStoredTheme() === 'dark');
 
   useEffect(() => {
@@ -188,9 +190,8 @@ export default function SettingsWorkspace() {
   const handleImportFile = async (file: File | undefined) => {
     if (!file) return;
     await importJSON(await file.text());
-    await syncAllLocalData();
     await refreshSyncStatus();
-    toast.success('JSON backup imported.');
+    toast.success('JSON backup imported locally.');
   };
 
   const resetAppData = async () => {
@@ -220,9 +221,8 @@ export default function SettingsWorkspace() {
       }
     );
     await ensureDatabaseSeeded();
-    await syncAllLocalData();
     await refreshSyncStatus();
-    toast.success('App data reset. Setup will show again.');
+    toast.success('Local app data reset. Setup will show again.');
   };
 
   const handleChangeDefaultMethod = async (method: Method) => {
@@ -268,6 +268,19 @@ export default function SettingsWorkspace() {
     }
   };
 
+  const handleLinkSync = async () => {
+    setLinking(true);
+    try {
+      await linkDeviceLedgerToCurrentUser();
+      await refreshSyncStatus();
+      toast.success('This device ledger is now linked to the signed-in account.');
+    } catch (err) {
+      toast.error(err instanceof Error ? err.message : 'Cloud sync could not be linked.');
+    } finally {
+      setLinking(false);
+    }
+  };
+
   if (isLoading) {
     return (
       <div className="space-y-5" aria-busy="true" aria-label="Loading settings">
@@ -287,18 +300,24 @@ export default function SettingsWorkspace() {
       <section className="rounded-2xl border border-subtle bg-surface p-5">
         <h2 className="text-base font-semibold text-primary">Account</h2>
         <p className="mt-1 text-sm text-muted">
-          {accountEmail ? `Signed in as ${accountEmail}` : 'Signed in'}
+          {accountEmail ? `Signed in as ${accountEmail}` : 'No cloud account signed in'}
         </p>
-        <Button
-          type="button"
-          variant="secondary"
-          className="mt-4"
-          onClick={handleSignOut}
-          loading={signingOut}
-          disabled={signingOut}
-        >
-          Sign out
-        </Button>
+        {accountEmail ? (
+          <Button
+            type="button"
+            variant="secondary"
+            className="mt-4"
+            onClick={handleSignOut}
+            loading={signingOut}
+            disabled={signingOut}
+          >
+            Sign out
+          </Button>
+        ) : (
+          <Button type="button" variant="secondary" className="mt-4" onClick={() => router.push('/login')}>
+            Optional account sign in
+          </Button>
+        )}
       </section>
 
       <section className="rounded-2xl border border-subtle bg-surface p-5">
@@ -456,7 +475,7 @@ export default function SettingsWorkspace() {
             type="button"
             onClick={handleSyncNow}
             loading={syncing}
-            disabled={syncing || !syncStatus?.authenticated}
+            disabled={syncing || !syncStatus?.syncAllowed}
           >
             Sync now
           </Button>
@@ -483,9 +502,28 @@ export default function SettingsWorkspace() {
             ) : null}
           </dl>
           <p className="border-t border-subtle px-3 py-2 text-xs font-medium text-muted">
-            Cloud sync is optional. Tracking, import, export, and manual entry work without it.
+            This ledger belongs to the browser profile. Cloud sync is optional and must be linked
+            explicitly to one account.
           </p>
         </details>
+        {syncStatus?.bindingState === 'unlinked' ? (
+          <Button
+            type="button"
+            variant="secondary"
+            className="mt-4"
+            onClick={() => setShowLinkConfirm(true)}
+            loading={linking}
+            disabled={linking}
+          >
+            Link this device ledger
+          </Button>
+        ) : null}
+        {syncStatus?.bindingState === 'account-mismatch' ? (
+          <p role="alert" className="mt-4 rounded-lg border border-danger bg-danger-muted p-3 text-sm text-danger">
+            This browser ledger is linked to a different account. Local tracking remains available,
+            but every cloud read and write is blocked.
+          </p>
+        ) : null}
       </section>
 
       <section className="rounded-2xl border border-subtle bg-surface p-5">
@@ -531,6 +569,18 @@ export default function SettingsWorkspace() {
           Reset all data
         </Button>
       </section>
+
+      <ConfirmDialog
+        open={showLinkConfirm}
+        title="Link this device ledger"
+        message="This permanently associates the browser-profile ledger with the signed-in account. Linking is allowed only when that account has no existing TapTrack cloud data, and it cannot be changed in this version."
+        confirmLabel="Check and link"
+        onConfirm={async () => {
+          setShowLinkConfirm(false);
+          await handleLinkSync();
+        }}
+        onCancel={() => setShowLinkConfirm(false)}
+      />
 
       <ConfirmDialog
         open={showResetConfirm}
@@ -657,11 +707,18 @@ function CategoryTypeBadge({ type }: { type: TransactionType }) {
 function buildSyncSummary(status: SyncStatusSnapshot | null): string {
   if (!status) return 'Checking sync status…';
 
-  const syncPart = status.authenticated ? formatRelativeSyncTime(status.lastSyncAt) : 'Not signed in';
+  const stateLabel = {
+    'provider-unconfigured': 'Cloud sync not configured',
+    'signed-out': 'Not signed in',
+    unlinked: 'Account signed in; ledger not linked',
+    linked: formatRelativeSyncTime(status.lastSyncAt),
+    'account-mismatch': 'Account mismatch; sync blocked',
+    'provider-unavailable': 'Cloud provider unavailable',
+  }[status.bindingState];
   const networkPart = status.online ? 'Online' : 'Offline';
   const pendingPart = `${status.pendingRetryCount} pending`;
 
-  return `${syncPart} · ${networkPart} · ${pendingPart}`;
+  return `${stateLabel} · ${networkPart} · ${pendingPart}`;
 }
 
 function formatRelativeSyncTime(value: string | null | undefined): string {

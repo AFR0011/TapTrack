@@ -4,6 +4,7 @@ import type {
   Category,
   CategoryBudget,
   Conversion,
+  DeviceMetadata,
   MonthlyBudget,
   RecurringTransaction,
   Settings,
@@ -25,6 +26,7 @@ export class TapTrackDatabase extends Dexie {
   recurringTransactions!: Table<RecurringTransaction, string>;
   conversions!: Table<Conversion, string>;
   settings!: Table<Settings, string>;
+  deviceMetadata!: Table<DeviceMetadata, string>;
 
   constructor(name = 'TapTrackDB') {
     super(name);
@@ -42,6 +44,11 @@ export class TapTrackDatabase extends Dexie {
     // No index change needed; Dexie will keep existing records as-is.
     this.version(2).stores({
       conversions: 'id, date, fromCurrency, toCurrency, fromMethod, toMethod',
+    });
+    // Version 3 adds device-only metadata. It is intentionally excluded from
+    // finance sync, backup/import, and normal ledger reset.
+    this.version(3).stores({
+      deviceMetadata: 'id',
     });
   }
 }

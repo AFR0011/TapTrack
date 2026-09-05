@@ -9,14 +9,23 @@ import { type NextRequest, NextResponse } from 'next/server';
  *   X-Admin-Secret: <value of TELEGRAM_WEBHOOK_SECRET>
  */
 export async function GET(request: NextRequest): Promise<NextResponse> {
-  const adminSecret = request.headers.get('x-admin-secret');
-  if (adminSecret !== process.env.TELEGRAM_WEBHOOK_SECRET) {
-    return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
+  const webhookSecret = process.env.TELEGRAM_WEBHOOK_SECRET;
+  const token = process.env.TELEGRAM_BOT_TOKEN;
+  const ownerChatId = process.env.TAPTRACK_OWNER_TELEGRAM_CHAT_ID;
+  const ownerId = process.env.TAPTRACK_OWNER_USER_ID;
+  const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL;
+  const serviceRoleKey = process.env.SUPABASE_SERVICE_ROLE_KEY;
+
+  if (!webhookSecret || !token || !ownerChatId || !ownerId || !supabaseUrl || !serviceRoleKey) {
+    return NextResponse.json(
+      { error: 'Telegram integration is not fully configured' },
+      { status: 503 }
+    );
   }
 
-  const token = process.env.TELEGRAM_BOT_TOKEN;
-  if (!token) {
-    return NextResponse.json({ error: 'TELEGRAM_BOT_TOKEN is not set' }, { status: 500 });
+  const adminSecret = request.headers.get('x-admin-secret');
+  if (adminSecret !== webhookSecret) {
+    return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
   }
 
   const host = request.nextUrl.origin;
@@ -29,7 +38,7 @@ export async function GET(request: NextRequest): Promise<NextResponse> {
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({
         url: webhookUrl,
-        secret_token: process.env.TELEGRAM_WEBHOOK_SECRET,
+        secret_token: webhookSecret,
         allowed_updates: ['message'],
       }),
     }

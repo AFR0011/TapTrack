@@ -9,6 +9,8 @@ build
 .env.production.local
 *.log
 *.tsbuildinfo
+playwright-report
+test-results
 .DS_Store
 
 .vercel

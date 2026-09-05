@@ -52,9 +52,30 @@ function getBalanceId(currency: string, method: string): string {
 // POST handler — receives Telegram webhook updates
 // ---------------------------------------------------------------------------
 export async function POST(request: NextRequest): Promise<NextResponse> {
+  const webhookSecret = process.env.TELEGRAM_WEBHOOK_SECRET;
+  const botToken = process.env.TELEGRAM_BOT_TOKEN;
+  const ownerChatId = process.env.TAPTRACK_OWNER_TELEGRAM_CHAT_ID;
+  const ownerId = process.env.TAPTRACK_OWNER_USER_ID;
+  const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL;
+  const serviceRoleKey = process.env.SUPABASE_SERVICE_ROLE_KEY;
+
+  if (
+    !webhookSecret ||
+    !botToken ||
+    !ownerChatId ||
+    !ownerId ||
+    !supabaseUrl ||
+    !serviceRoleKey
+  ) {
+    return NextResponse.json(
+      { error: 'Telegram integration is not fully configured' },
+      { status: 503 }
+    );
+  }
+
   // Verify webhook secret
   const secretToken = request.headers.get('x-telegram-bot-api-secret-token');
-  if (secretToken !== process.env.TELEGRAM_WEBHOOK_SECRET) {
+  if (secretToken !== webhookSecret) {
     return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
   }
 
@@ -67,21 +88,11 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
   const chatId = message.chat.id;
   const text = message.text.trim();
 
-  // Optionally restrict to owner's chat ID
-  const ownerChatId = process.env.TAPTRACK_OWNER_TELEGRAM_CHAT_ID;
-  if (ownerChatId && String(chatId) !== ownerChatId) {
-    await sendMessage(chatId, 'Not authorized.');
-    return NextResponse.json({ ok: true });
+  if (String(chatId) !== ownerChatId) {
+    return NextResponse.json({ error: 'Forbidden' }, { status: 403 });
   }
 
   const supabase = createSupabaseAdminClient();
-
-  // Resolve owner user_id from settings table (single-user app)
-  const ownerId = process.env.TAPTRACK_OWNER_USER_ID;
-  if (!ownerId) {
-    await sendMessage(chatId, '⚠️ TAPTRACK_OWNER_USER_ID is not configured.');
-    return NextResponse.json({ ok: true });
-  }
 
   // -------------------------------------------------------------------------
   // /balance command
