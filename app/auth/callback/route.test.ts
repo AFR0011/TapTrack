@@ -27,10 +27,10 @@ function request(query = '') {
 }
 
 describe('auth callback route', () => {
-  it('exchanges a PKCE code and preserves the optional flow id', async () => {
-    const response = await GET(request('code=abc&sb_flow_id=flow-1'));
+  it('exchanges a PKCE code before granting the app redirect', async () => {
+    const response = await GET(request('code=abc'));
 
-    expect(authMocks.exchangeCodeForSession).toHaveBeenCalledWith('abc', { flowId: 'flow-1' });
+    expect(authMocks.exchangeCodeForSession).toHaveBeenCalledWith('abc');
     expect(response.headers.get('location')).toBe('http://localhost/app');
   });
 
