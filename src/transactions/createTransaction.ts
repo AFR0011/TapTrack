@@ -20,11 +20,11 @@ export class InsufficientBalanceError extends Error {
 
 export async function createTransaction(
   input: TransactionDraft,
-  database: TapTrackDatabase = db
+  database: TapTrackDatabase = db,
+  nowDate = new Date()
 ): Promise<Transaction> {
   await ensureDatabaseSeeded(database);
 
-  const nowDate = new Date();
   const now = nowDate.toISOString();
   const transaction: Transaction = {
     ...input,
