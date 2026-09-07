@@ -1,5 +1,10 @@
 import { describe, expect, it } from 'vitest';
-import { clampPercent, formatMoney, parseAmountInput } from './format';
+import {
+  clampPercent,
+  formatMoney,
+  parseAmountInput,
+  parseNonNegativeAmountInput,
+} from './format';
 
 describe('format helpers', () => {
   it('formats money with currency suffix', () => {
@@ -19,6 +24,15 @@ describe('format helpers', () => {
     expect(parseAmountInput('123abc')).toBe(0);
     expect(parseAmountInput('12.5junk')).toBe(0);
     expect(parseAmountInput('1,2,3')).toBe(0);
+  });
+
+  it('accepts zero for reconciliation balances without accepting malformed values', () => {
+    expect(parseNonNegativeAmountInput('0')).toBe(0);
+    expect(parseNonNegativeAmountInput('0,5')).toBe(0.5);
+    expect(parseNonNegativeAmountInput('12.5')).toBe(12.5);
+    expect(parseNonNegativeAmountInput('-1')).toBeNull();
+    expect(parseNonNegativeAmountInput('12abc')).toBeNull();
+    expect(parseNonNegativeAmountInput('')).toBeNull();
   });
 
   it('clamps percent between 0 and 100', () => {
