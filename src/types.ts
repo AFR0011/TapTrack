@@ -151,6 +151,20 @@ export interface DeviceMetadata {
   linkedAt: string;
 }
 
+export type SyncOutboxOperation = 'upsert' | 'delete';
+
+/** Durable device-local queue of optimistic sync operations. */
+export interface SyncOutboxItem {
+  id: string;
+  tableName: string;
+  operation: SyncOutboxOperation;
+  recordId: string;
+  record?: Record<string, unknown>;
+  queuedAt: string;
+  attempts: number;
+  lastAttemptAt?: string;
+}
+
 /** Live exchange rates: values are "1 unit of currency = X TRY" */
 export type ExchangeRates = {
   USD: number;
