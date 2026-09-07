@@ -1,5 +1,5 @@
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
-import { getBalanceId } from '@/defaultData';
+import { DEFAULT_SETTINGS_ID, getBalanceId } from '@/defaultData';
 import { TapTrackDatabase, ensureDatabaseSeeded } from '@/database';
 import type { Currency, Method, TransactionDraft } from '@/types';
 import {
@@ -65,6 +65,32 @@ describe('createTransaction', () => {
     }
   });
 
+  it('commits transaction and sync intent together before delivery', async () => {
+    await setOpeningBalance('TRY', 'cash', 200);
+
+    const transaction = await createTransaction(baseExpense, database);
+    const transactionOutbox = await database.syncOutbox.get(`transactions:${transaction.id}`);
+    const settingsOutbox = await database.syncOutbox.get(`settings:${DEFAULT_SETTINGS_ID}`);
+
+    expect(await database.transactions.get(transaction.id)).toEqual(transaction);
+    expect(transactionOutbox).toMatchObject({
+      tableName: 'transactions',
+      operation: 'upsert',
+      recordId: transaction.id,
+      attempts: 0,
+    });
+    expect(transactionOutbox?.record).toMatchObject({
+      id: transaction.id,
+      title: 'coffee',
+      amount: 120,
+    });
+    expect(settingsOutbox).toMatchObject({
+      tableName: 'settings',
+      operation: 'upsert',
+      recordId: DEFAULT_SETTINGS_ID,
+    });
+  });
+
   it('records exact ordering for current-day activity but leaves historical activity unordered', async () => {
     const now = new Date(2026, 4, 18, 14, 30, 0);
 
@@ -128,12 +154,15 @@ describe('createTransaction', () => {
     expect(transactions).toHaveLength(1);
   });
 
-  it('blocks an expense that would make a derived balance negative', async () => {
+  it('blocks an expense that would make a derived balance negative without leaving sync intent', async () => {
     await expect(createTransaction(baseExpense, database)).rejects.toBeInstanceOf(
       InsufficientBalanceError
     );
 
     expect(await database.transactions.count()).toBe(0);
+    expect(
+      (await database.syncOutbox.toArray()).filter((item) => item.tableName === 'transactions')
+    ).toEqual([]);
   });
 
   it('updates a transaction by rebuilding from the authoritative ledger', async () => {
@@ -153,9 +182,12 @@ describe('createTransaction', () => {
 
     const cashBalance = await database.balances.get(getBalanceId('TRY', 'cash'));
     const cardBalance = await database.balances.get(getBalanceId('TRY', 'card'));
+    const queued = await database.syncOutbox.get(`transactions:${transaction.id}`);
 
     expect(cashBalance?.amount).toBe(300);
     expect(cardBalance?.amount).toBe(50);
+    expect(queued).toMatchObject({ operation: 'upsert', recordId: transaction.id });
+    expect(queued?.record).toMatchObject({ amount: 50, method: 'card' });
   });
 
   it('blocks edits that would make the destination balance negative', async () => {
@@ -178,14 +210,23 @@ describe('createTransaction', () => {
     expect(original?.method).toBe('cash');
   });
 
-  it('deletes a transaction and rebuilds its balance effect away', async () => {
+  it('deletes a transaction, rebuilds its balance effect away, and atomically queues the delete', async () => {
     await setOpeningBalance('TRY', 'cash', 300);
     const transaction = await createTransaction(baseExpense, database);
 
     await deleteTransaction(transaction.id, database);
 
     const balance = await database.balances.get(getBalanceId('TRY', 'cash'));
+    const queued = await database.syncOutbox.get(`transactions:${transaction.id}`);
+
     expect(balance?.amount).toBe(300);
     expect(await database.transactions.count()).toBe(0);
+    expect(queued).toMatchObject({
+      tableName: 'transactions',
+      operation: 'delete',
+      recordId: transaction.id,
+      attempts: 0,
+    });
+    expect(queued?.record).toBeUndefined();
   });
 });
