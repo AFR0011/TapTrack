@@ -27,7 +27,6 @@ export async function completeInitialSetup(
   const now = nowDate.toISOString();
   const date = formatLocalDate(nowDate);
   const month = input.month ?? getCurrentMonth(nowDate);
-  let seededBalances: Balance[] = [];
   let openingCheckpoints: BalanceCheckpoint[] = [];
   let updatedSettings: Settings | null = null;
 
@@ -65,7 +64,6 @@ export async function completeInitialSetup(
 
       await database.balances.bulkPut(balances);
       await database.balanceCheckpoints.bulkAdd(checkpoints);
-      seededBalances = balances;
       openingCheckpoints = checkpoints;
 
       const settings =
@@ -91,12 +89,13 @@ export async function completeInitialSetup(
     database
   );
 
-  // Balance rows remain a local cache during the migration period. They will be
-  // removed from remote sync once checkpoint-based balance rebuilding is wired.
-  seededBalances.forEach((balance) => {
-    void pushRecord('balances', balance as unknown as Record<string, unknown>, database);
-  });
-  void openingCheckpoints;
+  for (const checkpoint of openingCheckpoints) {
+    void pushRecord(
+      'balanceCheckpoints',
+      checkpoint as unknown as Record<string, unknown>,
+      database
+    );
+  }
 
   if (updatedSettings) {
     void pushRecord('settings', updatedSettings as unknown as Record<string, unknown>, database);
