@@ -1,7 +1,11 @@
 import { db, ensureDatabaseSeeded, type TapTrackDatabase } from '@/database';
 import { getPreviousMonth } from '@/dates';
 import type { Category, CategoryBudget, MonthlyBudget, TransactionType } from '@/types';
-import { deleteRecord, pushRecord } from '@/sync/syncService';
+import {
+  flushSyncQueueBestEffort,
+  queueDeleteForSync,
+  queueRecordForSync,
+} from '@/sync/syncService';
 
 export type MonthlyBudgetInput = {
   month: string;
@@ -87,8 +91,19 @@ export async function upsertMonthlyBudget(
     updatedAt: now,
   };
 
-  await database.monthlyBudgets.put(budget);
-  void pushRecord('monthlyBudgets', budget as unknown as Record<string, unknown>, database);
+  await database.transaction(
+    'rw',
+    [database.monthlyBudgets, database.syncOutbox],
+    async () => {
+      await database.monthlyBudgets.put(budget);
+      await queueRecordForSync(
+        'monthlyBudgets',
+        budget as unknown as Record<string, unknown>,
+        database
+      );
+    }
+  );
+  void flushSyncQueueBestEffort(database);
   return budget;
 }
 
@@ -125,8 +140,19 @@ export async function upsertCategoryBudget(
     updatedAt: now,
   };
 
-  await database.categoryBudgets.put(budget);
-  void pushRecord('categoryBudgets', budget as unknown as Record<string, unknown>, database);
+  await database.transaction(
+    'rw',
+    [database.categoryBudgets, database.syncOutbox],
+    async () => {
+      await database.categoryBudgets.put(budget);
+      await queueRecordForSync(
+        'categoryBudgets',
+        budget as unknown as Record<string, unknown>,
+        database
+      );
+    }
+  );
+  void flushSyncQueueBestEffort(database);
   return budget;
 }
 
@@ -227,60 +253,59 @@ export async function deleteCategory(
 ): Promise<void> {
   await ensureDatabaseSeeded(database);
   const now = new Date().toISOString();
-  const updatedTransactions: Array<Record<string, unknown>> = [];
-  let deletedCategoryBudgetIds: string[] = [];
 
-  await database.transaction('rw', database.categories, database.categoryBudgets, database.transactions, async () => {
-    const category = await database.categories.get(categoryId);
-    if (!category) {
-      throw new Error('Category not found.');
+  await database.transaction(
+    'rw',
+    [
+      database.categories,
+      database.categoryBudgets,
+      database.transactions,
+      database.syncOutbox,
+    ],
+    async () => {
+      const category = await database.categories.get(categoryId);
+      if (!category) {
+        throw new Error('Category not found.');
+      }
+      if (category.isDefault) {
+        throw new Error('Default categories cannot be deleted.');
+      }
+
+      const transactions = await database.transactions
+        .where('categoryId')
+        .equals(categoryId)
+        .toArray();
+
+      for (const transaction of transactions) {
+        const replacementCategoryId = await getFallbackCategoryId(transaction.type, database, categoryId);
+        const updatedTransaction = {
+          ...transaction,
+          categoryId: replacementCategoryId,
+          updatedAt: now,
+        };
+        await database.transactions.put(updatedTransaction);
+        await queueRecordForSync(
+          'transactions',
+          updatedTransaction as unknown as Record<string, unknown>,
+          database
+        );
+      }
+
+      const categoryBudgets = await database.categoryBudgets
+        .where('categoryId')
+        .equals(categoryId)
+        .toArray();
+      for (const budget of categoryBudgets) {
+        await database.categoryBudgets.delete(budget.id);
+        await queueDeleteForSync('categoryBudgets', budget.id, database);
+      }
+
+      await database.categories.delete(categoryId);
+      await queueDeleteForSync('categories', categoryId, database);
     }
-    if (category.isDefault) {
-      throw new Error('Default categories cannot be deleted.');
-    }
+  );
 
-    // Update all transactions using this category to use replacement
-    const transactions = await database.transactions
-      .where('categoryId')
-      .equals(categoryId)
-      .toArray();
-
-    for (const transaction of transactions) {
-      const replacementCategoryId = await getFallbackCategoryId(transaction.type, database, categoryId);
-      await database.transactions.update(transaction.id, {
-        categoryId: replacementCategoryId,
-        updatedAt: now,
-      });
-      updatedTransactions.push({
-        ...transaction,
-        categoryId: replacementCategoryId,
-        updatedAt: now,
-      });
-    }
-
-    // Delete all category budgets for this category
-    const categoryBudgets = await database.categoryBudgets
-      .where('categoryId')
-      .equals(categoryId)
-      .toArray();
-    deletedCategoryBudgetIds = categoryBudgets.map((budget) => budget.id);
-
-    await database.categoryBudgets
-      .where('categoryId')
-      .equals(categoryId)
-      .delete();
-
-    // Delete the category itself
-    await database.categories.delete(categoryId);
-  });
-
-  updatedTransactions.forEach((transaction) => {
-    void pushRecord('transactions', transaction as unknown as Record<string, unknown>, database);
-  });
-  deletedCategoryBudgetIds.forEach((budgetId) => {
-    void deleteRecord('categoryBudgets', budgetId, database);
-  });
-  void deleteRecord('categories', categoryId, database);
+  void flushSyncQueueBestEffort(database);
 }
 
 export async function updateCategory(
@@ -290,70 +315,77 @@ export async function updateCategory(
   await ensureDatabaseSeeded(database);
 
   const now = new Date().toISOString();
-  const updatedTransactions: Array<Record<string, unknown>> = [];
   let updatedCategory: Category | null = null;
 
-  await database.transaction('rw', database.categories, database.transactions, async () => {
-    const existing = await database.categories.get(input.id);
-    if (!existing) {
-      throw new Error('Category not found.');
-    }
+  await database.transaction(
+    'rw',
+    [database.categories, database.transactions, database.syncOutbox],
+    async () => {
+      const existing = await database.categories.get(input.id);
+      if (!existing) {
+        throw new Error('Category not found.');
+      }
 
-    const nextName = input.name.trim();
-    if (!nextName) {
-      throw new Error('Category name is required.');
-    }
-    if (existing.isDefault && input.type !== existing.type) {
-      throw new Error('Default category type cannot be changed.');
-    }
+      const nextName = input.name.trim();
+      if (!nextName) {
+        throw new Error('Category name is required.');
+      }
+      if (existing.isDefault && input.type !== existing.type) {
+        throw new Error('Default category type cannot be changed.');
+      }
 
-    updatedCategory = {
-      ...existing,
-      name: nextName,
-      type: input.type,
-      color: input.color || existing.color,
-      icon: input.icon || existing.icon,
-      updatedAt: now,
-    };
+      const nextCategory: Category = {
+        ...existing,
+        name: nextName,
+        type: input.type,
+        color: input.color || existing.color,
+        icon: input.icon || existing.icon,
+        updatedAt: now,
+      };
+      updatedCategory = nextCategory;
 
-    await database.categories.put(updatedCategory);
+      await database.categories.put(nextCategory);
+      await queueRecordForSync(
+        'categories',
+        nextCategory as unknown as Record<string, unknown>,
+        database
+      );
 
-    if (existing.type !== input.type) {
-      const transactions = await database.transactions
-        .where('categoryId')
-        .equals(input.id)
-        .toArray();
+      if (existing.type !== input.type) {
+        const transactions = await database.transactions
+          .where('categoryId')
+          .equals(input.id)
+          .toArray();
 
-      for (const transaction of transactions) {
-        if (transaction.type === input.type) continue;
+        for (const transaction of transactions) {
+          if (transaction.type === input.type) continue;
 
-        const replacementCategoryId = await getFallbackCategoryId(
-          transaction.type,
-          database,
-          input.id
-        );
-        await database.transactions.update(transaction.id, {
-          categoryId: replacementCategoryId,
-          updatedAt: now,
-        });
-        updatedTransactions.push({
-          ...transaction,
-          categoryId: replacementCategoryId,
-          updatedAt: now,
-        });
+          const replacementCategoryId = await getFallbackCategoryId(
+            transaction.type,
+            database,
+            input.id
+          );
+          const updatedTransaction = {
+            ...transaction,
+            categoryId: replacementCategoryId,
+            updatedAt: now,
+          };
+          await database.transactions.put(updatedTransaction);
+          await queueRecordForSync(
+            'transactions',
+            updatedTransaction as unknown as Record<string, unknown>,
+            database
+          );
+        }
       }
     }
-  });
+  );
 
   if (!updatedCategory) {
     throw new Error('Category was not updated.');
   }
 
-  void pushRecord('categories', updatedCategory as unknown as Record<string, unknown>, database);
-  updatedTransactions.forEach((transaction) => {
-    void pushRecord('transactions', transaction, database);
-  });
-
+  void flushSyncQueueBestEffort(database);
   return updatedCategory;
 }
 
