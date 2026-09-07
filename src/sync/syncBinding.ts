@@ -34,6 +34,21 @@ export type SyncAccess = {
   binding: DeviceMetadata | null;
 };
 
+export type LedgerLinkPlanState =
+  | 'already-linked'
+  | 'remote-empty'
+  | 'cloud-only'
+  | 'merge-choice';
+
+export type LedgerLinkPlan = {
+  state: LedgerLinkPlanState;
+  userId: string;
+  localHasUserData: boolean;
+  remoteHasData: boolean;
+};
+
+export type LedgerLinkMode = 'empty-only' | 'use-cloud' | 'merge-local';
+
 export async function getSyncAccess(database: TapTrackDatabase = db): Promise<SyncAccess> {
   const client = createSupabaseBrowserClient();
   let binding: DeviceMetadata | null;
@@ -76,8 +91,133 @@ export async function requireLinkedSyncAccess(
   }
 }
 
-export async function linkDeviceLedgerToCurrentUser(
+/**
+ * Returns true only when this browser contains user-authored finance state.
+ * Seeded categories, zero balances, and untouched default settings do not count.
+ */
+export async function hasMeaningfulLocalLedgerData(
   database: TapTrackDatabase = db
+): Promise<boolean> {
+  const [
+    transactionCount,
+    monthlyBudgetCount,
+    categoryBudgetCount,
+    recurringCount,
+    conversionCount,
+    balances,
+    categories,
+    settings,
+  ] = await Promise.all([
+    database.transactions.count(),
+    database.monthlyBudgets.count(),
+    database.categoryBudgets.count(),
+    database.recurringTransactions.count(),
+    database.conversions.count(),
+    database.balances.toArray(),
+    database.categories.toArray(),
+    database.settings.toArray(),
+  ]);
+
+  if (
+    transactionCount > 0 ||
+    monthlyBudgetCount > 0 ||
+    categoryBudgetCount > 0 ||
+    recurringCount > 0 ||
+    conversionCount > 0
+  ) {
+    return true;
+  }
+
+  if (balances.some((balance) => Number.isFinite(balance.amount) && balance.amount !== 0)) {
+    return true;
+  }
+
+  if (
+    categories.some(
+      (category) => !category.isDefault || category.updatedAt !== category.createdAt
+    )
+  ) {
+    return true;
+  }
+
+  return settings.some(
+    (item) => item.setupCompleted || item.updatedAt !== item.createdAt
+  );
+}
+
+async function remoteLedgerHasData(client: SupabaseClient, userId: string): Promise<boolean> {
+  let remoteHasData = false;
+
+  for (const tableName of REMOTE_FINANCE_TABLES) {
+    const identityColumn = tableName === 'sync_tombstones' ? 'record_id' : 'id';
+    const { data, error } = await client
+      .from(tableName)
+      .select(identityColumn)
+      .eq('user_id', userId)
+      .limit(1);
+
+    if (error) throw new Error('Cloud data could not be checked safely. Nothing was linked.');
+    if (!Array.isArray(data)) {
+      throw new Error('Cloud data returned an unexpected response. Nothing was linked.');
+    }
+    if (data.length > 0) remoteHasData = true;
+  }
+
+  return remoteHasData;
+}
+
+/**
+ * Inspects the signed-in account and local browser before any irreversible link
+ * decision. A second device with only untouched seed data can adopt cloud data
+ * directly; a device with real local data requires an explicit merge choice.
+ */
+export async function inspectDeviceLedgerLinkToCurrentUser(
+  database: TapTrackDatabase = db
+): Promise<LedgerLinkPlan> {
+  const client = createSupabaseBrowserClient();
+  if (!client) throw new Error('Cloud sync is not configured.');
+
+  const {
+    data: { user },
+    error: authError,
+  } = await client.auth.getUser();
+  if (authError || !user) throw new Error('Sign in before linking cloud sync.');
+
+  const existing = await database.deviceMetadata.get(DEVICE_LEDGER_BINDING_ID);
+  if (existing) {
+    if (existing.syncOwnerUserId !== user.id) {
+      throw new Error('This device ledger is already linked to a different account.');
+    }
+    return {
+      state: 'already-linked',
+      userId: user.id,
+      localHasUserData: await hasMeaningfulLocalLedgerData(database),
+      remoteHasData: true,
+    };
+  }
+
+  const [localHasUserData, remoteHasData] = await Promise.all([
+    hasMeaningfulLocalLedgerData(database),
+    remoteLedgerHasData(client, user.id),
+  ]);
+
+  let state: LedgerLinkPlanState;
+  if (!remoteHasData) state = 'remote-empty';
+  else if (!localHasUserData) state = 'cloud-only';
+  else state = 'merge-choice';
+
+  return { state, userId: user.id, localHasUserData, remoteHasData };
+}
+
+/**
+ * Creates the immutable browser-to-account binding after the caller has made
+ * the appropriate adoption decision. `empty-only` remains fail-closed if cloud
+ * data appears between preflight and linking; the explicit adoption modes allow
+ * an existing cloud ledger because the caller has chosen how to reconcile it.
+ */
+export async function linkDeviceLedgerToCurrentUser(
+  database: TapTrackDatabase = db,
+  mode: LedgerLinkMode = 'empty-only'
 ): Promise<DeviceMetadata> {
   const client = createSupabaseBrowserClient();
   if (!client) throw new Error('Cloud sync is not configured.');
@@ -94,21 +234,11 @@ export async function linkDeviceLedgerToCurrentUser(
     throw new Error('This device ledger is already linked to a different account.');
   }
 
-  for (const tableName of REMOTE_FINANCE_TABLES) {
-    const identityColumn = tableName === 'sync_tombstones' ? 'record_id' : 'id';
-    const { data, error } = await client
-      .from(tableName)
-      .select(identityColumn)
-      .eq('user_id', user.id)
-      .limit(1);
-
-    if (error) throw new Error('Cloud data could not be checked safely. Nothing was linked.');
-    if (!Array.isArray(data)) {
-      throw new Error('Cloud data returned an unexpected response. Nothing was linked.');
-    }
-    if (data.length > 0) {
-      throw new Error('This account already has cloud data and cannot be linked automatically.');
-    }
+  const remoteHasData = await remoteLedgerHasData(client, user.id);
+  if (remoteHasData && mode === 'empty-only') {
+    throw new Error(
+      'This account already has cloud data. Choose whether to use the cloud ledger or merge this device before linking.'
+    );
   }
 
   const binding: DeviceMetadata = {
