@@ -9,14 +9,13 @@ export const DEVICE_LEDGER_BINDING_ID = 'ledger-binding';
 
 export const REMOTE_FINANCE_TABLES = [
   'transactions',
-  'balances',
+  'balance_checkpoints',
   'categories',
   'monthly_budgets',
   'category_budgets',
   'recurring_transactions',
   'conversions',
   'settings',
-  'sync_tombstones',
 ] as const;
 
 export type SyncBindingState =
@@ -100,6 +99,7 @@ export async function hasMeaningfulLocalLedgerData(
 ): Promise<boolean> {
   const [
     transactionCount,
+    checkpointCount,
     monthlyBudgetCount,
     categoryBudgetCount,
     recurringCount,
@@ -109,6 +109,7 @@ export async function hasMeaningfulLocalLedgerData(
     settings,
   ] = await Promise.all([
     database.transactions.count(),
+    database.balanceCheckpoints.count(),
     database.monthlyBudgets.count(),
     database.categoryBudgets.count(),
     database.recurringTransactions.count(),
@@ -120,6 +121,7 @@ export async function hasMeaningfulLocalLedgerData(
 
   if (
     transactionCount > 0 ||
+    checkpointCount > 0 ||
     monthlyBudgetCount > 0 ||
     categoryBudgetCount > 0 ||
     recurringCount > 0 ||
@@ -149,11 +151,11 @@ async function remoteLedgerHasData(client: SupabaseClient, userId: string): Prom
   let remoteHasData = false;
 
   for (const tableName of REMOTE_FINANCE_TABLES) {
-    const identityColumn = tableName === 'sync_tombstones' ? 'record_id' : 'id';
     const { data, error } = await client
       .from(tableName)
-      .select(identityColumn)
+      .select('id')
       .eq('user_id', userId)
+      .is('deleted_at', null)
       .limit(1);
 
     if (error) throw new Error('Cloud data could not be checked safely. Nothing was linked.');
@@ -188,11 +190,15 @@ export async function inspectDeviceLedgerLinkToCurrentUser(
     if (existing.syncOwnerUserId !== user.id) {
       throw new Error('This device ledger is already linked to a different account.');
     }
+    const [localHasUserData, remoteHasData] = await Promise.all([
+      hasMeaningfulLocalLedgerData(database),
+      remoteLedgerHasData(client, user.id),
+    ]);
     return {
       state: 'already-linked',
       userId: user.id,
-      localHasUserData: await hasMeaningfulLocalLedgerData(database),
-      remoteHasData: true,
+      localHasUserData,
+      remoteHasData,
     };
   }
 
