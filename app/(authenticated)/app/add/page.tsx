@@ -1,8 +1,8 @@
 'use client';
 
 import Link from 'next/link';
-import { useEffect, useState } from 'react';
-import { useRouter } from 'next/navigation';
+import { Suspense, useMemo } from 'react';
+import { useRouter, useSearchParams } from 'next/navigation';
 import { TransactionEntry } from '@/components/TransactionEntry';
 import type { QuickAddPrefill } from '@/components/QuickAddTransaction';
 import type { TransactionInputMode } from '@/transactions/inputPreferences';
@@ -14,13 +14,10 @@ const VALID_CURRENCIES = new Set<Currency>(['TRY', 'USD', 'EUR']);
 const DATE_PATTERN = /^\d{4}-\d{2}-\d{2}$/;
 const AMOUNT_PATTERN = /^\d+(?:[.,]\d{1,2})?$/;
 
-function readCaptureParameters(): {
+function parseCaptureParameters(params: URLSearchParams): {
   mode?: TransactionInputMode;
   prefill?: QuickAddPrefill;
 } {
-  if (typeof window === 'undefined') return {};
-
-  const params = new URLSearchParams(window.location.search);
   const rawMode = params.get('mode');
   const rawType = params.get('type');
   const rawMethod = params.get('method');
@@ -54,13 +51,13 @@ function readCaptureParameters(): {
   return { mode, prefill: Object.keys(prefill).length > 0 ? prefill : undefined };
 }
 
-export default function AddTransactionPage() {
+function CaptureContent() {
   const router = useRouter();
-  const [capture, setCapture] = useState<ReturnType<typeof readCaptureParameters>>({});
-
-  useEffect(() => {
-    setCapture(readCaptureParameters());
-  }, []);
+  const searchParams = useSearchParams();
+  const capture = useMemo(
+    () => parseCaptureParameters(new URLSearchParams(searchParams.toString())),
+    [searchParams]
+  );
 
   return (
     <div className="space-y-5">
@@ -83,5 +80,13 @@ export default function AddTransactionPage() {
         onSaved={() => router.replace('/app')}
       />
     </div>
+  );
+}
+
+export default function AddTransactionPage() {
+  return (
+    <Suspense fallback={<div className="h-72 animate-pulse rounded-2xl bg-surface-muted" aria-hidden="true" />}>
+      <CaptureContent />
+    </Suspense>
   );
 }
