@@ -1,8 +1,7 @@
-import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
+import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 import { TapTrackDatabase, ensureDatabaseSeeded } from '@/database';
 import { createTransaction } from '@/transactions/createTransaction';
 import { seedOpeningBalance } from '@/test/ledgerTestUtils';
-import * as syncService from '@/sync/syncService';
 import {
   calculateRollover,
   deleteCategory,
@@ -23,7 +22,6 @@ beforeEach(async () => {
 
 afterEach(async () => {
   await database.delete();
-  vi.restoreAllMocks();
 });
 
 describe('budgetService', () => {
@@ -95,8 +93,7 @@ describe('budgetService', () => {
     expect(budget.rolloverFromPreviousMonth).toBe(2000);
   });
 
-  it('updates custom category details', async () => {
-    const pushSpy = vi.spyOn(syncService, 'pushRecord').mockResolvedValue(undefined);
+  it('updates custom category details and atomically queues the category snapshot', async () => {
     const now = new Date().toISOString();
     await database.categories.add({
       id: 'cat-custom',
@@ -119,6 +116,7 @@ describe('budgetService', () => {
       },
       database
     );
+    const queued = await database.syncOutbox.get('categories:cat-custom');
 
     expect(updated).toMatchObject({
       id: 'cat-custom',
@@ -127,11 +125,17 @@ describe('budgetService', () => {
       color: '#db2777',
       type: 'expense',
     });
-    expect(pushSpy).toHaveBeenCalledWith(
-      'categories',
-      expect.objectContaining({ id: 'cat-custom' }),
-      database
-    );
+    expect(queued).toMatchObject({
+      tableName: 'categories',
+      operation: 'upsert',
+      recordId: 'cat-custom',
+    });
+    expect(queued?.record).toMatchObject({
+      id: 'cat-custom',
+      name: 'New name',
+      icon: 'ticket',
+      color: '#db2777',
+    });
   });
 
   it('prevents changing default category type', async () => {
@@ -189,6 +193,11 @@ describe('budgetService', () => {
     await expect(database.transactions.get(transaction.id)).resolves.toMatchObject({
       categoryId: 'cat-other',
     });
+    await expect(database.syncOutbox.get(`transactions:${transaction.id}`)).resolves.toMatchObject({
+      operation: 'upsert',
+      recordId: transaction.id,
+      record: expect.objectContaining({ categoryId: 'cat-other' }),
+    });
   });
 
   it('prevents deleting default categories', async () => {
@@ -197,9 +206,7 @@ describe('budgetService', () => {
     );
   });
 
-  it('reassigns income transactions to the income fallback when deleting a custom income category', async () => {
-    const deleteSpy = vi.spyOn(syncService, 'deleteRecord').mockResolvedValue(undefined);
-    const pushSpy = vi.spyOn(syncService, 'pushRecord').mockResolvedValue(undefined);
+  it('reassigns income transactions and queues both reassignment and category delete atomically', async () => {
     const now = new Date().toISOString();
     await database.categories.add({
       id: 'cat-bonus',
@@ -230,11 +237,16 @@ describe('budgetService', () => {
       categoryId: 'cat-income',
     });
     await expect(database.categories.get('cat-bonus')).resolves.toBeUndefined();
-    expect(pushSpy).toHaveBeenCalledWith(
-      'transactions',
-      expect.objectContaining({ id: transaction.id, categoryId: 'cat-income' }),
-      database
-    );
-    expect(deleteSpy).toHaveBeenCalledWith('categories', 'cat-bonus', database);
+    await expect(database.syncOutbox.get(`transactions:${transaction.id}`)).resolves.toMatchObject({
+      tableName: 'transactions',
+      operation: 'upsert',
+      recordId: transaction.id,
+      record: expect.objectContaining({ categoryId: 'cat-income' }),
+    });
+    await expect(database.syncOutbox.get('categories:cat-bonus')).resolves.toMatchObject({
+      tableName: 'categories',
+      operation: 'delete',
+      recordId: 'cat-bonus',
+    });
   });
 });
