@@ -1,9 +1,9 @@
 'use client';
 
 import { useEffect, useState } from 'react';
-import CommandInput from '@/components/CommandInput';
 import DashboardSummary from '@/components/DashboardSummary';
 import RecentTransactions from '@/components/RecentTransactions';
+import { TransactionEntry } from '@/components/TransactionEntry';
 import { PageHeader } from '@/components/ui/PageHeader';
 import { Skeleton } from '@/components/ui/Skeleton';
 
@@ -26,7 +26,7 @@ export default function Home() {
         description={currentMonth || <Skeleton className="h-4 w-36" aria-hidden="true" />}
       />
 
-      <CommandInput />
+      <TransactionEntry />
       <DashboardSummary />
       <RecentTransactions />
     </div>
