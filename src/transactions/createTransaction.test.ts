@@ -1,4 +1,4 @@
-import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
+import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 import { getBalanceId } from '@/defaultData';
 import { TapTrackDatabase, ensureDatabaseSeeded } from '@/database';
 import type { TransactionDraft } from '@/types';
@@ -17,7 +17,6 @@ beforeEach(async () => {
 });
 
 afterEach(async () => {
-  vi.useRealTimers();
   await database.delete();
 });
 
@@ -48,9 +47,7 @@ describe('createTransaction', () => {
   });
 
   it('records exact ordering for current-day activity but leaves historical activity unordered', async () => {
-    vi.useFakeTimers();
     const now = new Date(2026, 4, 18, 14, 30, 0);
-    vi.setSystemTime(now);
 
     const current = await createTransaction(
       {
@@ -61,7 +58,8 @@ describe('createTransaction', () => {
         categoryId: 'cat-income',
         date: '2026-05-18',
       },
-      database
+      database,
+      now
     );
     const historical = await createTransaction(
       {
@@ -72,7 +70,8 @@ describe('createTransaction', () => {
         categoryId: 'cat-income',
         date: '2026-05-17',
       },
-      database
+      database,
+      now
     );
 
     expect(current.occurredAt).toBe(now.toISOString());
