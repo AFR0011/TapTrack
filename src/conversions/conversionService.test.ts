@@ -50,17 +50,31 @@ async function setOpeningBalance(currency: Currency, method: Method, amount: num
 }
 
 describe('createConversion', () => {
-  it('creates a conversion and rebuilds both balances', async () => {
+  it('creates a conversion, rebuilds both balances, and commits sync intent', async () => {
     await setOpeningBalance('USD', 'card', 100);
 
-    await createConversion(baseDraft, database);
+    const conversion = await createConversion(baseDraft, database);
 
     const fromBalance = await database.balances.get(getBalanceId('USD', 'card'));
     const toBalance = await database.balances.get(getBalanceId('TRY', 'cash'));
+    const queued = await database.syncOutbox.get(`conversions:${conversion.id}`);
 
     expect(fromBalance?.amount).toBe(90);
     expect(toBalance?.amount).toBe(380);
     expect(await database.conversions.count()).toBe(1);
+    expect(queued).toMatchObject({
+      tableName: 'conversions',
+      operation: 'upsert',
+      recordId: conversion.id,
+      attempts: 0,
+    });
+    expect(queued?.record).toMatchObject({
+      id: conversion.id,
+      fromCurrency: 'USD',
+      toCurrency: 'TRY',
+      fromAmount: 10,
+      toAmount: 380,
+    });
   });
 
   it('records exact ordering for current-day conversions and leaves historical ones unordered', async () => {
@@ -78,11 +92,14 @@ describe('createConversion', () => {
     expect(historical.occurredAt).toBeUndefined();
   });
 
-  it('blocks conversions when source balance is insufficient', async () => {
+  it('blocks conversions when source balance is insufficient without leaving sync intent', async () => {
     await expect(createConversion(baseDraft, database)).rejects.toBeInstanceOf(
       InsufficientConversionBalanceError
     );
     expect(await database.conversions.count()).toBe(0);
+    expect(
+      (await database.syncOutbox.toArray()).filter((item) => item.tableName === 'conversions')
+    ).toEqual([]);
   });
 
   it('rejects non-finite conversion amounts before touching balances', async () => {
