@@ -101,14 +101,15 @@ test('device-local ledger works across warmed offline mobile routes', async ({ p
   await page.getByRole('button', { name: 'Start tracking' }).click();
   await expectHeadingWithDiagnostics(page, 'Dashboard', 'Post-setup app state', pageErrors);
 
+  // Let the service worker finish installing, then allow it to take control via
+  // a normal reload. This mirrors browser lifecycle semantics without forcing a
+  // worker to replace the fetch layer underneath an already-running Next app.
   await page.evaluate(async () => {
     await navigator.serviceWorker.ready;
-    if (!navigator.serviceWorker.controller) {
-      await new Promise<void>((resolve) =>
-        navigator.serviceWorker.addEventListener('controllerchange', () => resolve(), { once: true })
-      );
-    }
   });
+  await page.reload();
+  await expectHeadingWithDiagnostics(page, 'Dashboard', 'Service-worker-controlled reload', pageErrors);
+  await expect.poll(() => page.evaluate(() => Boolean(navigator.serviceWorker.controller))).toBe(true);
 
   for (const route of CORE_ROUTES) {
     await page.goto(route.path);
