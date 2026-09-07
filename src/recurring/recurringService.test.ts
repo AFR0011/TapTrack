@@ -50,6 +50,38 @@ describe('recurringService', () => {
     expect(balance?.amount).toBe(20000);
   });
 
+  it('preserves a monthly Jan 31 anchor through shorter months', async () => {
+    const recurring = await createRecurringTransaction(
+      {
+        type: 'income',
+        amount: 100,
+        currency: 'TRY',
+        title: 'month-end income',
+        categoryId: 'cat-income',
+        method: 'card',
+        frequency: 'monthly',
+        startDate: '2027-01-31',
+        nextRunDate: '2027-01-31',
+        isActive: true,
+      },
+      database
+    );
+
+    await expect(
+      createDueRecurringTransactions(new Date(2027, 2, 31, 12, 0, 0), database)
+    ).resolves.toMatchObject({ created: 3, failed: 0 });
+
+    const dates = (await database.transactions.toArray())
+      .filter((transaction) => transaction.recurringSourceId === recurring.id)
+      .map((transaction) => transaction.date)
+      .sort();
+    expect(dates).toEqual(['2027-01-31', '2027-02-28', '2027-03-31']);
+
+    await expect(database.recurringTransactions.get(recurring.id)).resolves.toMatchObject({
+      nextRunDate: '2027-04-30',
+    });
+  });
+
   it('uses today as the first run date when the selected start date is already past', () => {
     expect(getInitialNextRunDate('2026-05-01', new Date(2026, 4, 5))).toBe('2026-05-05');
   });
