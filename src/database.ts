@@ -17,6 +17,7 @@ import {
   createDefaultSettings,
   createInitialBalances,
 } from '@/defaultData';
+import { formatLocalDate } from '@/dates';
 
 export class TapTrackDatabase extends Dexie {
   transactions!: Table<Transaction, string>;
@@ -72,7 +73,9 @@ export class TapTrackDatabase extends Dexie {
         const balances = (await transaction.table('balances').toArray()) as Balance[];
         if (balances.length === 0) return;
 
-        const now = new Date().toISOString();
+        const nowDate = new Date();
+        const now = nowDate.toISOString();
+        const date = formatLocalDate(nowDate);
         const checkpoints: BalanceCheckpoint[] = balances.map((balance) => ({
           id: `opening-${balance.id}`,
           balanceId: balance.id,
@@ -81,6 +84,7 @@ export class TapTrackDatabase extends Dexie {
           kind: 'opening',
           observedAmount: balance.amount,
           deltaAmount: balance.amount,
+          date,
           effectiveAt: now,
           createdAt: now,
           updatedAt: now,
