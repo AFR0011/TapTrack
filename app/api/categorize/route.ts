@@ -48,10 +48,7 @@ export async function POST(request: Request): Promise<NextResponse> {
     return NextResponse.json({ categoryId: null });
   }
 
-  const { data: quotaAllowed, error: quotaError } = await supabase.rpc(
-    'consume_ai_categorization_quota',
-    { max_requests: 30 }
-  );
+  const { data: quotaAllowed, error: quotaError } = await supabase.rpc('consume_ai_categorization_quota');
   if (quotaError) {
     return NextResponse.json({ error: 'AI rate limiting is unavailable.' }, { status: 503 });
   }
