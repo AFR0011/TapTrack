@@ -38,6 +38,12 @@ afterEach(async () => {
 });
 
 describe('monthly balance reconciliation', () => {
+  it('treats initial setup as the balance confirmation for that first month', async () => {
+    const state = await getMonthlyReconciliationState('2026-05', database);
+    expect(state.required).toBe(false);
+    expect(state.completedBalanceIds).toHaveLength(6);
+  });
+
   it('requires the first reconciliation of a new calendar month and completes all balances together', async () => {
     const before = await getMonthlyReconciliationState('2026-06', database);
     expect(before.required).toBe(true);
