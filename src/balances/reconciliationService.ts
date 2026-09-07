@@ -21,6 +21,19 @@ export class InvalidReconciliationError extends Error {
   }
 }
 
+async function getMonthCompletionCheckpoints(
+  month: string,
+  database: TapTrackDatabase
+): Promise<BalanceCheckpoint[]> {
+  return database.balanceCheckpoints
+    .filter(
+      (checkpoint) =>
+        checkpoint.month === month ||
+        (checkpoint.kind === 'opening' && checkpoint.date.startsWith(month))
+    )
+    .toArray();
+}
+
 export async function getMonthlyReconciliationState(
   month = getCurrentMonth(),
   database: TapTrackDatabase = db
@@ -33,11 +46,7 @@ export async function getMonthlyReconciliationState(
     return { month, required: false, balances, completedBalanceIds: [] };
   }
 
-  const checkpoints = await database.balanceCheckpoints
-    .where('month')
-    .equals(month)
-    .and((checkpoint) => checkpoint.kind === 'reconciliation')
-    .toArray();
+  const checkpoints = await getMonthCompletionCheckpoints(month, database);
   const completedBalanceIds = [...new Set(checkpoints.map((checkpoint) => checkpoint.balanceId))];
   const completed = new Set(completedBalanceIds);
 
@@ -74,12 +83,8 @@ export async function reconcileCurrentMonth(
     throw new InvalidReconciliationError('No balances are available to reconcile.');
   }
 
-  const existing = await database.balanceCheckpoints
-    .where('month')
-    .equals(month)
-    .and((checkpoint) => checkpoint.kind === 'reconciliation')
-    .toArray();
-  if (existing.length > 0) {
+  const completionCheckpoints = await getMonthCompletionCheckpoints(month, database);
+  if (completionCheckpoints.length > 0) {
     throw new InvalidReconciliationError('This month has already been reconciled.');
   }
 
