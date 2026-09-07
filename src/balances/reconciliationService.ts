@@ -2,7 +2,7 @@ import { db, ensureDatabaseSeeded, type TapTrackDatabase } from '@/database';
 import { DEFAULT_SETTINGS_ID } from '@/defaultData';
 import { formatLocalDate, getCurrentMonth } from '@/dates';
 import { rebuildDerivedBalances } from '@/balances/ledgerService';
-import { pushRecord } from '@/sync/syncService';
+import { flushSyncQueueBestEffort, queueRecordForSync } from '@/sync/syncService';
 import type { Balance, BalanceCheckpoint } from '@/types';
 
 export type ReconciliationObservedAmounts = Record<string, number>;
@@ -66,7 +66,8 @@ export async function getMonthlyReconciliationState(
 /**
  * Records one absolute observation for every tracked balance. All checkpoints
  * share one exact boundary so historical activity can be ordered consistently
- * before or after the monthly reconciliation.
+ * before or after the monthly reconciliation. The checkpoint rows and durable
+ * sync intent commit in the same IndexedDB transaction.
  */
 export async function reconcileCurrentMonth(
   observedAmounts: ReconciliationObservedAmounts,
@@ -122,27 +123,28 @@ export async function reconcileCurrentMonth(
 
   await database.transaction(
     'rw',
-    database.transactions,
-    database.conversions,
-    database.balanceCheckpoints,
-    database.balances,
+    [
+      database.transactions,
+      database.conversions,
+      database.balanceCheckpoints,
+      database.balances,
+      database.syncOutbox,
+    ],
     async () => {
       await database.balanceCheckpoints.bulkAdd(checkpoints);
       await rebuildDerivedBalances(database, effectiveAt);
+
+      for (const checkpoint of checkpoints) {
+        await queueRecordForSync(
+          'balanceCheckpoints',
+          checkpoint as unknown as Record<string, unknown>,
+          database
+        );
+      }
     }
   );
 
-  // Reconciliation checkpoints are authoritative ledger state, not derived
-  // balance cache. Queue every checkpoint before returning so another linked
-  // device can reconstruct the same absolute balance baseline.
-  for (const checkpoint of checkpoints) {
-    await pushRecord(
-      'balanceCheckpoints',
-      checkpoint as unknown as Record<string, unknown>,
-      database
-    );
-  }
-
+  void flushSyncQueueBestEffort(database);
   return checkpoints;
 }
 
