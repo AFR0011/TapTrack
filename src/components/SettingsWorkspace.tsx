@@ -74,6 +74,7 @@ export default function SettingsWorkspace() {
   const [showResetConfirm, setShowResetConfirm] = useState(false);
   const [categoryDeleteConfirm, setCategoryDeleteConfirm] = useState<Category | null>(null);
   const [accountEmail, setAccountEmail] = useState<string | null>(null);
+  const [accountChecked, setAccountChecked] = useState(false);
   const [signingOut, setSigningOut] = useState(false);
   const darkModeEnabled = settings?.darkModeEnabled ?? resolveStoredTheme() === 'dark';
 
@@ -101,7 +102,10 @@ export default function SettingsWorkspace() {
   }, [refreshSyncStatus]);
 
   useEffect(() => {
-    void getSignedInEmail().then(setAccountEmail);
+    void getSignedInEmail().then((email) => {
+      setAccountEmail(email);
+      setAccountChecked(true);
+    });
   }, []);
 
   const handleSignOut = async () => {
@@ -238,6 +242,13 @@ export default function SettingsWorkspace() {
   const handleToggleAI = async () => {
     if (!settings) return;
     const next = !settings.aiCategorizationEnabled;
+
+    if (next && !accountEmail) {
+      toast.info('Sign in to enable AI categorization.');
+      router.push('/login');
+      return;
+    }
+
     const updatedSettings = {
       ...settings,
       aiCategorizationEnabled: next,
@@ -290,6 +301,9 @@ export default function SettingsWorkspace() {
     );
   }
 
+  const aiEnabled = settings.aiCategorizationEnabled ?? false;
+  const aiActive = Boolean(aiEnabled && accountEmail);
+
   return (
     <div className="space-y-5">
       <PageHeader title="Settings" description="Account, preferences, and data." />
@@ -297,7 +311,11 @@ export default function SettingsWorkspace() {
       <section className="rounded-2xl border border-subtle bg-surface p-5">
         <h2 className="text-base font-semibold text-primary">Account</h2>
         <p className="mt-1 text-sm text-muted">
-          {accountEmail ? `Signed in as ${accountEmail}` : 'No cloud account signed in'}
+          {!accountChecked
+            ? 'Checking account…'
+            : accountEmail
+              ? `Signed in as ${accountEmail}`
+              : 'No cloud account signed in'}
         </p>
         {accountEmail ? (
           <Button
@@ -316,6 +334,7 @@ export default function SettingsWorkspace() {
             variant="secondary"
             className="mt-4"
             onClick={() => router.push('/login')}
+            disabled={!accountChecked}
           >
             Optional account sign in
           </Button>
@@ -343,22 +362,35 @@ export default function SettingsWorkspace() {
         />
         <div className="mt-5 border-t border-subtle pt-5">
           <p className="text-sm text-muted">
-            When enabled, the quick command can suggest a category using AI.
+            AI categorization sends the transaction title and available category names to TapTrack's
+            server, which asks Groq for a category suggestion. A signed-in account is required.
           </p>
           <ToggleRow
             className="mt-4"
             label={
-              settings.aiCategorizationEnabled
-                ? 'AI categorization enabled'
+              aiEnabled
+                ? aiActive
+                  ? 'AI categorization enabled'
+                  : 'AI categorization paused until sign-in'
                 : 'AI categorization disabled'
             }
-            checked={settings.aiCategorizationEnabled ?? false}
+            description={
+              accountEmail
+                ? 'Hosted Groq suggestions are used only while you are signed in.'
+                : 'Sign in before enabling hosted AI categorization.'
+            }
+            checked={aiEnabled}
             onChange={handleToggleAI}
+            disabled={!accountChecked}
             variant="ai"
           />
-          {settings.aiCategorizationEnabled ? (
+          {aiActive ? (
             <p className="mt-3 rounded-md border border-ai-border bg-ai-muted px-3 py-2 text-xs font-medium text-ai-text">
-              AI provider setup is being migrated to the hosted Groq integration.
+              Hosted Groq categorization is active for this signed-in account.
+            </p>
+          ) : aiEnabled && accountChecked ? (
+            <p className="mt-3 rounded-md border border-ai-border bg-ai-muted px-3 py-2 text-xs font-medium text-ai-text">
+              Sign in to resume AI categorization. Local transaction tracking continues normally.
             </p>
           ) : null}
         </div>
