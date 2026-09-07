@@ -18,7 +18,7 @@ const MOBILE_NAV_ITEMS = [
 ];
 
 function resolveMainMaxWidth(pathname: string) {
-  if (pathname === '/app') return 'max-w-2xl';
+  if (pathname === '/app' || pathname.startsWith('/app/add')) return 'max-w-2xl';
   if (pathname.startsWith('/app/settings')) return 'max-w-2xl';
   if (pathname.startsWith('/app/reports')) return 'max-w-7xl';
   if (pathname.startsWith('/app/transactions')) return 'max-w-6xl';
@@ -56,7 +56,6 @@ export default function AppShell({ children }: { children: ReactNode }) {
     <div className="min-h-screen bg-background text-primary" style={{ paddingBottom: 'env(safe-area-inset-bottom, 0px)' }}>
       <MonthlyReconciliationPrompt />
 
-      {/* Desktop header — glassmorphism */}
       <header className="sticky top-0 z-30 hidden border-b border-subtle bg-surface md:block">
         <div className="mx-auto flex max-w-7xl flex-col gap-3 px-4 py-3 md:flex-row md:items-center md:justify-between">
           <div>
@@ -66,6 +65,16 @@ export default function AppShell({ children }: { children: ReactNode }) {
             <p className="text-xs font-medium text-muted">Personal finance tracker</p>
           </div>
           <div className="flex items-center gap-2">
+            <Link
+              href="/app/add"
+              className={cn(
+                'inline-flex min-h-11 items-center gap-1.5 rounded-lg bg-accent px-3 py-2 text-sm font-semibold text-white transition-opacity hover:opacity-90',
+                focusVisibleRing
+              )}
+            >
+              <span className="text-lg leading-none" aria-hidden="true">+</span>
+              Add
+            </Link>
             <nav className="flex gap-1 overflow-x-auto pb-1 md:pb-0" aria-label="Primary">
               {HEADER_NAV.map((item) => {
                 const active = item.href === '/app' ? pathname === '/app' : pathname.startsWith(item.href);
@@ -94,7 +103,18 @@ export default function AppShell({ children }: { children: ReactNode }) {
         {children}
       </main>
 
-      {/* Mobile bottom nav */}
+      <Link
+        href="/app/add"
+        onClick={(event) => forceDocumentNavigationOffline(event, '/app/add')}
+        aria-label="Add transaction"
+        className={cn(
+          'fixed right-4 bottom-[calc(5.75rem+env(safe-area-inset-bottom,0px))] z-50 flex h-14 w-14 items-center justify-center rounded-full bg-accent text-3xl font-light leading-none text-white shadow-lg transition-transform hover:scale-105 md:hidden',
+          focusVisibleRing
+        )}
+      >
+        <span aria-hidden="true">+</span>
+      </Link>
+
       <nav className="fixed inset-x-1 bottom-2 z-40 md:hidden" aria-label="Mobile">
         <div className="grid grid-cols-4 items-stretch gap-1 rounded-2xl border border-subtle bg-surface px-2 pt-2 pb-[calc(0.25rem+env(safe-area-inset-bottom,0px))] shadow-sm">
           {MOBILE_NAV_ITEMS.map((item) => {
