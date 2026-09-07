@@ -3,6 +3,7 @@ import {
   addFrequency,
   formatDisplayMonth,
   formatLocalDate,
+  getAutomaticOccurredAt,
   getCurrentMonth,
   getPreviousMonth,
   parseLocalDate,
@@ -15,6 +16,12 @@ describe('date helpers', () => {
 
   it('returns current month string', () => {
     expect(getCurrentMonth(new Date(2026, 4, 18))).toBe('2026-05');
+  });
+
+  it('adds an exact occurrence timestamp only for current-day activity', () => {
+    const now = new Date(2026, 4, 18, 14, 30, 0);
+    expect(getAutomaticOccurredAt('2026-05-18', now)).toBe(now.toISOString());
+    expect(getAutomaticOccurredAt('2026-05-17', now)).toBeUndefined();
   });
 
   it('returns previous month across year boundaries', () => {
