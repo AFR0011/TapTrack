@@ -11,6 +11,11 @@ const CORE_ROUTES = [
 ] as const;
 
 type Page = import('@playwright/test').Page;
+type BrowserDiagnostics = {
+  pageErrors: string[];
+  consoleErrors: string[];
+  failedRequests: string[];
+};
 
 async function assertMobileLayout(page: Page) {
   const mobileNav = page.getByRole('navigation', { name: 'Mobile' });
@@ -68,16 +73,16 @@ async function expectHeadingWithDiagnostics(
   page: Page,
   heading: string,
   phase: string,
-  pageErrors: string[]
+  diagnostics: BrowserDiagnostics
 ) {
   try {
     await expect(page.getByRole('heading', { name: heading, exact: true })).toBeVisible();
   } catch (error) {
-    const diagnostics = await getRouteDiagnostics(page);
+    const routeDiagnostics = await getRouteDiagnostics(page);
     throw new Error(
       `${phase} did not render heading "${heading}". Diagnostics: ${JSON.stringify({
+        ...routeDiagnostics,
         ...diagnostics,
-        pageErrors,
       })}\n${error instanceof Error ? error.message : String(error)}`
     );
   }
@@ -85,11 +90,26 @@ async function expectHeadingWithDiagnostics(
 
 test('device-local ledger works across warmed offline mobile routes', async ({ page, context }) => {
   const externalRequests: string[] = [];
-  const pageErrors: string[] = [];
+  const diagnostics: BrowserDiagnostics = {
+    pageErrors: [],
+    consoleErrors: [],
+    failedRequests: [],
+  };
   const configuredBaseUrl = test.info().project.use.baseURL;
   if (typeof configuredBaseUrl !== 'string') throw new Error('Playwright baseURL is required');
   const appOrigin = new URL(configuredBaseUrl).origin;
-  page.on('pageerror', (error) => pageErrors.push(error.message));
+
+  page.on('pageerror', (error) => {
+    diagnostics.pageErrors.push(error.stack ?? `${error.name}: ${error.message}`);
+  });
+  page.on('console', (message) => {
+    if (message.type() === 'error') diagnostics.consoleErrors.push(message.text());
+  });
+  page.on('requestfailed', (request) => {
+    diagnostics.failedRequests.push(
+      `${request.method()} ${request.url()} :: ${request.failure()?.errorText ?? 'unknown failure'}`
+    );
+  });
   page.on('request', (request) => {
     const url = new URL(request.url());
     if (url.origin !== appOrigin) externalRequests.push(request.url());
@@ -99,21 +119,18 @@ test('device-local ledger works across warmed offline mobile routes', async ({ p
   await expect(page.getByRole('heading', { name: 'Welcome to TapTrack' })).toBeVisible();
   await page.getByLabel('TRY cash').fill('1000');
   await page.getByRole('button', { name: 'Start tracking' }).click();
-  await expectHeadingWithDiagnostics(page, 'Dashboard', 'Post-setup app state', pageErrors);
+  await expectHeadingWithDiagnostics(page, 'Dashboard', 'Post-setup app state', diagnostics);
 
-  // Let the service worker finish installing, then allow it to take control via
-  // a normal reload. This mirrors browser lifecycle semantics without forcing a
-  // worker to replace the fetch layer underneath an already-running Next app.
   await page.evaluate(async () => {
     await navigator.serviceWorker.ready;
   });
   await page.reload();
-  await expectHeadingWithDiagnostics(page, 'Dashboard', 'Service-worker-controlled reload', pageErrors);
+  await expectHeadingWithDiagnostics(page, 'Dashboard', 'Service-worker-controlled reload', diagnostics);
   await expect.poll(() => page.evaluate(() => Boolean(navigator.serviceWorker.controller))).toBe(true);
 
   for (const route of CORE_ROUTES) {
     await page.goto(route.path);
-    await expectHeadingWithDiagnostics(page, route.heading, `Warmed route ${route.path}`, pageErrors);
+    await expectHeadingWithDiagnostics(page, route.heading, `Warmed route ${route.path}`, diagnostics);
     await assertMobileLayout(page);
   }
 
@@ -137,7 +154,7 @@ test('device-local ledger works across warmed offline mobile routes', async ({ p
 
   for (const route of CORE_ROUTES) {
     await page.goto(route.path);
-    await expectHeadingWithDiagnostics(page, route.heading, `Offline route ${route.path}`, pageErrors);
+    await expectHeadingWithDiagnostics(page, route.heading, `Offline route ${route.path}`, diagnostics);
     await assertMobileLayout(page);
   }
 
@@ -147,9 +164,11 @@ test('device-local ledger works across warmed offline mobile routes', async ({ p
   await page.getByRole('button', { name: 'Save', exact: true }).click();
   await expect(page.getByText('offlinecheck', { exact: true }).last()).toBeVisible();
   await page.reload();
-  await expectHeadingWithDiagnostics(page, 'Dashboard', 'Offline reload', pageErrors);
+  await expectHeadingWithDiagnostics(page, 'Dashboard', 'Offline reload', diagnostics);
   await expect(page.getByText('offlinecheck', { exact: true })).toBeVisible();
 
   expect(externalRequests).toEqual([]);
-  expect(pageErrors).toEqual([]);
+  expect(diagnostics.pageErrors).toEqual([]);
+  expect(diagnostics.consoleErrors).toEqual([]);
+  expect(diagnostics.failedRequests).toEqual([]);
 });
