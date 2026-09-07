@@ -18,6 +18,11 @@ import { db } from '@/database';
 import { getCurrentMonth, getPreviousMonth } from '@/dates';
 import { exportPDF, type ReportExportOptions } from '@/exports/exportService';
 import { clampPercent, formatMoney } from '@/format';
+import {
+  getTransactionAmountInTRY,
+  loadHistoricalReportRates,
+  type HistoricalReportRateMap,
+} from '@/reports/historicalReportRates';
 import { calculateIncomeVsExpense } from '@/reports/reportService';
 import { getBudgetPerformance } from '@/reports/reportTransforms';
 import { Button } from '@/components/ui/Button';
@@ -29,7 +34,7 @@ import { SkeletonCard, SkeletonMetric } from '@/components/ui/Skeleton';
 import { StatCard, StatRow } from '@/components/ui/StatRow';
 import { ToggleRow } from '@/components/ui/Toggle';
 import { downloadBlob } from '@/lib/download';
-import type { ExchangeRates, Transaction } from '@/types';
+import type { Transaction } from '@/types';
 
 const COLORS = [
   'var(--chart-1)',
@@ -73,20 +78,30 @@ const CHART_TOOLTIP_PROPS = {
 
 type ReportMode = 'month' | 'range' | 'year';
 
-function toTRY(amount: number, currency: string, rates: ExchangeRates | null): number {
-  if (currency === 'TRY' || !rates) return amount;
-  if (currency === 'USD') return amount * rates.USD;
-  if (currency === 'EUR') return amount * rates.EUR;
-  return amount;
+function getReportTransactionAmount(
+  transaction: Transaction,
+  unifyToTRY: boolean,
+  historicalRates: HistoricalReportRateMap
+): number | null {
+  if (!unifyToTRY) {
+    return transaction.currency === 'TRY' ? transaction.amount : null;
+  }
+
+  return getTransactionAmountInTRY(transaction, historicalRates);
 }
 
-function calculateReportTotals(transactions: Transaction[], rates: ExchangeRates | null) {
-  if (!rates) return calculateIncomeVsExpense(transactions);
+function calculateReportTotals(
+  transactions: Transaction[],
+  unifyToTRY: boolean,
+  historicalRates: HistoricalReportRateMap
+) {
+  if (!unifyToTRY) return calculateIncomeVsExpense(transactions);
 
   let income = 0;
   let expense = 0;
   for (const transaction of transactions) {
-    const amount = toTRY(transaction.amount, transaction.currency, rates);
+    const amount = getTransactionAmountInTRY(transaction, historicalRates);
+    if (amount === null) continue;
     if (transaction.type === 'income') income += amount;
     else expense += amount;
   }
@@ -102,7 +117,9 @@ export default function ReportsWorkspace() {
   const [rangeEnd, setRangeEnd] = useState(new Date().toISOString().slice(0, 10));
   const [year, setYear] = useState(currentMonth.slice(0, 4));
   const [unifyToTRY, setUnifyToTRY] = useState(false);
-  const [rates, setRates] = useState<ExchangeRates | null>(null);
+  const [historicalRates, setHistoricalRates] = useState<HistoricalReportRateMap>({});
+  const [ratesLoading, setRatesLoading] = useState(false);
+  const [rateError, setRateError] = useState('');
   const [exporting, setExporting] = useState(false);
   const [exportError, setExportError] = useState('');
 
@@ -122,16 +139,6 @@ export default function ReportsWorkspace() {
     categoryBudgets === undefined ||
     monthlyBudget === undefined;
 
-  useEffect(() => {
-    if (!unifyToTRY || rates) return;
-    fetch('/api/exchange-rates')
-      .then((response) => response.json())
-      .then((data: ExchangeRates) => setRates(data))
-      .catch(() => setRates({ USD: 38.5, EUR: 42 }));
-  }, [rates, unifyToTRY]);
-
-  const ratesLoading = unifyToTRY && rates === null;
-  const activeRates = unifyToTRY ? rates : null;
   const categoryById = useMemo(
     () => new Map((categories ?? []).map((category) => [category.id, category])),
     [categories]
@@ -155,22 +162,63 @@ export default function ReportsWorkspace() {
     [month, transactions]
   );
 
+  const rateTransactions = useMemo(
+    () =>
+      reportMode === 'month'
+        ? [...activeTransactions, ...previousMonthTransactions]
+        : activeTransactions,
+    [activeTransactions, previousMonthTransactions, reportMode]
+  );
+
+  useEffect(() => {
+    if (!unifyToTRY) return;
+
+    const controller = new AbortController();
+    queueMicrotask(() => {
+      if (controller.signal.aborted) return;
+      setRatesLoading(true);
+      setRateError('');
+      setHistoricalRates({});
+    });
+
+    void loadHistoricalReportRates(rateTransactions, controller.signal)
+      .then((loadedRates) => {
+        if (controller.signal.aborted) return;
+        setHistoricalRates(loadedRates);
+      })
+      .catch((error: unknown) => {
+        if (controller.signal.aborted) return;
+        setHistoricalRates({});
+        setUnifyToTRY(false);
+        setRateError(
+          error instanceof Error
+            ? error.message
+            : 'Historical exchange rates are temporarily unavailable.'
+        );
+      })
+      .finally(() => {
+        if (!controller.signal.aborted) setRatesLoading(false);
+      });
+
+    return () => controller.abort();
+  }, [rateTransactions, unifyToTRY]);
+
   const incomeVsExpense = useMemo(
-    () => calculateReportTotals(activeTransactions, activeRates),
-    [activeRates, activeTransactions]
+    () => calculateReportTotals(activeTransactions, unifyToTRY, historicalRates),
+    [activeTransactions, historicalRates, unifyToTRY]
   );
 
   const previousIncomeVsExpense = useMemo(
-    () => calculateReportTotals(previousMonthTransactions, activeRates),
-    [activeRates, previousMonthTransactions]
+    () => calculateReportTotals(previousMonthTransactions, unifyToTRY, historicalRates),
+    [historicalRates, previousMonthTransactions, unifyToTRY]
   );
 
   const categoryData = useMemo(() => {
     const spending = new Map<string, number>();
     for (const transaction of activeTransactions) {
       if (transaction.type !== 'expense') continue;
-      if (!activeRates && transaction.currency !== 'TRY') continue;
-      const amount = toTRY(transaction.amount, transaction.currency, activeRates);
+      const amount = getReportTransactionAmount(transaction, unifyToTRY, historicalRates);
+      if (amount === null) continue;
       spending.set(transaction.categoryId, (spending.get(transaction.categoryId) ?? 0) + amount);
     }
 
@@ -181,14 +229,14 @@ export default function ReportsWorkspace() {
         amount,
       }))
       .sort((a, b) => b.amount - a.amount);
-  }, [activeRates, activeTransactions, categoryById]);
+  }, [activeTransactions, categoryById, historicalRates, unifyToTRY]);
 
   const spendingOverTime = useMemo(() => {
     const spending = new Map<string, number>();
     for (const transaction of activeTransactions) {
       if (transaction.type !== 'expense') continue;
-      if (!activeRates && transaction.currency !== 'TRY') continue;
-      const amount = toTRY(transaction.amount, transaction.currency, activeRates);
+      const amount = getReportTransactionAmount(transaction, unifyToTRY, historicalRates);
+      if (amount === null) continue;
       spending.set(transaction.date, (spending.get(transaction.date) ?? 0) + amount);
     }
 
@@ -198,7 +246,7 @@ export default function ReportsWorkspace() {
         amount,
       }))
       .sort((a, b) => a.date.localeCompare(b.date));
-  }, [activeRates, activeTransactions, reportMode]);
+  }, [activeTransactions, historicalRates, reportMode, unifyToTRY]);
 
   const comparisonData = useMemo(() => {
     if (reportMode === 'month') {
@@ -213,14 +261,15 @@ export default function ReportsWorkspace() {
         const itemMonth = `${year}-${String(index + 1).padStart(2, '0')}`;
         const totals = calculateReportTotals(
           (transactions ?? []).filter((transaction) => transaction.date.startsWith(itemMonth)),
-          activeRates
+          unifyToTRY,
+          historicalRates
         );
         return { label: itemMonth.slice(5), income: totals.income, expense: totals.expense };
       });
     }
 
     return [{ label: 'Range', income: incomeVsExpense.income, expense: incomeVsExpense.expense }];
-  }, [activeRates, incomeVsExpense, month, previousIncomeVsExpense, reportMode, transactions, year]);
+  }, [historicalRates, incomeVsExpense, month, previousIncomeVsExpense, reportMode, transactions, unifyToTRY, year]);
 
   const budgetPerformance = getBudgetPerformance(
     month,
@@ -233,9 +282,19 @@ export default function ReportsWorkspace() {
       ? clampPercent((budgetPerformance.totalSpent / budgetPerformance.available) * 100)
       : 0;
 
+  const historicalRateCount = Object.keys(historicalRates).length;
+  const priorAvailableRateCount = Object.values(historicalRates).filter(
+    (rate) => rate.status === 'prior-available'
+  ).length;
   const rateLabel =
-    activeRates && !ratesLoading
-      ? `1 USD = ${activeRates.USD.toFixed(1)} TRY; 1 EUR = ${activeRates.EUR.toFixed(1)} TRY`
+    unifyToTRY && !ratesLoading
+      ? historicalRateCount === 0
+        ? 'No USD/EUR transactions need conversion for these calculations.'
+        : `Using ${historicalRateCount} historical TCMB rate${historicalRateCount === 1 ? '' : 's'} by transaction date${
+            priorAvailableRateCount > 0
+              ? `; ${priorAvailableRateCount} used the most recent prior published date`
+              : ''
+          }.`
       : '';
 
   const handleExportPDF = async () => {
@@ -297,9 +356,13 @@ export default function ReportsWorkspace() {
 
       <div className="flex flex-col gap-5">
         <section className="order-1 grid gap-4 md:order-2 md:grid-cols-3">
-          <StatCard label="Income" value={formatMoney(incomeVsExpense.income)} tone="good" />
-          <StatCard label="Expenses" value={formatMoney(incomeVsExpense.expense)} tone="bad" />
-          <StatCard label="Net" value={formatMoney(incomeVsExpense.net)} tone={incomeVsExpense.net >= 0 ? 'good' : 'bad'} />
+          <StatCard label="Income" value={ratesLoading ? '…' : formatMoney(incomeVsExpense.income)} tone="good" />
+          <StatCard label="Expenses" value={ratesLoading ? '…' : formatMoney(incomeVsExpense.expense)} tone="bad" />
+          <StatCard
+            label="Net"
+            value={ratesLoading ? '…' : formatMoney(incomeVsExpense.net)}
+            tone={incomeVsExpense.net >= 0 ? 'good' : 'bad'}
+          />
         </section>
 
         <section className="order-2 rounded-2xl border border-subtle bg-surface p-5 md:order-1">
@@ -349,16 +412,36 @@ export default function ReportsWorkspace() {
                   : undefined
             }
             checked={unifyToTRY}
-            onChange={() => setUnifyToTRY((value) => !value)}
+            onChange={() => {
+              if (unifyToTRY) {
+                setUnifyToTRY(false);
+                setHistoricalRates({});
+                setRateError('');
+                setRatesLoading(false);
+                return;
+              }
+
+              setHistoricalRates({});
+              setRateError('');
+              setRatesLoading(true);
+              setUnifyToTRY(true);
+            }}
             disabled={ratesLoading}
           />
 
           <p className="mt-3 text-sm font-medium text-muted" role="status">
             {unifyToTRY
-              ? 'Including USD and EUR converted to TRY in this report view.'
+              ? ratesLoading
+                ? 'Loading historical rates for each USD/EUR transaction date…'
+                : 'USD and EUR are converted using the rate published for each transaction date; if none was published that day, the most recent prior rate is used.'
               : 'Showing TRY transactions only. Enable "Convert all to TRY" to include USD/EUR.'}
           </p>
 
+          {rateError ? (
+            <p className="mt-3 text-sm font-medium text-danger" role="alert">
+              {rateError} TRY-only reporting was restored; no estimated FX fallback was used.
+            </p>
+          ) : null}
           {exportError ? <p className="mt-3 text-sm font-medium text-danger">{exportError}</p> : null}
         </section>
 
