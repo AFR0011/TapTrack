@@ -1,6 +1,7 @@
 import Dexie, { type Table } from 'dexie';
 import type {
   Balance,
+  BalanceCheckpoint,
   Category,
   CategoryBudget,
   Conversion,
@@ -19,7 +20,9 @@ import {
 
 export class TapTrackDatabase extends Dexie {
   transactions!: Table<Transaction, string>;
+  /** Derived local cache. Never treat this table as authoritative sync state. */
   balances!: Table<Balance, string>;
+  balanceCheckpoints!: Table<BalanceCheckpoint, string>;
   categories!: Table<Category, string>;
   monthlyBudgets!: Table<MonthlyBudget, string>;
   categoryBudgets!: Table<CategoryBudget, string>;
@@ -50,6 +53,41 @@ export class TapTrackDatabase extends Dexie {
     this.version(3).stores({
       deviceMetadata: 'id',
     });
+    // Version 4 introduces authoritative absolute balance checkpoints. Existing
+    // completed installations snapshot their current balance cache exactly once
+    // so the migration does not replay historical transactions on top of it.
+    this.version(4)
+      .stores({
+        balanceCheckpoints: 'id, balanceId, kind, month, effectiveAt',
+      })
+      .upgrade(async (transaction) => {
+        const settings = (await transaction.table('settings').get(DEFAULT_SETTINGS_ID)) as
+          | Settings
+          | undefined;
+        if (!settings?.setupCompleted) return;
+
+        const checkpointTable = transaction.table('balanceCheckpoints');
+        if ((await checkpointTable.count()) > 0) return;
+
+        const balances = (await transaction.table('balances').toArray()) as Balance[];
+        if (balances.length === 0) return;
+
+        const now = new Date().toISOString();
+        const checkpoints: BalanceCheckpoint[] = balances.map((balance) => ({
+          id: `opening-${balance.id}`,
+          balanceId: balance.id,
+          currency: balance.currency,
+          method: balance.method,
+          kind: 'opening',
+          observedAmount: balance.amount,
+          deltaAmount: balance.amount,
+          effectiveAt: now,
+          createdAt: now,
+          updatedAt: now,
+        }));
+
+        await checkpointTable.bulkPut(checkpoints);
+      });
   }
 }
 
