@@ -126,6 +126,7 @@ export class TapTrackDatabase extends Dexie {
             if (typeof row.id !== 'string' || row.id.length === 0) continue;
             const item: SyncOutboxItem = {
               id: `${tableName}:${row.id}`,
+              operationId: crypto.randomUUID(),
               tableName,
               operation: 'upsert',
               recordId: row.id,
