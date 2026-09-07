@@ -1,5 +1,6 @@
 import { DEFAULT_SETTINGS_ID, createDefaultSettings, getBalanceId } from '@/defaultData';
 import { db, ensureDatabaseSeeded, type TapTrackDatabase } from '@/database';
+import { getAutomaticOccurredAt } from '@/dates';
 import { getInsufficientBalanceMessage, getTransactionBalanceDelta } from '@/balances/balanceEffects';
 import type { Balance, Currency, Method, Settings, Transaction, TransactionDraft } from '@/types';
 import { deleteRecord, pushRecord } from '@/sync/syncService';
@@ -23,9 +24,11 @@ export async function createTransaction(
 ): Promise<Transaction> {
   await ensureDatabaseSeeded(database);
 
-  const now = new Date().toISOString();
+  const nowDate = new Date();
+  const now = nowDate.toISOString();
   const transaction: Transaction = {
     ...input,
+    occurredAt: input.occurredAt ?? getAutomaticOccurredAt(input.date, nowDate),
     id: crypto.randomUUID(),
     createdAt: now,
     updatedAt: now,
@@ -82,7 +85,8 @@ export async function updateTransaction(
 ): Promise<Transaction> {
   await ensureDatabaseSeeded(database);
 
-  const now = new Date().toISOString();
+  const nowDate = new Date();
+  const now = nowDate.toISOString();
   let updatedTransaction: Transaction | null = null;
   let balanceUpdates: Balance[] = [];
   let updatedSettings: Settings | null = null;
@@ -102,8 +106,15 @@ export async function updateTransaction(
 
     await Promise.all(balanceUpdates.map((balance) => database.balances.put(balance)));
 
+    const occurredAt =
+      input.occurredAt ??
+      (existingTransaction.date === input.date
+        ? existingTransaction.occurredAt
+        : getAutomaticOccurredAt(input.date, nowDate));
+
     updatedTransaction = {
       ...input,
+      occurredAt,
       id,
       createdAt: existingTransaction.createdAt,
       updatedAt: now,
@@ -118,7 +129,6 @@ export async function updateTransaction(
       updatedAt: now,
     };
     await database.settings.put(updatedSettings);
-
   });
 
   if (!updatedTransaction) {
@@ -194,9 +204,11 @@ export async function createTransactions(
 
   await ensureDatabaseSeeded(database);
 
-  const now = new Date().toISOString();
+  const nowDate = new Date();
+  const now = nowDate.toISOString();
   const transactions: Transaction[] = inputs.map((input) => ({
     ...input,
+    occurredAt: input.occurredAt ?? getAutomaticOccurredAt(input.date, nowDate),
     id: crypto.randomUUID(),
     createdAt: now,
     updatedAt: now,
