@@ -1,4 +1,4 @@
-import { afterEach, beforeEach, describe, expect, it } from 'vitest';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { getBalanceId } from '@/defaultData';
 import { TapTrackDatabase, ensureDatabaseSeeded } from '@/database';
 import type { TransactionDraft } from '@/types';
@@ -17,6 +17,7 @@ beforeEach(async () => {
 });
 
 afterEach(async () => {
+  vi.useRealTimers();
   await database.delete();
 });
 
@@ -44,6 +45,38 @@ describe('createTransaction', () => {
     } finally {
       process.off('unhandledRejection', listener);
     }
+  });
+
+  it('records exact ordering for current-day activity but leaves historical activity unordered', async () => {
+    vi.useFakeTimers();
+    const now = new Date(2026, 4, 18, 14, 30, 0);
+    vi.setSystemTime(now);
+
+    const current = await createTransaction(
+      {
+        ...baseExpense,
+        type: 'income',
+        amount: 10,
+        title: 'today',
+        categoryId: 'cat-income',
+        date: '2026-05-18',
+      },
+      database
+    );
+    const historical = await createTransaction(
+      {
+        ...baseExpense,
+        type: 'income',
+        amount: 10,
+        title: 'yesterday',
+        categoryId: 'cat-income',
+        date: '2026-05-17',
+      },
+      database
+    );
+
+    expect(current.occurredAt).toBe(now.toISOString());
+    expect(historical.occurredAt).toBeUndefined();
   });
 
   it('creates an income transaction and updates the matching balance', async () => {
