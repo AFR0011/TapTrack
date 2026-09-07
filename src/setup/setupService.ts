@@ -1,6 +1,6 @@
 import { db, ensureDatabaseSeeded, type TapTrackDatabase } from '@/database';
 import { createDefaultSettings, DEFAULT_SETTINGS_ID, getBalanceId } from '@/defaultData';
-import { getCurrentMonth } from '@/dates';
+import { formatLocalDate, getCurrentMonth } from '@/dates';
 import { upsertMonthlyBudget } from '@/budgets/budgetService';
 import type { Balance, BalanceCheckpoint, Currency, Method, Settings } from '@/types';
 import { pushRecord } from '@/sync/syncService';
@@ -23,8 +23,10 @@ export async function completeInitialSetup(
     throw new Error('Initial balances are already locked. Use monthly reconciliation instead.');
   }
 
-  const now = new Date().toISOString();
-  const month = input.month ?? getCurrentMonth();
+  const nowDate = new Date();
+  const now = nowDate.toISOString();
+  const date = formatLocalDate(nowDate);
+  const month = input.month ?? getCurrentMonth(nowDate);
   let seededBalances: Balance[] = [];
   let openingCheckpoints: BalanceCheckpoint[] = [];
   let updatedSettings: Settings | null = null;
@@ -54,6 +56,7 @@ export async function completeInitialSetup(
         kind: 'opening',
         observedAmount: balance.amount,
         deltaAmount: balance.amount,
+        date,
         effectiveAt: now,
         createdAt: now,
         updatedAt: now,
