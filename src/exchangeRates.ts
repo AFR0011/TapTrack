@@ -18,6 +18,10 @@ export async function fetchHistoricalExchangeRate(input: {
   date: string;
   signal?: AbortSignal;
 }): Promise<HistoricalExchangeRateResponse> {
+  if (typeof navigator !== 'undefined' && navigator.onLine === false) {
+    throw new Error('Exchange rates require an internet connection.');
+  }
+
   const params = new URLSearchParams({
     base: input.base,
     quote: input.quote,
