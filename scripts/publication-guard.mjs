@@ -22,6 +22,7 @@ const envExample = read('.env.example');
 const gitignore = read('.gitignore');
 const projectState = read('docs/PROJECT_STATE.md');
 const dependencyRecord = read('docs/DEPENDENCY_SECURITY_UPGRADE_PLAN.md');
+const categorizeRoute = read('app/api/categorize/route.ts');
 
 for (const phrase of [
   'local-first',
@@ -69,6 +70,8 @@ const placeholderExpectations = new Map([
   ['TELEGRAM_WEBHOOK_SECRET', 'your-webhook-secret-token'],
   ['TAPTRACK_OWNER_TELEGRAM_CHAT_ID', 'your-telegram-chat-id'],
   ['TAPTRACK_OWNER_USER_ID', 'supabase-user-id'],
+  ['GROQ_API_KEY', 'your-groq-api-key'],
+  ['GROQ_MODEL', 'openai/gpt-oss-20b'],
 ]);
 
 for (const [key, expected] of placeholderExpectations) {
@@ -77,8 +80,14 @@ for (const [key, expected] of placeholderExpectations) {
   else if (match[1].trim() !== expected) failures.push(`.env.example contains unexpected/non-placeholder value for ${key}`);
 }
 
-if (!envExample.includes('OLLAMA_BASE_URL=http://localhost:11434')) {
-  failures.push('.env.example must keep Ollama pointed at localhost by default');
+if (/^NEXT_PUBLIC_GROQ_/m.test(envExample) || categorizeRoute.includes('NEXT_PUBLIC_GROQ_')) {
+  failures.push('Groq secrets/configuration must never use NEXT_PUBLIC_ variables');
+}
+if (/^OLLAMA_/m.test(envExample) || /OLLAMA_(BASE_URL|MODEL)/.test(categorizeRoute)) {
+  failures.push('obsolete Ollama configuration remains after hosted Groq migration');
+}
+if (!categorizeRoute.includes("process.env.GROQ_API_KEY")) {
+  failures.push('AI categorization route must read GROQ_API_KEY server-side');
 }
 
 if (failures.length) {
