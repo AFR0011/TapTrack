@@ -2,7 +2,7 @@ import { db, ensureDatabaseSeeded, type TapTrackDatabase } from '@/database';
 import { createDefaultSettings, DEFAULT_SETTINGS_ID, getBalanceId } from '@/defaultData';
 import { getCurrentMonth } from '@/dates';
 import { upsertMonthlyBudget } from '@/budgets/budgetService';
-import type { Balance, Currency, Method, Settings } from '@/types';
+import type { Balance, BalanceCheckpoint, Currency, Method, Settings } from '@/types';
 import { pushRecord } from '@/sync/syncService';
 
 export type InitialSetupInput = {
@@ -18,35 +18,65 @@ export async function completeInitialSetup(
 ): Promise<Settings> {
   await ensureDatabaseSeeded(database);
 
+  const existingSettings = await database.settings.get(DEFAULT_SETTINGS_ID);
+  if (existingSettings?.setupCompleted) {
+    throw new Error('Initial balances are already locked. Use monthly reconciliation instead.');
+  }
+
   const now = new Date().toISOString();
   const month = input.month ?? getCurrentMonth();
   let seededBalances: Balance[] = [];
+  let openingCheckpoints: BalanceCheckpoint[] = [];
   let updatedSettings: Settings | null = null;
 
-  await database.transaction('rw', database.balances, database.settings, database.monthlyBudgets, async () => {
-    const balances: Balance[] = Object.entries(input.balances).flatMap(([currency, methods]) =>
-      Object.entries(methods).map(([method, amount]) => ({
-        id: getBalanceId(currency as Currency, method as Method),
-        currency: currency as Currency,
-        method: method as Method,
-        amount: normalizeAmount(amount),
-        updatedAt: now,
-      }))
-    );
+  await database.transaction(
+    'rw',
+    database.balances,
+    database.balanceCheckpoints,
+    database.settings,
+    database.monthlyBudgets,
+    async () => {
+      const balances: Balance[] = Object.entries(input.balances).flatMap(([currency, methods]) =>
+        Object.entries(methods).map(([method, amount]) => ({
+          id: getBalanceId(currency as Currency, method as Method),
+          currency: currency as Currency,
+          method: method as Method,
+          amount: normalizeAmount(amount),
+          updatedAt: now,
+        }))
+      );
 
-    await database.balances.bulkPut(balances);
-    seededBalances = balances;
-    const existingSettings = (await database.settings.get(DEFAULT_SETTINGS_ID)) ?? createDefaultSettings(now);
-    const nextSettings: Settings = {
-      ...existingSettings,
-      id: DEFAULT_SETTINGS_ID,
-      lastUsedMethod: input.defaultMethod,
-      setupCompleted: true,
-      updatedAt: now,
-    };
-    updatedSettings = nextSettings;
-    await database.settings.put(nextSettings);
-  });
+      const checkpoints: BalanceCheckpoint[] = balances.map((balance) => ({
+        id: `opening-${balance.id}`,
+        balanceId: balance.id,
+        currency: balance.currency,
+        method: balance.method,
+        kind: 'opening',
+        observedAmount: balance.amount,
+        deltaAmount: balance.amount,
+        effectiveAt: now,
+        createdAt: now,
+        updatedAt: now,
+      }));
+
+      await database.balances.bulkPut(balances);
+      await database.balanceCheckpoints.bulkAdd(checkpoints);
+      seededBalances = balances;
+      openingCheckpoints = checkpoints;
+
+      const settings =
+        (await database.settings.get(DEFAULT_SETTINGS_ID)) ?? createDefaultSettings(now);
+      const nextSettings: Settings = {
+        ...settings,
+        id: DEFAULT_SETTINGS_ID,
+        lastUsedMethod: input.defaultMethod,
+        setupCompleted: true,
+        updatedAt: now,
+      };
+      updatedSettings = nextSettings;
+      await database.settings.put(nextSettings);
+    }
+  );
 
   await upsertMonthlyBudget(
     {
@@ -57,9 +87,13 @@ export async function completeInitialSetup(
     database
   );
 
+  // Balance rows remain a local cache during the migration period. They will be
+  // removed from remote sync once checkpoint-based balance rebuilding is wired.
   seededBalances.forEach((balance) => {
     void pushRecord('balances', balance as unknown as Record<string, unknown>, database);
   });
+  void openingCheckpoints;
+
   if (updatedSettings) {
     void pushRecord('settings', updatedSettings as unknown as Record<string, unknown>, database);
   }
