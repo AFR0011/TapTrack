@@ -41,25 +41,54 @@ export function getPreviousMonth(month: string) {
   return formatLocalDate(previousDate).slice(0, 7);
 }
 
-export function addFrequency(date: Date, frequency: Frequency) {
+/**
+ * Advances one recurrence while preserving the schedule's original calendar
+ * anchor. Monthly/yearly dates that do not exist are clamped to the last valid
+ * day of the target month without changing the anchor for later occurrences.
+ *
+ * Example with a Jan 31 anchor: Jan 31 -> Feb 28 -> Mar 31.
+ * Example with a Feb 29 yearly anchor: Feb 29 -> Feb 28 -> Feb 28 -> Feb 28 -> Feb 29.
+ */
+export function addFrequency(date: Date, frequency: Frequency, anchorDate: Date = date) {
   const nextDate = new Date(date);
 
   switch (frequency) {
     case 'daily':
       nextDate.setDate(nextDate.getDate() + 1);
-      break;
+      return nextDate;
     case 'weekly':
       nextDate.setDate(nextDate.getDate() + 7);
-      break;
-    case 'monthly':
-      nextDate.setMonth(nextDate.getMonth() + 1);
-      break;
+      return nextDate;
+    case 'monthly': {
+      const targetMonth = new Date(date.getFullYear(), date.getMonth() + 1, 1);
+      return createClampedDate(
+        targetMonth.getFullYear(),
+        targetMonth.getMonth(),
+        anchorDate.getDate(),
+        date
+      );
+    }
     case 'yearly':
-      nextDate.setFullYear(nextDate.getFullYear() + 1);
-      break;
+      return createClampedDate(
+        date.getFullYear() + 1,
+        anchorDate.getMonth(),
+        anchorDate.getDate(),
+        date
+      );
   }
+}
 
-  return nextDate;
+function createClampedDate(year: number, month: number, requestedDay: number, source: Date) {
+  const lastValidDay = new Date(year, month + 1, 0).getDate();
+  return new Date(
+    year,
+    month,
+    Math.min(requestedDay, lastValidDay),
+    source.getHours(),
+    source.getMinutes(),
+    source.getSeconds(),
+    source.getMilliseconds()
+  );
 }
 
 export function parseLocalDate(date: string) {
