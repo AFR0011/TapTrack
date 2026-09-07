@@ -20,6 +20,21 @@ const checks = [
     expect: (response) => response.status === 200,
   },
   {
+    name: 'app responses carry security headers',
+    path: '/app',
+    expect: (response) => {
+      const csp = response.headers.get('content-security-policy') ?? '';
+      return (
+        response.status === 200 &&
+        csp.includes("default-src 'self'") &&
+        csp.includes("frame-ancestors 'none'") &&
+        response.headers.get('x-content-type-options') === 'nosniff' &&
+        response.headers.get('x-frame-options') === 'DENY' &&
+        response.headers.get('referrer-policy') === 'strict-origin-when-cross-origin'
+      );
+    },
+  },
+  {
     name: 'exchange API returns typed JSON without authentication',
     path: '/api/exchange-rates?date=2026-09-04&base=TRY&quote=TRY',
     expect: async (response) => {
@@ -41,13 +56,18 @@ const checks = [
     expect: async (response) => {
       const contentType = response.headers.get('content-type') ?? '';
       const body = await response.clone().json().catch(() => null);
-      return response.status === 200 && contentType.includes('application/manifest+json') && body?.name === 'TapTrack';
+      return (
+        response.status === 200 &&
+        contentType.includes('application/manifest+json') &&
+        body?.name === 'TapTrack'
+      );
     },
   },
   {
     name: 'service worker is public JavaScript',
     path: '/sw.js',
-    expect: (response) => response.status === 200 && response.headers.get('content-type')?.includes('javascript'),
+    expect: (response) =>
+      response.status === 200 && response.headers.get('content-type')?.includes('javascript'),
   },
   {
     name: 'telegram webhook fails closed when integration is unconfigured',
@@ -60,7 +80,8 @@ const checks = [
       },
       body: JSON.stringify({ update_id: 1 }),
     },
-    expect: (response) => response.status === 503 && response.headers.get('content-type')?.includes('application/json'),
+    expect: (response) =>
+      response.status === 503 && response.headers.get('content-type')?.includes('application/json'),
   },
   {
     name: 'telegram register fails closed when integration is unconfigured',
@@ -70,7 +91,8 @@ const checks = [
         'x-admin-secret': 'wrong',
       },
     },
-    expect: (response) => response.status === 503 && response.headers.get('content-type')?.includes('application/json'),
+    expect: (response) =>
+      response.status === 503 && response.headers.get('content-type')?.includes('application/json'),
   },
 ];
 
