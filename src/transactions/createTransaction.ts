@@ -22,7 +22,8 @@ export class InsufficientBalanceError extends Error {
 export async function createTransaction(
   input: TransactionDraft,
   database: TapTrackDatabase = db,
-  nowDate = new Date()
+  nowDate = new Date(),
+  transactionId = crypto.randomUUID()
 ): Promise<Transaction> {
   await ensureDatabaseSeeded(database);
 
@@ -30,7 +31,7 @@ export async function createTransaction(
   const transaction: Transaction = {
     ...input,
     occurredAt: input.occurredAt ?? getAutomaticOccurredAt(input.date, nowDate),
-    id: crypto.randomUUID(),
+    id: transactionId,
     createdAt: now,
     updatedAt: now,
   };
