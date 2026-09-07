@@ -3,7 +3,9 @@ import { TapTrackDatabase, ensureDatabaseSeeded } from '@/database';
 import {
   createDueRecurringTransactions,
   createRecurringTransaction,
+  deleteRecurringTransaction,
   getInitialNextRunDate,
+  updateRecurringTransaction,
 } from './recurringService';
 
 let database: TapTrackDatabase;
@@ -17,23 +19,36 @@ afterEach(async () => {
   await database.delete();
 });
 
+const baseRecurring = {
+  type: 'income' as const,
+  amount: 20000,
+  currency: 'TRY' as const,
+  title: 'salary',
+  categoryId: 'cat-income',
+  method: 'card' as const,
+  frequency: 'monthly' as const,
+  startDate: '2026-05-05',
+  nextRunDate: '2026-05-05',
+  isActive: true,
+};
+
 describe('recurringService', () => {
+  it('commits a recurring rule and its sync intent together', async () => {
+    const recurring = await createRecurringTransaction(baseRecurring, database);
+    const queued = await database.syncOutbox.get(`recurringTransactions:${recurring.id}`);
+
+    expect(await database.recurringTransactions.get(recurring.id)).toEqual(recurring);
+    expect(queued).toMatchObject({
+      tableName: 'recurringTransactions',
+      operation: 'upsert',
+      recordId: recurring.id,
+      attempts: 0,
+    });
+    expect(queued?.record).toMatchObject({ id: recurring.id, title: 'salary' });
+  });
+
   it('creates a due recurring income on app open without duplicating it', async () => {
-    await createRecurringTransaction(
-      {
-        type: 'income',
-        amount: 20000,
-        currency: 'TRY',
-        title: 'salary',
-        categoryId: 'cat-income',
-        method: 'card',
-        frequency: 'monthly',
-        startDate: '2026-05-05',
-        nextRunDate: '2026-05-05',
-        isActive: true,
-      },
-      database
-    );
+    const recurring = await createRecurringTransaction(baseRecurring, database);
 
     await expect(createDueRecurringTransactions(new Date(2026, 4, 5), database)).resolves.toMatchObject({
       created: 1,
@@ -44,10 +59,37 @@ describe('recurringService', () => {
 
     const transactions = await database.transactions.toArray();
     const balance = await database.balances.get('TRY-card');
+    const queuedRule = await database.syncOutbox.get(`recurringTransactions:${recurring.id}`);
 
     expect(transactions).toHaveLength(1);
     expect(transactions[0].recurringSourceId).toEqual(expect.any(String));
     expect(balance?.amount).toBe(20000);
+    expect(queuedRule).toMatchObject({ operation: 'upsert', recordId: recurring.id });
+    expect(queuedRule?.record).toMatchObject({ nextRunDate: '2026-06-05' });
+  });
+
+  it('atomically replaces rule sync intent on update and delete', async () => {
+    const recurring = await createRecurringTransaction(baseRecurring, database);
+
+    const updated = await updateRecurringTransaction(
+      recurring.id,
+      { amount: 21000, isActive: false },
+      database
+    );
+    let queued = await database.syncOutbox.get(`recurringTransactions:${recurring.id}`);
+    expect(updated).toMatchObject({ amount: 21000, isActive: false });
+    expect(queued).toMatchObject({ operation: 'upsert', recordId: recurring.id });
+    expect(queued?.record).toMatchObject({ amount: 21000, isActive: false });
+
+    await deleteRecurringTransaction(recurring.id, database);
+    queued = await database.syncOutbox.get(`recurringTransactions:${recurring.id}`);
+    expect(await database.recurringTransactions.get(recurring.id)).toBeUndefined();
+    expect(queued).toMatchObject({
+      operation: 'delete',
+      tableName: 'recurringTransactions',
+      recordId: recurring.id,
+    });
+    expect(queued?.record).toBeUndefined();
   });
 
   it('preserves a monthly Jan 31 anchor through shorter months', async () => {
