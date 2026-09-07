@@ -11,6 +11,7 @@ import type { Category, TransactionDraft } from '@/types';
 import { Button } from '@/components/ui/Button';
 import { cn, focusVisibleRing } from '@/lib/cn';
 import { Skeleton } from '@/components/ui/Skeleton';
+import { getSignedInEmail } from '@/lib/auth';
 import { toast } from 'sonner';
 
 /** Tracks which preview index has an in-flight AI suggestion. */
@@ -47,6 +48,7 @@ export default function CommandInput() {
   const [aiLoading, setAiLoading] = useState<Set<number>>(new Set());
   const [errors, setErrors] = useState<string[]>([]);
   const [saving, setSaving] = useState(false);
+  const [accountSignedIn, setAccountSignedIn] = useState(false);
   const categories = useLiveQuery(() => db.categories.toArray());
   const settings = useLiveQuery(() => db.settings.get(DEFAULT_SETTINGS_ID));
   const isDataLoading = categories === undefined || settings === undefined;
@@ -59,6 +61,10 @@ export default function CommandInput() {
     if (window.matchMedia('(min-width: 768px)').matches) {
       inputRef.current?.focus();
     }
+  }, []);
+
+  useEffect(() => {
+    void getSignedInEmail().then((email) => setAccountSignedIn(Boolean(email)));
   }, []);
 
   const handleSubmit = () => {
@@ -87,7 +93,7 @@ export default function CommandInput() {
     setAiLoading(new Set());
     setErrors([]);
 
-    if (settings?.aiCategorizationEnabled) {
+    if (settings.aiCategorizationEnabled && accountSignedIn) {
       const loadingSet = new Set(drafts.map((_, i) => i));
       setAiLoading(loadingSet);
 
@@ -146,6 +152,7 @@ export default function CommandInput() {
   };
 
   const isMulti = previews.length > 1;
+  const aiActive = Boolean(settings?.aiCategorizationEnabled && accountSignedIn);
 
   return (
     <section
@@ -189,26 +196,26 @@ export default function CommandInput() {
           </>
         ) : (
           <>
-        <p className="text-xs font-medium text-muted">Examples:</p>
-        {['-120 coffee cash', '+20000 salary card'].map((example) => (
-          <button
-            key={example}
-            type="button"
-            onClick={() => setInput(example)}
-            disabled={saving}
-            className={cn(
-              'min-h-11 rounded-full border border-subtle bg-surface-muted px-2.5 py-1 text-xs font-medium text-secondary transition-colors hover:bg-surface-raised hover:text-primary disabled:opacity-60',
-              focusVisibleRing
-            )}
-          >
-            {example}
-          </button>
-        ))}
-        {settings.aiCategorizationEnabled ? (
-          <span className="rounded-full border border-ai-border bg-ai-muted px-2 py-0.5 text-xs font-semibold text-ai-text">
-            AI on
-          </span>
-        ) : null}
+            <p className="text-xs font-medium text-muted">Examples:</p>
+            {['-120 coffee cash', '+20000 salary card'].map((example) => (
+              <button
+                key={example}
+                type="button"
+                onClick={() => setInput(example)}
+                disabled={saving}
+                className={cn(
+                  'min-h-11 rounded-full border border-subtle bg-surface-muted px-2.5 py-1 text-xs font-medium text-secondary transition-colors hover:bg-surface-raised hover:text-primary disabled:opacity-60',
+                  focusVisibleRing
+                )}
+              >
+                {example}
+              </button>
+            ))}
+            {aiActive ? (
+              <span className="rounded-full border border-ai-border bg-ai-muted px-2 py-0.5 text-xs font-semibold text-ai-text">
+                AI on
+              </span>
+            ) : null}
           </>
         )}
       </div>
@@ -234,102 +241,102 @@ export default function CommandInput() {
       ) : null}
 
       <AnimatePresence>
-      {previews.length > 0 && (
-        <motion.div
-          initial={{ opacity: 0, y: -8 }}
-          animate={{ opacity: 1, y: 0 }}
-          exit={{ opacity: 0, y: -8 }}
-          transition={{ duration: 0.2, ease: 'easeOut' }}
-          className="mt-4 rounded-xl border border-subtle bg-surface-muted p-4 transition-all"
-        >
-          <h3 className="mb-3 text-sm font-semibold text-primary">
-            {isMulti ? `Preview (${previews.length} transactions)` : 'Preview'}
-          </h3>
+        {previews.length > 0 && (
+          <motion.div
+            initial={{ opacity: 0, y: -8 }}
+            animate={{ opacity: 1, y: 0 }}
+            exit={{ opacity: 0, y: -8 }}
+            transition={{ duration: 0.2, ease: 'easeOut' }}
+            className="mt-4 rounded-xl border border-subtle bg-surface-muted p-4 transition-all"
+          >
+            <h3 className="mb-3 text-sm font-semibold text-primary">
+              {isMulti ? `Preview (${previews.length} transactions)` : 'Preview'}
+            </h3>
 
-          <div className="flex flex-col gap-3">
-            {previews.map((preview, index) => {
-              const aiOverride = aiOverrides[index];
-              const isAiLoading = aiLoading.has(index);
-              const displayCategoryId = aiOverride?.categoryId ?? preview.categoryId;
-              const displayCategoryName = categoriesById.get(displayCategoryId)?.name ?? displayCategoryId;
+            <div className="flex flex-col gap-3">
+              {previews.map((preview, index) => {
+                const aiOverride = aiOverrides[index];
+                const isAiLoading = aiLoading.has(index);
+                const displayCategoryId = aiOverride?.categoryId ?? preview.categoryId;
+                const displayCategoryName = categoriesById.get(displayCategoryId)?.name ?? displayCategoryId;
 
-              return (
-                <div
-                  key={index}
-                  className={`${isMulti ? 'rounded-lg border border-subtle bg-surface p-3' : ''}`}
-                >
-                  {isMulti && (
-                    <p className="mb-2 text-xs font-medium text-muted">
-                      {index + 1} of {previews.length}
-                    </p>
-                  )}
-                  <div className="grid gap-2 text-sm md:grid-cols-3">
-                    <PreviewItem label="Type" value={preview.type} />
-                    <PreviewItem label="Amount" value={`${preview.amount} ${preview.currency}`} />
-                    <PreviewItem label="Title" value={preview.title} />
-                    <div>
-                      <p className="text-xs font-medium text-muted">Category</p>
-                      <div className="mt-1 flex flex-wrap items-center gap-1.5">
-                        <span className="font-semibold text-primary">{displayCategoryName}</span>
-                        {isAiLoading && (
-                          <span className="animate-pulse rounded-full bg-ai-muted px-1.5 py-0.5 text-xs font-semibold text-ai">
-                            AI…
-                          </span>
-                        )}
-                        {aiOverride && !isAiLoading && (
-                          <>
-                            <span className="rounded-full bg-ai-muted px-1.5 py-0.5 text-xs font-semibold text-ai-text">
-                              AI
+                return (
+                  <div
+                    key={index}
+                    className={`${isMulti ? 'rounded-lg border border-subtle bg-surface p-3' : ''}`}
+                  >
+                    {isMulti && (
+                      <p className="mb-2 text-xs font-medium text-muted">
+                        {index + 1} of {previews.length}
+                      </p>
+                    )}
+                    <div className="grid gap-2 text-sm md:grid-cols-3">
+                      <PreviewItem label="Type" value={preview.type} />
+                      <PreviewItem label="Amount" value={`${preview.amount} ${preview.currency}`} />
+                      <PreviewItem label="Title" value={preview.title} />
+                      <div>
+                        <p className="text-xs font-medium text-muted">Category</p>
+                        <div className="mt-1 flex flex-wrap items-center gap-1.5">
+                          <span className="font-semibold text-primary">{displayCategoryName}</span>
+                          {isAiLoading && (
+                            <span className="animate-pulse rounded-full bg-ai-muted px-1.5 py-0.5 text-xs font-semibold text-ai">
+                              AI…
                             </span>
-                            <Button
-                              type="button"
-                              variant="secondary"
-                              size="sm"
-                              className="min-w-11 shrink-0"
-                              aria-label={`Revert AI category for line ${index + 1}`}
-                              onClick={() =>
-                                setAiOverrides((prev) => {
-                                  const next = { ...prev };
-                                  delete next[index];
-                                  return next;
-                                })
-                              }
-                            >
-                              Revert
-                            </Button>
-                          </>
-                        )}
+                          )}
+                          {aiOverride && !isAiLoading && (
+                            <>
+                              <span className="rounded-full bg-ai-muted px-1.5 py-0.5 text-xs font-semibold text-ai-text">
+                                AI
+                              </span>
+                              <Button
+                                type="button"
+                                variant="secondary"
+                                size="sm"
+                                className="min-w-11 shrink-0"
+                                aria-label={`Revert AI category for line ${index + 1}`}
+                                onClick={() =>
+                                  setAiOverrides((prev) => {
+                                    const next = { ...prev };
+                                    delete next[index];
+                                    return next;
+                                  })
+                                }
+                              >
+                                Revert
+                              </Button>
+                            </>
+                          )}
+                        </div>
                       </div>
+                      <PreviewItem label="Method" value={preview.method} />
+                      <PreviewItem label="Date" value={preview.date} />
                     </div>
-                    <PreviewItem label="Method" value={preview.method} />
-                    <PreviewItem label="Date" value={preview.date} />
                   </div>
-                </div>
-              );
-            })}
-          </div>
+                );
+              })}
+            </div>
 
-          <div className="mt-4 flex flex-wrap gap-2">
-            <Button variant="success" onClick={handleSave} disabled={saving} loading={saving}>
-              {isMulti ? `Save All (${previews.length})` : 'Save'}
-            </Button>
-            <Button variant="secondary" onClick={handleEditPreview} disabled={saving}>
-              Edit
-            </Button>
-            <Button
-              variant="ghost"
-              onClick={() => {
-                setPreviews([]);
-                setAiOverrides({});
-                setAiLoading(new Set());
-              }}
-              disabled={saving}
-            >
-              Cancel
-            </Button>
-          </div>
-        </motion.div>
-      )}
+            <div className="mt-4 flex flex-wrap gap-2">
+              <Button variant="success" onClick={handleSave} disabled={saving} loading={saving}>
+                {isMulti ? `Save All (${previews.length})` : 'Save'}
+              </Button>
+              <Button variant="secondary" onClick={handleEditPreview} disabled={saving}>
+                Edit
+              </Button>
+              <Button
+                variant="ghost"
+                onClick={() => {
+                  setPreviews([]);
+                  setAiOverrides({});
+                  setAiLoading(new Set());
+                }}
+                disabled={saving}
+              >
+                Cancel
+              </Button>
+            </div>
+          </motion.div>
+        )}
       </AnimatePresence>
     </section>
   );
