@@ -18,6 +18,15 @@ export function getCurrentMonth(date = new Date()) {
   return formatLocalDate(date).slice(0, 7);
 }
 
+/**
+ * Exact ordering is trustworthy when activity is being recorded for today.
+ * Historical entries keep only their business date until a reconciliation on
+ * that same date makes before/after ordering necessary.
+ */
+export function getAutomaticOccurredAt(date: string, now = new Date()): string | undefined {
+  return date === formatLocalDate(now) ? now.toISOString() : undefined;
+}
+
 export function formatDisplayMonth(month: string) {
   const [year, monthNumber] = month.split('-').map(Number);
   return new Date(year, monthNumber - 1, 1).toLocaleString('default', {
