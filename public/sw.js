@@ -1,5 +1,5 @@
 const CACHE_PREFIX = 'taptrack-shell-';
-const CACHE_NAME = `${CACHE_PREFIX}2026-09-07-v4`;
+const CACHE_NAME = `${CACHE_PREFIX}2026-09-07-v5`;
 const APP_ROUTES = [
   '/app',
   '/app/transactions',
@@ -84,18 +84,12 @@ function extractNextStaticAssetUrls(html) {
   return [...urls];
 }
 
-async function networkFirstWithCacheFallback(request) {
-  const cache = await caches.open(CACHE_NAME);
-
+async function networkWithPrecachedFallback(request, fallbackRequest = request) {
   try {
-    const response = await fetch(request);
-    if (response.ok) {
-      const copy = response.clone();
-      await cache.put(request, copy);
-    }
-    return response;
+    return await fetch(request);
   } catch {
-    return (await cache.match(request)) ?? Response.error();
+    const cache = await caches.open(CACHE_NAME);
+    return (await cache.match(fallbackRequest)) ?? Response.error();
   }
 }
 
@@ -108,30 +102,19 @@ self.addEventListener('fetch', (event) => {
   if (url.pathname.startsWith('/api/') || url.pathname.startsWith('/auth/')) return;
 
   if (request.mode === 'navigate') {
+    const canonicalRequest = canonicalRouteRequest(request);
     event.respondWith(
-      fetch(request)
-        .then((response) => {
-          if (response.ok) {
-            event.waitUntil(
-              caches.open(CACHE_NAME).then((cache) => cacheNavigationResponse(cache, request, response))
-            );
-          }
-          return response;
-        })
-        .catch(async () => {
-          const cache = await caches.open(CACHE_NAME);
-          return (
-            (await cache.match(canonicalRouteRequest(request))) ??
-            (await cache.match(new Request(`${url.origin}/app`))) ??
-            Response.error()
-          );
-        })
+      networkWithPrecachedFallback(request, canonicalRequest).then(async (response) => {
+        if (response.type !== 'error') return response;
+        const cache = await caches.open(CACHE_NAME);
+        return (await cache.match(new Request(`${url.origin}/app`))) ?? response;
+      })
     );
     return;
   }
 
   if (url.pathname.startsWith('/_next/static/')) {
-    event.respondWith(networkFirstWithCacheFallback(request));
+    event.respondWith(networkWithPrecachedFallback(request));
     return;
   }
 
@@ -142,17 +125,5 @@ self.addEventListener('fetch', (event) => {
 
   if (!cacheableStatic) return;
 
-  event.respondWith(
-    caches.match(request).then((cached) => {
-      if (cached) return cached;
-
-      return fetch(request).then((response) => {
-        if (response.ok) {
-          const copy = response.clone();
-          event.waitUntil(caches.open(CACHE_NAME).then((cache) => cache.put(request, copy)));
-        }
-        return response;
-      });
-    })
-  );
+  event.respondWith(networkWithPrecachedFallback(request));
 });
