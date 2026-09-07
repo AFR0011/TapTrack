@@ -39,7 +39,8 @@ export class InvalidConversionError extends Error {
  */
 export async function createConversion(
   draft: ConversionDraft,
-  database: TapTrackDatabase = db
+  database: TapTrackDatabase = db,
+  nowDate = new Date()
 ): Promise<Conversion> {
   if (
     !Number.isFinite(draft.fromAmount) ||
@@ -63,7 +64,6 @@ export async function createConversion(
     );
   }
 
-  const nowDate = new Date();
   const now = nowDate.toISOString();
 
   const conversion: Conversion = {
