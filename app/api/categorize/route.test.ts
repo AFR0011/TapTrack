@@ -1,12 +1,17 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
 const getUser = vi.fn();
-const rpc = vi.fn();
+const adminRpc = vi.fn();
 
 vi.mock('@/lib/supabase-server', () => ({
   createSupabaseServerClient: async () => ({
     auth: { getUser },
-    rpc,
+  }),
+}));
+
+vi.mock('@/lib/supabase-admin', () => ({
+  createSupabaseAdminClient: () => ({
+    rpc: adminRpc,
   }),
 }));
 
@@ -28,9 +33,10 @@ describe('POST /api/categorize', () => {
   beforeEach(() => {
     vi.stubEnv('NEXT_PUBLIC_SUPABASE_URL', 'https://example.supabase.co');
     vi.stubEnv('NEXT_PUBLIC_SUPABASE_ANON_KEY', 'anon');
+    vi.stubEnv('SUPABASE_SERVICE_ROLE_KEY', 'service-role');
     vi.stubEnv('GROQ_API_KEY', 'groq-secret');
     getUser.mockResolvedValue({ data: { user: { id: 'user-1' } }, error: null });
-    rpc.mockResolvedValue({ data: true, error: null });
+    adminRpc.mockResolvedValue({ data: true, error: null });
   });
 
   afterEach(() => {
@@ -47,19 +53,29 @@ describe('POST /api/categorize', () => {
     const response = await POST(request());
 
     expect(response.status).toBe(401);
-    expect(rpc).not.toHaveBeenCalled();
+    expect(adminRpc).not.toHaveBeenCalled();
     expect(fetchMock).not.toHaveBeenCalled();
   });
 
   it('returns 429 when the per-account quota is exhausted', async () => {
-    rpc.mockResolvedValue({ data: false, error: null });
+    adminRpc.mockResolvedValue({ data: false, error: null });
     const fetchMock = vi.fn();
     vi.stubGlobal('fetch', fetchMock);
 
     const response = await POST(request());
 
     expect(response.status).toBe(429);
+    expect(adminRpc).toHaveBeenCalledWith('consume_ai_categorization_quota', {
+      target_user_id: 'user-1',
+    });
     expect(fetchMock).not.toHaveBeenCalled();
+  });
+
+  it('fails explicitly when server-side quota configuration is missing', async () => {
+    vi.stubEnv('SUPABASE_SERVICE_ROLE_KEY', '');
+    const response = await POST(request());
+    expect(response.status).toBe(503);
+    expect(adminRpc).not.toHaveBeenCalled();
   });
 
   it('fails explicitly when Groq is not configured', async () => {
@@ -78,10 +94,12 @@ describe('POST /api/categorize', () => {
 
     expect(response.status).toBe(200);
     expect(body).toEqual({ categoryId: 'cat-subscriptions' });
-    expect(rpc).toHaveBeenCalledWith('consume_ai_categorization_quota');
+    expect(adminRpc).toHaveBeenCalledWith('consume_ai_categorization_quota', {
+      target_user_id: 'user-1',
+    });
   });
 
-  it('rejects oversized titles without calling Groq', async () => {
+  it('rejects oversized titles without calling Groq or consuming quota', async () => {
     const fetchMock = vi.fn();
     vi.stubGlobal('fetch', fetchMock);
 
@@ -92,6 +110,7 @@ describe('POST /api/categorize', () => {
     }));
 
     expect(response.status).toBe(400);
+    expect(adminRpc).not.toHaveBeenCalled();
     expect(fetchMock).not.toHaveBeenCalled();
   });
 });
