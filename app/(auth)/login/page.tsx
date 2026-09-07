@@ -1,6 +1,6 @@
 'use client';
 
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import { useRouter } from 'next/navigation';
 import { Button } from '@/components/ui/Button';
 import { Card } from '@/components/ui/Card';
@@ -20,6 +20,13 @@ export default function LoginPage() {
   const [registered, setRegistered] = useState(false);
   const providerConfigured = isSupabaseConfigured();
 
+  useEffect(() => {
+    const authState = new URLSearchParams(window.location.search).get('auth');
+    if (authState === 'confirmation-failed') {
+      setError('Email confirmation could not be completed. Please try the confirmation link again or sign in.');
+    }
+  }, []);
+
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     setLoading(true);
@@ -33,9 +40,18 @@ export default function LoginPage() {
     }
 
     if (mode === 'register') {
-      const { error: signUpError } = await supabase.auth.signUp({ email, password });
+      const { data, error: signUpError } = await supabase.auth.signUp({
+        email,
+        password,
+        options: {
+          emailRedirectTo: `${window.location.origin}/auth/callback`,
+        },
+      });
       if (signUpError) {
         setError(signUpError.message);
+      } else if (data.session) {
+        router.replace('/app');
+        router.refresh();
       } else {
         setRegistered(true);
       }
@@ -75,7 +91,7 @@ export default function LoginPage() {
         ) : registered ? (
           <div className="space-y-4">
             <div className="rounded-lg border border-success bg-success-muted p-4 text-sm font-medium text-success">
-              Account created! You can now sign in with your email and password.
+              Account created. Check your email to confirm the address, then sign in.
             </div>
             <Button
               type="button"
