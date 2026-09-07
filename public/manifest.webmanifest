@@ -20,5 +20,25 @@
       "type": "image/svg+xml",
       "purpose": "maskable"
     }
+  ],
+  "shortcuts": [
+    {
+      "name": "Add expense",
+      "short_name": "Expense",
+      "description": "Record an expense with Quick Add.",
+      "url": "/app/add?type=expense&mode=quick"
+    },
+    {
+      "name": "Add income",
+      "short_name": "Income",
+      "description": "Record income with Quick Add.",
+      "url": "/app/add?type=income&mode=quick"
+    },
+    {
+      "name": "Command entry",
+      "short_name": "Command",
+      "description": "Open TapTrack's keyboard-first transaction entry.",
+      "url": "/app/add?mode=command"
+    }
   ]
 }
