@@ -19,15 +19,19 @@ describe('integration API route responses', () => {
     vi.unstubAllEnvs();
   });
 
-  it('returns exchange-rate JSON with fallback values when upstream fails', async () => {
+  it('fails explicitly when the exchange-rate provider is unavailable', async () => {
     vi.stubGlobal('fetch', vi.fn(async () => ({ ok: false, status: 500 })));
+    const request = new NextRequest(
+      'http://localhost/api/exchange-rates?date=2026-09-04&base=TRY&quote=USD'
+    );
 
-    const response = await getExchangeRates();
+    const response = await getExchangeRates(request);
     const body = await response.json();
 
-    expect(response.status).toBe(200);
+    expect(response.status).toBe(503);
     expect(response.headers.get('content-type')).toContain('application/json');
-    expect(body).toEqual({ USD: 38.5, EUR: 42 });
+    expect(body.error).toContain('No estimated fallback was used');
+    expect(body).not.toHaveProperty('rate');
   });
 
   it('rejects Telegram webhook requests with an invalid secret', async () => {
