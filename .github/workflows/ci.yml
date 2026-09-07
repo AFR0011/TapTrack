@@ -66,3 +66,12 @@ jobs:
 
       - name: Offline mobile browser verification
         run: npm run test:e2e
+
+      - name: Upload Playwright diagnostics
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: playwright-diagnostics
+          path: test-results/
+          if-no-files-found: ignore
+          retention-days: 7
