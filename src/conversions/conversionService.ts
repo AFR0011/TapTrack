@@ -1,5 +1,6 @@
 import { db, type TapTrackDatabase } from '@/database';
 import { getBalanceId } from '@/defaultData';
+import { getAutomaticOccurredAt } from '@/dates';
 import type { Conversion, Currency, Method } from '@/types';
 import { pushRecord } from '@/sync/syncService';
 
@@ -11,6 +12,7 @@ export interface ConversionDraft {
   fromAmount: number;
   toAmount: number;
   date: string;
+  occurredAt?: string;
   note?: string;
 }
 
@@ -61,7 +63,8 @@ export async function createConversion(
     );
   }
 
-  const now = new Date().toISOString();
+  const nowDate = new Date();
+  const now = nowDate.toISOString();
 
   const conversion: Conversion = {
     id: crypto.randomUUID(),
@@ -72,6 +75,7 @@ export async function createConversion(
     fromAmount: draft.fromAmount,
     toAmount: draft.toAmount,
     date: draft.date,
+    occurredAt: draft.occurredAt ?? getAutomaticOccurredAt(draft.date, nowDate),
     note: draft.note,
     createdAt: now,
     updatedAt: now,
