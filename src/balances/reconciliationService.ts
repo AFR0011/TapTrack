@@ -36,12 +36,15 @@ async function getMonthCompletionCheckpoints(
     .toArray();
 }
 
+/**
+ * Pure ledger read used by live-query observers. Database bootstrap/seeding must
+ * happen before this function is observed; doing writes from a Dexie live query
+ * can inherit its read-only transaction and fail with ReadOnlyError.
+ */
 export async function getMonthlyReconciliationState(
   month = getCurrentMonth(),
   database: TapTrackDatabase = db
 ): Promise<MonthlyReconciliationState> {
-  await ensureDatabaseSeeded(database);
-
   const settings = await database.settings.get(DEFAULT_SETTINGS_ID);
   const balances = await database.balances.toArray();
   if (!settings?.setupCompleted) {
