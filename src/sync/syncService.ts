@@ -11,7 +11,7 @@ import {
 } from '@/sync/syncBinding';
 import type { SyncOutboxItem } from '@/types';
 
-type SyncedDexieTableName = keyof Pick<
+export type SyncedDexieTableName = keyof Pick<
   TapTrackDatabase,
   | 'transactions'
   | 'balanceCheckpoints'
@@ -23,7 +23,7 @@ type SyncedDexieTableName = keyof Pick<
   | 'settings'
 >;
 
-type PublicSyncTableName = SyncedDexieTableName | 'balances';
+export type PublicSyncTableName = SyncedDexieTableName | 'balances';
 
 const DEXIE_TO_SUPABASE: Record<SyncedDexieTableName, string> = {
   transactions: 'transactions',
@@ -159,8 +159,38 @@ async function queueOutboxOperation(
     attempts: 0,
   };
 
+  // When called from an existing Dexie rw transaction that includes syncOutbox,
+  // this put joins that transaction. Local state and sync intent can therefore
+  // commit or roll back as one IndexedDB unit.
   await database.syncOutbox.put(item);
   return item;
+}
+
+/**
+ * Durably queues an upsert without performing network I/O. Callers may invoke
+ * this inside their own Dexie rw transaction to make local state + sync intent atomic.
+ */
+export async function queueRecordForSync(
+  tableName: PublicSyncTableName,
+  record: Record<string, unknown>,
+  database: TapTrackDatabase = db
+): Promise<SyncOutboxItem | null> {
+  if (tableName === 'balances') return null;
+
+  const recordId = getRecordId(record);
+  if (!recordId) return null;
+
+  return queueOutboxOperation(tableName, 'upsert', recordId, database, record);
+}
+
+/** Durably queues a soft-delete without performing network I/O. */
+export async function queueDeleteForSync(
+  tableName: PublicSyncTableName,
+  recordId: string,
+  database: TapTrackDatabase = db
+): Promise<SyncOutboxItem | null> {
+  if (tableName === 'balances' || !recordId) return null;
+  return queueOutboxOperation(tableName, 'delete', recordId, database);
 }
 
 async function acknowledgeExactOperation(
@@ -237,6 +267,25 @@ async function sendOutboxItem(
 }
 
 /**
+ * Attempts delivery of one already-durable operation. Provider/network failures
+ * are intentionally non-fatal because correctness resides in the outbox.
+ */
+export async function deliverQueuedOperationBestEffort(
+  item: SyncOutboxItem | null,
+  database: TapTrackDatabase = db
+): Promise<void> {
+  if (!item) return;
+
+  try {
+    const access = await requireLinkedSyncAccess(database);
+    if (!access) return;
+    await sendOutboxItem(item, access.client, access.userId, database);
+  } catch {
+    // Leave the operation durable for a later retry cycle.
+  }
+}
+
+/**
  * Queues one canonical record durably before any network attempt. `balances` is
  * accepted as a compatibility no-op while old callers are removed; the derived
  * balance cache can never be uploaded.
@@ -246,16 +295,8 @@ export async function pushRecord(
   record: Record<string, unknown>,
   database: TapTrackDatabase = db
 ): Promise<void> {
-  if (tableName === 'balances') return;
-
-  const recordId = getRecordId(record);
-  if (!recordId) return;
-
-  const item = await queueOutboxOperation(tableName, 'upsert', recordId, database, record);
-  const access = await requireLinkedSyncAccess(database);
-  if (!access) return;
-
-  await sendOutboxItem(item, access.client, access.userId, database);
+  const item = await queueRecordForSync(tableName, record, database);
+  await deliverQueuedOperationBestEffort(item, database);
 }
 
 /** Queues a durable soft-delete. No separate tombstone write is required. */
@@ -264,13 +305,8 @@ export async function deleteRecord(
   recordId: string,
   database: TapTrackDatabase = db
 ): Promise<void> {
-  if (tableName === 'balances' || !recordId) return;
-
-  const item = await queueOutboxOperation(tableName, 'delete', recordId, database);
-  const access = await requireLinkedSyncAccess(database);
-  if (!access) return;
-
-  await sendOutboxItem(item, access.client, access.userId, database);
+  const item = await queueDeleteForSync(tableName, recordId, database);
+  await deliverQueuedOperationBestEffort(item, database);
 }
 
 /**
@@ -292,6 +328,15 @@ export async function processRetryQueue(database: TapTrackDatabase = db): Promis
   const items = await database.syncOutbox.orderBy('queuedAt').toArray();
   for (const item of items) {
     await sendOutboxItem(item, access.client, access.userId, database);
+  }
+}
+
+/** Starts a retry pass without allowing provider/network failures to escape. */
+export async function flushSyncQueueBestEffort(database: TapTrackDatabase = db): Promise<void> {
+  try {
+    await processRetryQueue(database);
+  } catch {
+    // Pending operations remain in IndexedDB for the next automatic sync cycle.
   }
 }
 
