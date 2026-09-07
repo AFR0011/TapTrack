@@ -10,7 +10,9 @@ const CORE_ROUTES = [
   { path: '/app/settings', heading: 'Settings', nav: 'Settings' },
 ] as const;
 
-async function assertMobileLayout(page: import('@playwright/test').Page) {
+type Page = import('@playwright/test').Page;
+
+async function assertMobileLayout(page: Page) {
   const mobileNav = page.getByRole('navigation', { name: 'Mobile' });
   await expect(mobileNav).toBeVisible();
   const links = mobileNav.getByRole('link');
@@ -28,6 +30,51 @@ async function assertMobileLayout(page: import('@playwright/test').Page) {
     () => document.documentElement.scrollWidth > document.documentElement.clientWidth
   );
   expect(hasHorizontalOverflow).toBe(false);
+}
+
+async function getOfflineDiagnostics(page: Page) {
+  return page.evaluate(async () => {
+    const registrations = await navigator.serviceWorker.getRegistrations();
+    const keys = await caches.keys();
+    const cacheEntries = Object.fromEntries(
+      await Promise.all(
+        keys.map(async (key) => [
+          key,
+          (await caches.open(key)).keys().then((requests) => requests.map((request) => request.url)),
+        ])
+      )
+    );
+
+    return {
+      url: location.href,
+      title: document.title,
+      bodyText: document.body.innerText.slice(0, 2000),
+      readyState: document.readyState,
+      online: navigator.onLine,
+      controlled: Boolean(navigator.serviceWorker.controller),
+      controllerScript: navigator.serviceWorker.controller?.scriptURL ?? null,
+      registrations: registrations.map((registration) => ({
+        scope: registration.scope,
+        active: registration.active?.scriptURL ?? null,
+        waiting: registration.waiting?.scriptURL ?? null,
+        installing: registration.installing?.scriptURL ?? null,
+      })),
+      cacheEntries,
+    };
+  });
+}
+
+async function expectOfflineHeading(page: Page, heading: string) {
+  try {
+    await expect(page.getByRole('heading', { name: heading, exact: true })).toBeVisible();
+  } catch (error) {
+    const diagnostics = await getOfflineDiagnostics(page);
+    throw new Error(
+      `Offline route did not render heading "${heading}". Diagnostics: ${JSON.stringify(diagnostics)}\n${
+        error instanceof Error ? error.message : String(error)
+      }`
+    );
+  }
 }
 
 test('device-local ledger works across warmed offline mobile routes', async ({ page, context }) => {
@@ -68,7 +115,9 @@ test('device-local ledger works across warmed offline mobile routes', async ({ p
     const tapTrackKeys = keys.filter((key) => key.startsWith('taptrack-shell-'));
     const urls = (
       await Promise.all(
-        tapTrackKeys.map(async (key) => (await caches.open(key)).keys().then((requests) => requests.map((r) => r.url)))
+        tapTrackKeys.map(async (key) =>
+          (await caches.open(key)).keys().then((requests) => requests.map((r) => r.url))
+        )
       )
     ).flat();
     return { keys, tapTrackKeys, urls };
@@ -81,7 +130,7 @@ test('device-local ledger works across warmed offline mobile routes', async ({ p
 
   for (const route of CORE_ROUTES) {
     await page.goto(route.path);
-    await expect(page.getByRole('heading', { name: route.heading, exact: true })).toBeVisible();
+    await expectOfflineHeading(page, route.heading);
     await assertMobileLayout(page);
   }
 
@@ -91,7 +140,7 @@ test('device-local ledger works across warmed offline mobile routes', async ({ p
   await page.getByRole('button', { name: 'Save', exact: true }).click();
   await expect(page.getByText('offlinecheck', { exact: true }).last()).toBeVisible();
   await page.reload();
-  await expect(page.getByRole('heading', { name: 'Dashboard' })).toBeVisible();
+  await expectOfflineHeading(page, 'Dashboard');
   await expect(page.getByText('offlinecheck', { exact: true })).toBeVisible();
 
   expect(externalRequests).toEqual([]);
