@@ -1,6 +1,6 @@
 'use client';
 
-import { useEffect, useMemo, useState } from 'react';
+import { useMemo, useState } from 'react';
 import { useLiveQuery } from 'dexie-react-hooks';
 import { toast } from 'sonner';
 import { AmbiguousLedgerOrderingError } from '@/balances/ledgerService';
@@ -53,39 +53,20 @@ export function QuickAddTransaction({
 }) {
   const categories = useLiveQuery(() => db.categories.toArray());
   const settings = useLiveQuery(() => db.settings.get(DEFAULT_SETTINGS_ID));
-  const [type, setType] = useState<TransactionType>(prefill?.type ?? 'expense');
-  const [amount, setAmount] = useState(prefill?.amount ?? '');
-  const [title, setTitle] = useState(prefill?.title ?? '');
-  const [method, setMethod] = useState<Method>(prefill?.method ?? 'card');
-  const [currency, setCurrency] = useState<Currency>(prefill?.currency ?? 'TRY');
-  const [date, setDate] = useState(prefill?.date ?? formatLocalDate(new Date()));
+  const [type, setType] = useState<TransactionType>(() => prefill?.type ?? 'expense');
+  const [amount, setAmount] = useState(() => prefill?.amount ?? '');
+  const [title, setTitle] = useState(() => prefill?.title ?? '');
+  const [methodOverride, setMethodOverride] = useState<Method | null>(() => prefill?.method ?? null);
+  const [currency, setCurrency] = useState<Currency>(() => prefill?.currency ?? 'TRY');
+  const [date, setDate] = useState(() => prefill?.date ?? formatLocalDate(new Date()));
   const [note, setNote] = useState('');
   const [categoryId, setCategoryId] = useState('');
   const [showDetails, setShowDetails] = useState(false);
-  const [methodInitialized, setMethodInitialized] = useState(Boolean(prefill?.method));
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState('');
   const [pendingOrdering, setPendingOrdering] = useState<PendingOrdering | null>(null);
 
-  useEffect(() => {
-    if (!prefill) return;
-    if (prefill.type) setType(prefill.type);
-    if (prefill.amount !== undefined) setAmount(prefill.amount);
-    if (prefill.title !== undefined) setTitle(prefill.title);
-    if (prefill.method) {
-      setMethod(prefill.method);
-      setMethodInitialized(true);
-    }
-    if (prefill.currency) setCurrency(prefill.currency);
-    if (prefill.date) setDate(prefill.date);
-  }, [prefill]);
-
-  useEffect(() => {
-    if (!settings || methodInitialized) return;
-    setMethod(settings.lastUsedMethod);
-    setMethodInitialized(true);
-  }, [methodInitialized, settings]);
-
+  const method = methodOverride ?? settings?.lastUsedMethod ?? 'card';
   const typedCategories = useMemo(
     () => (categories ?? []).filter((category) => category.type === type),
     [categories, type]
@@ -247,7 +228,7 @@ export function QuickAddTransaction({
               <button
                 key={option}
                 type="button"
-                onClick={() => setMethod(option)}
+                onClick={() => setMethodOverride(option)}
                 aria-pressed={method === option}
                 className={`min-h-11 rounded-lg border px-3 text-sm font-semibold transition-colors ${
                   method === option
