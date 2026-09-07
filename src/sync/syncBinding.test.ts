@@ -1,5 +1,6 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
-import { TapTrackDatabase } from '@/database';
+import { TapTrackDatabase, ensureDatabaseSeeded } from '@/database';
+import { getBalanceId } from '@/defaultData';
 
 vi.mock('@/lib/supabase', () => ({
   createSupabaseBrowserClient: vi.fn(),
@@ -10,6 +11,8 @@ import {
   DEVICE_LEDGER_BINDING_ID,
   REMOTE_FINANCE_TABLES,
   getSyncAccess,
+  hasMeaningfulLocalLedgerData,
+  inspectDeviceLedgerLinkToCurrentUser,
   linkDeviceLedgerToCurrentUser,
 } from './syncBinding';
 
@@ -64,7 +67,42 @@ describe('device ledger sync binding', () => {
     });
   });
 
-  it('links once only after every remote table is confirmed empty', async () => {
+  it('does not mistake untouched seeded rows for user-authored local data', async () => {
+    await ensureDatabaseSeeded(database);
+    await expect(hasMeaningfulLocalLedgerData(database)).resolves.toBe(false);
+
+    await database.balances.update(getBalanceId('TRY', 'card'), { amount: 100 });
+    await expect(hasMeaningfulLocalLedgerData(database)).resolves.toBe(true);
+  });
+
+  it('classifies empty cloud, cloud-only adoption, and true merge conflicts', async () => {
+    await ensureDatabaseSeeded(database);
+
+    vi.mocked(createSupabaseBrowserClient).mockReturnValue(createClient() as never);
+    await expect(inspectDeviceLedgerLinkToCurrentUser(database)).resolves.toMatchObject({
+      state: 'remote-empty',
+      localHasUserData: false,
+      remoteHasData: false,
+    });
+
+    vi.mocked(createSupabaseBrowserClient).mockReturnValue(
+      createClient({ nonEmptyTable: 'transactions' }) as never
+    );
+    await expect(inspectDeviceLedgerLinkToCurrentUser(database)).resolves.toMatchObject({
+      state: 'cloud-only',
+      localHasUserData: false,
+      remoteHasData: true,
+    });
+
+    await database.balances.update(getBalanceId('TRY', 'cash'), { amount: 250 });
+    await expect(inspectDeviceLedgerLinkToCurrentUser(database)).resolves.toMatchObject({
+      state: 'merge-choice',
+      localHasUserData: true,
+      remoteHasData: true,
+    });
+  });
+
+  it('links normally when every remote table is confirmed empty', async () => {
     const client = createClient();
     vi.mocked(createSupabaseBrowserClient).mockReturnValue(client as never);
 
@@ -79,13 +117,22 @@ describe('device ledger sync binding', () => {
     expect(client.from).toHaveBeenCalledTimes(REMOTE_FINANCE_TABLES.length);
   });
 
-  it('refuses non-empty or failed remote preflight without creating a binding', async () => {
+  it('requires an explicit adoption mode for existing cloud data', async () => {
     vi.mocked(createSupabaseBrowserClient).mockReturnValue(
       createClient({ nonEmptyTable: 'transactions' }) as never
     );
-    await expect(linkDeviceLedgerToCurrentUser(database)).rejects.toThrow('already has cloud data');
+
+    await expect(linkDeviceLedgerToCurrentUser(database)).rejects.toThrow(
+      'Choose whether to use the cloud ledger or merge this device'
+    );
     await expect(database.deviceMetadata.get(DEVICE_LEDGER_BINDING_ID)).resolves.toBeUndefined();
 
+    const binding = await linkDeviceLedgerToCurrentUser(database, 'use-cloud');
+    expect(binding.syncOwnerUserId).toBe('user-1');
+    await expect(database.deviceMetadata.get(DEVICE_LEDGER_BINDING_ID)).resolves.toEqual(binding);
+  });
+
+  it('fails closed when remote preflight cannot be completed', async () => {
     vi.mocked(createSupabaseBrowserClient).mockReturnValue(
       createClient({ failedTable: 'balances' }) as never
     );
