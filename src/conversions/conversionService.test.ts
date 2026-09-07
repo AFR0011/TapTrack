@@ -1,6 +1,7 @@
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 import { TapTrackDatabase, ensureDatabaseSeeded } from '@/database';
 import { getBalanceId } from '@/defaultData';
+import type { Currency, Method } from '@/types';
 import {
   createConversion,
   InsufficientConversionBalanceError,
@@ -29,9 +30,28 @@ const baseDraft: ConversionDraft = {
   date: '2026-05-18',
 };
 
+async function setOpeningBalance(currency: Currency, method: Method, amount: number) {
+  const balanceId = getBalanceId(currency, method);
+  const effectiveAt = '2026-01-01T00:00:00.000Z';
+  await database.balanceCheckpoints.put({
+    id: `opening-${balanceId}`,
+    balanceId,
+    currency,
+    method,
+    kind: 'opening',
+    observedAmount: amount,
+    deltaAmount: amount,
+    date: '2026-01-01',
+    effectiveAt,
+    month: '2026-01',
+    createdAt: effectiveAt,
+    updatedAt: effectiveAt,
+  });
+}
+
 describe('createConversion', () => {
-  it('creates a conversion and updates both balances', async () => {
-    await database.balances.update(getBalanceId('USD', 'card'), { amount: 100 });
+  it('creates a conversion and rebuilds both balances', async () => {
+    await setOpeningBalance('USD', 'card', 100);
 
     await createConversion(baseDraft, database);
 
@@ -45,12 +65,14 @@ describe('createConversion', () => {
 
   it('records exact ordering for current-day conversions and leaves historical ones unordered', async () => {
     const now = new Date(2026, 4, 18, 16, 0, 0);
-    await database.balances.update(getBalanceId('USD', 'card'), { amount: 100 });
+    await setOpeningBalance('USD', 'card', 100);
 
     const current = await createConversion(baseDraft, database, now);
-
-    await database.balances.update(getBalanceId('USD', 'card'), { amount: 100 });
-    const historical = await createConversion({ ...baseDraft, date: '2026-05-17' }, database, now);
+    const historical = await createConversion(
+      { ...baseDraft, fromAmount: 5, toAmount: 190, date: '2026-05-17' },
+      database,
+      now
+    );
 
     expect(current.occurredAt).toBe(now.toISOString());
     expect(historical.occurredAt).toBeUndefined();
