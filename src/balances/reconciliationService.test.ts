@@ -29,7 +29,8 @@ beforeEach(async () => {
       defaultMethod: 'card',
       month: '2026-05',
     },
-    database
+    database,
+    new Date(2026, 4, 1, 9, 0, 0)
   );
 });
 
