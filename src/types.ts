@@ -25,11 +25,36 @@ export interface Transaction {
 
 export type TransactionDraft = Omit<Transaction, 'id' | 'createdAt' | 'updatedAt'>;
 
+/**
+ * Derived local cache only. Authoritative balance state is reconstructed from
+ * balance checkpoints plus transactions and conversions.
+ */
 export interface Balance {
   id: string;
   currency: Currency;
   method: Method;
   amount: number;
+  updatedAt: string;
+}
+
+export type BalanceCheckpointKind = 'opening' | 'reconciliation';
+
+/**
+ * Immutable-ish absolute balance observation. Opening checkpoints are written
+ * once during setup (or migration). Reconciliation checkpoints record the
+ * real-world balance observed by the user for a calendar month.
+ */
+export interface BalanceCheckpoint {
+  id: string;
+  balanceId: string;
+  currency: Currency;
+  method: Method;
+  kind: BalanceCheckpointKind;
+  observedAmount: number;
+  deltaAmount: number;
+  effectiveAt: string;
+  month?: string;
+  createdAt: string;
   updatedAt: string;
 }
 
