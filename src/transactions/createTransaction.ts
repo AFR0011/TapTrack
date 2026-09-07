@@ -185,11 +185,13 @@ export async function deleteTransaction(
 
   await database.transaction(
     'rw',
-    database.transactions,
-    database.conversions,
-    database.balanceCheckpoints,
-    database.balances,
-    database.syncOutbox,
+    [
+      database.transactions,
+      database.conversions,
+      database.balanceCheckpoints,
+      database.balances,
+      database.syncOutbox,
+    ],
     async () => {
       const transaction = await database.transactions.get(id);
       if (!transaction) throw new Error('Transaction not found');
