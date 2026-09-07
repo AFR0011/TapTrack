@@ -1,5 +1,6 @@
 import { NextResponse } from 'next/server';
 import { buildCategoryPrompt, parseCategoryResponse, type CategorizeRequest } from '@/ai/categoryPrompt';
+import { createSupabaseAdminClient } from '@/lib/supabase-admin';
 import { createSupabaseServerClient } from '@/lib/supabase-server';
 
 const DEFAULT_MODEL = 'openai/gpt-oss-20b';
@@ -18,8 +19,12 @@ interface GroqChatCompletion {
 export async function POST(request: Request): Promise<NextResponse> {
   const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL;
   const supabaseKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY;
+  const serviceRoleKey = process.env.SUPABASE_SERVICE_ROLE_KEY;
   if (!supabaseUrl || !supabaseKey) {
     return NextResponse.json({ error: 'Authentication is unavailable.' }, { status: 503 });
+  }
+  if (!serviceRoleKey) {
+    return NextResponse.json({ error: 'AI rate limiting is unavailable.' }, { status: 503 });
   }
 
   const supabase = await createSupabaseServerClient();
@@ -48,10 +53,20 @@ export async function POST(request: Request): Promise<NextResponse> {
     return NextResponse.json({ categoryId: null });
   }
 
-  const { data: quotaAllowed, error: quotaError } = await supabase.rpc('consume_ai_categorization_quota');
-  if (quotaError) {
+  let quotaAllowed: boolean | null;
+  try {
+    const admin = createSupabaseAdminClient();
+    const { data, error: quotaError } = await admin.rpc('consume_ai_categorization_quota', {
+      target_user_id: user.id,
+    });
+    if (quotaError) {
+      return NextResponse.json({ error: 'AI rate limiting is unavailable.' }, { status: 503 });
+    }
+    quotaAllowed = data;
+  } catch {
     return NextResponse.json({ error: 'AI rate limiting is unavailable.' }, { status: 503 });
   }
+
   if (!quotaAllowed) {
     return NextResponse.json({ error: 'AI categorization rate limit reached.' }, { status: 429 });
   }
