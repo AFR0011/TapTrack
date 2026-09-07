@@ -1,6 +1,6 @@
 import Dexie from 'dexie';
 import { afterEach, describe, expect, it } from 'vitest';
-import { TapTrackDatabase } from '@/database';
+import { TapTrackDatabase, ensureDatabaseSeeded } from '@/database';
 
 const legacyStores = {
   transactions: 'id, type, date, categoryId, method, currency, recurringSourceId',
@@ -106,5 +106,28 @@ describe('database migrations', () => {
     await upgraded.open();
     await expect(upgraded.balanceCheckpoints.count()).resolves.toBe(0);
     upgraded.close();
+  });
+
+  it('repairs missing default category ids without overwriting existing category changes', async () => {
+    const name = `taptrack-seed-repair-${crypto.randomUUID()}`;
+    names.push(name);
+    const database = new TapTrackDatabase(name);
+    await ensureDatabaseSeeded(database);
+
+    const existingFood = await database.categories.get('cat-food');
+    expect(existingFood).toBeDefined();
+    await database.categories.put({ ...existingFood!, name: 'Meals' });
+    await database.categories.delete('cat-other');
+
+    await ensureDatabaseSeeded(database);
+
+    await expect(database.categories.get('cat-food')).resolves.toMatchObject({ name: 'Meals' });
+    await expect(database.categories.get('cat-other')).resolves.toMatchObject({
+      id: 'cat-other',
+      name: 'Other',
+      isDefault: true,
+      type: 'expense',
+    });
+    database.close();
   });
 });
