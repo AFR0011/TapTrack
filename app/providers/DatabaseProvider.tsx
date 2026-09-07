@@ -34,7 +34,15 @@ export function DatabaseProvider({ children }: { children: ReactNode }) {
     const bootstrap = async () => {
       try {
         await ensureDatabaseSeeded();
+
+        // When connectivity exists, adopt the latest cloud template state before
+        // generating recurring occurrences. Offline startup still generates from
+        // the local ledger immediately, preserving offline-first behavior.
+        await runSync();
         await createDueRecurringTransactions();
+
+        // Any occurrences created locally are queued by the transaction service;
+        // flush them after generation without making their creation network-bound.
         await runSync();
       } catch (err: unknown) {
         if (!mounted) return;
