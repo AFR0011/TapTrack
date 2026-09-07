@@ -33,8 +33,6 @@ export function DatabaseProvider({ children }: { children: ReactNode }) {
 
     const bootstrap = async () => {
       try {
-        // The local ledger is authoritative and must be ready before optional
-        // account/provider work is considered.
         await ensureDatabaseSeeded();
         await createDueRecurringTransactions();
         await runSync();
@@ -49,17 +47,18 @@ export function DatabaseProvider({ children }: { children: ReactNode }) {
     const handleOnline = () => {
       void runSync();
     };
-
+    const handleFocus = () => {
+      void runSync();
+    };
     const handleVisibilityChange = () => {
-      if (document.visibilityState === 'visible') {
-        void runSync();
-      }
+      if (document.visibilityState === 'visible') void runSync();
     };
 
     window.addEventListener('online', handleOnline);
+    window.addEventListener('focus', handleFocus);
     document.addEventListener('visibilitychange', handleVisibilityChange);
     const intervalId = window.setInterval(() => {
-      if (navigator.onLine !== false) {
+      if (document.visibilityState === 'visible' && navigator.onLine !== false) {
         void runSync();
       }
     }, AUTO_SYNC_INTERVAL_MS);
@@ -67,6 +66,7 @@ export function DatabaseProvider({ children }: { children: ReactNode }) {
     return () => {
       mounted = false;
       window.removeEventListener('online', handleOnline);
+      window.removeEventListener('focus', handleFocus);
       document.removeEventListener('visibilitychange', handleVisibilityChange);
       window.clearInterval(intervalId);
     };
