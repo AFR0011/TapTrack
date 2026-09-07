@@ -39,8 +39,15 @@ export async function createConversion(
   draft: ConversionDraft,
   database: TapTrackDatabase = db
 ): Promise<Conversion> {
-  if (draft.fromAmount <= 0 || draft.toAmount <= 0) {
-    throw new InvalidConversionError('Conversion amounts must be greater than zero.');
+  if (
+    !Number.isFinite(draft.fromAmount) ||
+    !Number.isFinite(draft.toAmount) ||
+    draft.fromAmount <= 0 ||
+    draft.toAmount <= 0
+  ) {
+    throw new InvalidConversionError(
+      'Conversion amounts must be finite numbers greater than zero.'
+    );
   }
 
   const isTransfer = draft.fromCurrency === draft.toCurrency;
