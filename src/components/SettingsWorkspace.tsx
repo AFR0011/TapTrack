@@ -18,6 +18,7 @@ import {
   type TransactionType,
 } from '@/types';
 import { ConfirmDialog } from './ConfirmDialog';
+import { CloudLedgerLink } from './CloudLedgerLink';
 import { toast } from 'sonner';
 import {
   getSyncStatus,
@@ -25,7 +26,6 @@ import {
   syncNow,
   type SyncStatusSnapshot,
 } from '@/sync/syncService';
-import { linkDeviceLedgerToCurrentUser } from '@/sync/syncBinding';
 import { applyTheme, resolveStoredTheme, setStoredTheme, type ThemeMode } from '@/theme';
 import { Button } from '@/components/ui/Button';
 import { Field } from '@/components/ui/Field';
@@ -75,8 +75,6 @@ export default function SettingsWorkspace() {
   const [categoryDeleteConfirm, setCategoryDeleteConfirm] = useState<Category | null>(null);
   const [accountEmail, setAccountEmail] = useState<string | null>(null);
   const [signingOut, setSigningOut] = useState(false);
-  const [linking, setLinking] = useState(false);
-  const [showLinkConfirm, setShowLinkConfirm] = useState(false);
   const darkModeEnabled = settings?.darkModeEnabled ?? resolveStoredTheme() === 'dark';
 
   useEffect(() => {
@@ -277,19 +275,6 @@ export default function SettingsWorkspace() {
       toast.error(err instanceof Error ? err.message : 'Sync failed.');
     } finally {
       setSyncing(false);
-    }
-  };
-
-  const handleLinkSync = async () => {
-    setLinking(true);
-    try {
-      await linkDeviceLedgerToCurrentUser();
-      await refreshSyncStatus();
-      toast.success('This device ledger is now linked to the signed-in account.');
-    } catch (err) {
-      toast.error(err instanceof Error ? err.message : 'Cloud sync could not be linked.');
-    } finally {
-      setLinking(false);
     }
   };
 
@@ -575,16 +560,7 @@ export default function SettingsWorkspace() {
           </p>
         </details>
         {syncStatus?.bindingState === 'unlinked' ? (
-          <Button
-            type="button"
-            variant="secondary"
-            className="mt-4"
-            onClick={() => setShowLinkConfirm(true)}
-            loading={linking}
-            disabled={linking}
-          >
-            Link this device ledger
-          </Button>
+          <CloudLedgerLink onLinked={refreshSyncStatus} />
         ) : null}
         {syncStatus?.bindingState === 'account-mismatch' ? (
           <p
@@ -651,18 +627,6 @@ export default function SettingsWorkspace() {
           Reset all data
         </Button>
       </section>
-
-      <ConfirmDialog
-        open={showLinkConfirm}
-        title="Link this device ledger"
-        message="TapTrack will check this browser ledger and the signed-in account before linking. Existing cloud data is never replaced automatically."
-        confirmLabel="Check and link"
-        onConfirm={async () => {
-          setShowLinkConfirm(false);
-          await handleLinkSync();
-        }}
-        onCancel={() => setShowLinkConfirm(false)}
-      />
 
       <ConfirmDialog
         open={showResetConfirm}
