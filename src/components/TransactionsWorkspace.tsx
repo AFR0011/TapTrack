@@ -3,6 +3,11 @@
 import { type FormEvent, useMemo, useState } from 'react';
 import { useRouter } from 'next/navigation';
 import { useLiveQuery } from 'dexie-react-hooks';
+import { AmbiguousLedgerOrderingError } from '@/balances/ledgerService';
+import {
+  resolveHistoricalOccurrenceAroundCheckpoint,
+  type HistoricalOrderingRelation,
+} from '@/balances/reconciliationService';
 import { db } from '@/database';
 import { formatLocalDate, getCurrentMonth } from '@/dates';
 import { formatMoney, parseAmountInput } from '@/format';
@@ -41,6 +46,11 @@ type TransactionFormState = {
   method: Method;
   date: string;
   note: string;
+};
+
+type PendingOrdering = {
+  draft: TransactionDraft;
+  checkpointId: string;
 };
 
 export default function TransactionsWorkspace() {
@@ -356,16 +366,24 @@ function TransactionForm({
   }));
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState('');
+  const [pendingOrdering, setPendingOrdering] = useState<PendingOrdering | null>(null);
   const typedCategories = categories.filter((category) => category.type === form.type);
   const selectedCategoryId = typedCategories.some((category) => category.id === form.categoryId)
     ? form.categoryId
     : typedCategories[0]?.id ?? form.categoryId;
 
+  const clearPendingOrdering = () => {
+    setPendingOrdering(null);
+    setError('');
+  };
+
   const setField = <K extends keyof TransactionFormState>(field: K, value: TransactionFormState[K]) => {
+    clearPendingOrdering();
     setForm((current) => ({ ...current, [field]: value }));
   };
 
   const setType = (type: TransactionType) => {
+    clearPendingOrdering();
     setForm((current) => ({
       ...current,
       type,
@@ -373,9 +391,29 @@ function TransactionForm({
     }));
   };
 
+  const persistDraft = async (draft: TransactionDraft) => {
+    setSaving(true);
+    setError('');
+    try {
+      await onSubmit(draft);
+      setPendingOrdering(null);
+    } catch (err) {
+      if (err instanceof AmbiguousLedgerOrderingError) {
+        setPendingOrdering({ draft, checkpointId: err.checkpointId });
+        setError('This transaction is on the same date as a balance reconciliation. Choose when it happened.');
+      } else {
+        setPendingOrdering(null);
+        setError(err instanceof InsufficientBalanceError ? err.message : 'Transaction could not be saved.');
+      }
+    } finally {
+      setSaving(false);
+    }
+  };
+
   const handleSubmit = async (event: FormEvent<HTMLFormElement>) => {
     event.preventDefault();
     setError('');
+    setPendingOrdering(null);
 
     const trimmedTitle = form.title.trim();
     const amount = parseAmountInput(form.amount);
@@ -390,25 +428,33 @@ function TransactionForm({
       return;
     }
 
-    setSaving(true);
+    const draft: TransactionDraft = {
+      type: form.type,
+      amount,
+      currency: form.currency,
+      title: trimmedTitle,
+      categoryId: selectedCategoryId,
+      method: form.method,
+      date: form.date,
+      note: form.note.trim() || undefined,
+      recurringSourceId: transaction?.recurringSourceId,
+    };
+    await persistDraft(draft);
+  };
 
-    try {
-      await onSubmit({
-        type: form.type,
-        amount,
-        currency: form.currency,
-        title: trimmedTitle,
-        categoryId: selectedCategoryId,
-        method: form.method,
-        date: form.date,
-        note: form.note.trim() || undefined,
-        recurringSourceId: transaction?.recurringSourceId,
-      });
-    } catch (err) {
-      setError(err instanceof InsufficientBalanceError ? err.message : 'Transaction could not be saved.');
-    } finally {
-      setSaving(false);
+  const resolveOrdering = async (relation: HistoricalOrderingRelation) => {
+    if (!pendingOrdering) return;
+    const checkpoint = await db.balanceCheckpoints.get(pendingOrdering.checkpointId);
+    if (!checkpoint) {
+      setError('The reconciliation checkpoint could not be found.');
+      setPendingOrdering(null);
+      return;
     }
+
+    await persistDraft({
+      ...pendingOrdering.draft,
+      occurredAt: resolveHistoricalOccurrenceAroundCheckpoint(checkpoint, relation),
+    });
   };
 
   return (
@@ -473,13 +519,33 @@ function TransactionForm({
           <Field label="Note" value={form.note} onChange={(event) => setField('note', event.target.value)} />
         </div>
         {error ? (
-          <p
+          <div
             role="alert"
             aria-live="polite"
             className="rounded-lg border border-danger bg-danger-muted px-3 py-2 text-sm font-medium text-danger"
           >
-            {error}
-          </p>
+            <p>{error}</p>
+            {pendingOrdering ? (
+              <div className="mt-3 flex flex-wrap gap-2">
+                <Button
+                  type="button"
+                  variant="secondary"
+                  onClick={() => void resolveOrdering('before')}
+                  disabled={saving}
+                >
+                  Before reconciliation
+                </Button>
+                <Button
+                  type="button"
+                  variant="secondary"
+                  onClick={() => void resolveOrdering('after')}
+                  disabled={saving}
+                >
+                  After reconciliation
+                </Button>
+              </div>
+            ) : null}
+          </div>
         ) : null}
         <div className="flex flex-wrap gap-2">
           <Button type="submit" loading={saving} disabled={saving}>
