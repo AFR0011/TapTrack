@@ -1,4 +1,4 @@
-import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
+import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 import { TapTrackDatabase, ensureDatabaseSeeded } from '@/database';
 import { getBalanceId } from '@/defaultData';
 import {
@@ -16,7 +16,6 @@ beforeEach(async () => {
 });
 
 afterEach(async () => {
-  vi.useRealTimers();
   await database.delete();
 });
 
@@ -45,15 +44,13 @@ describe('createConversion', () => {
   });
 
   it('records exact ordering for current-day conversions and leaves historical ones unordered', async () => {
-    vi.useFakeTimers();
     const now = new Date(2026, 4, 18, 16, 0, 0);
-    vi.setSystemTime(now);
     await database.balances.update(getBalanceId('USD', 'card'), { amount: 100 });
 
-    const current = await createConversion(baseDraft, database);
+    const current = await createConversion(baseDraft, database, now);
 
     await database.balances.update(getBalanceId('USD', 'card'), { amount: 100 });
-    const historical = await createConversion({ ...baseDraft, date: '2026-05-17' }, database);
+    const historical = await createConversion({ ...baseDraft, date: '2026-05-17' }, database, now);
 
     expect(current.occurredAt).toBe(now.toISOString());
     expect(historical.occurredAt).toBeUndefined();
