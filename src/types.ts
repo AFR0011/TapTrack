@@ -45,9 +45,9 @@ export interface Balance {
 export type BalanceCheckpointKind = 'opening' | 'reconciliation';
 
 /**
- * Immutable-ish absolute balance observation. Opening checkpoints are written
- * once during setup (or migration). Reconciliation checkpoints record the
- * real-world balance observed by the user for a calendar month.
+ * Absolute balance observation. Opening checkpoints are written once during
+ * setup (or migration). Reconciliation checkpoints record the real-world
+ * balance observed by the user for a calendar month.
  */
 export interface BalanceCheckpoint {
   id: string;
@@ -57,6 +57,9 @@ export interface BalanceCheckpoint {
   kind: BalanceCheckpointKind;
   observedAmount: number;
   deltaAmount: number;
+  /** Local calendar date chosen/observed by the user, independent of timezone changes. */
+  date: string;
+  /** Exact UTC ordering boundary for activity before/after this checkpoint. */
   effectiveAt: string;
   month?: string;
   createdAt: string;
