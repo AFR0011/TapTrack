@@ -156,6 +156,7 @@ export type SyncOutboxOperation = 'upsert' | 'delete';
 /** Durable device-local queue of optimistic sync operations. */
 export interface SyncOutboxItem {
   id: string;
+  operationId: string;
   tableName: string;
   operation: SyncOutboxOperation;
   recordId: string;
