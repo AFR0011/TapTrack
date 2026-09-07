@@ -20,12 +20,19 @@ const checks = [
     expect: (response) => response.status === 200,
   },
   {
-    name: 'exchange API returns JSON, not login HTML',
-    path: '/api/exchange-rates',
+    name: 'exchange API returns typed JSON without authentication',
+    path: '/api/exchange-rates?date=2026-09-04&base=TRY&quote=TRY',
     expect: async (response) => {
       const contentType = response.headers.get('content-type') ?? '';
       const body = await response.clone().json().catch(() => null);
-      return response.status === 200 && contentType.includes('application/json') && body?.USD && body?.EUR;
+      return (
+        response.status === 200 &&
+        contentType.includes('application/json') &&
+        body?.base === 'TRY' &&
+        body?.quote === 'TRY' &&
+        body?.rate === 1 &&
+        body?.dateRequested === '2026-09-04'
+      );
     },
   },
   {
