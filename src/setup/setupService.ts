@@ -1,9 +1,16 @@
 import { db, ensureDatabaseSeeded, type TapTrackDatabase } from '@/database';
 import { createDefaultSettings, DEFAULT_SETTINGS_ID, getBalanceId } from '@/defaultData';
 import { formatLocalDate, getCurrentMonth } from '@/dates';
-import { upsertMonthlyBudget } from '@/budgets/budgetService';
-import type { Balance, BalanceCheckpoint, Currency, Method, Settings } from '@/types';
-import { pushRecord } from '@/sync/syncService';
+import { getMonthlyBudgetId } from '@/budgets/budgetService';
+import type {
+  Balance,
+  BalanceCheckpoint,
+  Currency,
+  Method,
+  MonthlyBudget,
+  Settings,
+} from '@/types';
+import { flushSyncQueueBestEffort, queueRecordForSync } from '@/sync/syncService';
 
 export type InitialSetupInput = {
   balances: Record<Currency, Record<Method, number>>;
@@ -27,85 +34,94 @@ export async function completeInitialSetup(
   const now = nowDate.toISOString();
   const date = formatLocalDate(nowDate);
   const month = input.month ?? getCurrentMonth(nowDate);
-  let openingCheckpoints: BalanceCheckpoint[] = [];
-  let updatedSettings: Settings | null = null;
+
+  const balances: Balance[] = Object.entries(input.balances).flatMap(([currency, methods]) =>
+    Object.entries(methods).map(([method, amount]) => ({
+      id: getBalanceId(currency as Currency, method as Method),
+      currency: currency as Currency,
+      method: method as Method,
+      amount: normalizeAmount(amount),
+      updatedAt: now,
+    }))
+  );
+
+  const checkpoints: BalanceCheckpoint[] = balances.map((balance) => ({
+    id: `opening-${balance.id}`,
+    balanceId: balance.id,
+    currency: balance.currency,
+    method: balance.method,
+    kind: 'opening',
+    observedAmount: balance.amount,
+    deltaAmount: balance.amount,
+    date,
+    effectiveAt: now,
+    month,
+    createdAt: now,
+    updatedAt: now,
+  }));
+
+  const currentSettings =
+    (await database.settings.get(DEFAULT_SETTINGS_ID)) ?? createDefaultSettings(now);
+  const nextSettings: Settings = {
+    ...currentSettings,
+    id: DEFAULT_SETTINGS_ID,
+    lastUsedMethod: input.defaultMethod,
+    setupCompleted: true,
+    updatedAt: now,
+  };
+
+  const monthlyBudget: MonthlyBudget = {
+    id: getMonthlyBudgetId(month),
+    month,
+    totalBudget: normalizeAmount(input.monthlyBudget),
+    rolloverFromPreviousMonth: 0,
+    currency: 'TRY',
+    createdAt: now,
+    updatedAt: now,
+  };
 
   await database.transaction(
     'rw',
-    database.balances,
-    database.balanceCheckpoints,
-    database.settings,
-    database.monthlyBudgets,
+    [
+      database.balances,
+      database.balanceCheckpoints,
+      database.settings,
+      database.monthlyBudgets,
+      database.syncOutbox,
+    ],
     async () => {
-      const balances: Balance[] = Object.entries(input.balances).flatMap(([currency, methods]) =>
-        Object.entries(methods).map(([method, amount]) => ({
-          id: getBalanceId(currency as Currency, method as Method),
-          currency: currency as Currency,
-          method: method as Method,
-          amount: normalizeAmount(amount),
-          updatedAt: now,
-        }))
-      );
-
-      const checkpoints: BalanceCheckpoint[] = balances.map((balance) => ({
-        id: `opening-${balance.id}`,
-        balanceId: balance.id,
-        currency: balance.currency,
-        method: balance.method,
-        kind: 'opening',
-        observedAmount: balance.amount,
-        deltaAmount: balance.amount,
-        date,
-        effectiveAt: now,
-        month,
-        createdAt: now,
-        updatedAt: now,
-      }));
+      const settingsInTransaction = await database.settings.get(DEFAULT_SETTINGS_ID);
+      if (settingsInTransaction?.setupCompleted) {
+        throw new Error('Initial balances are already locked. Use monthly reconciliation instead.');
+      }
 
       await database.balances.bulkPut(balances);
       await database.balanceCheckpoints.bulkAdd(checkpoints);
-      openingCheckpoints = checkpoints;
-
-      const settings =
-        (await database.settings.get(DEFAULT_SETTINGS_ID)) ?? createDefaultSettings(now);
-      const nextSettings: Settings = {
-        ...settings,
-        id: DEFAULT_SETTINGS_ID,
-        lastUsedMethod: input.defaultMethod,
-        setupCompleted: true,
-        updatedAt: now,
-      };
-      updatedSettings = nextSettings;
       await database.settings.put(nextSettings);
+      await database.monthlyBudgets.put(monthlyBudget);
+
+      for (const checkpoint of checkpoints) {
+        await queueRecordForSync(
+          'balanceCheckpoints',
+          checkpoint as unknown as Record<string, unknown>,
+          database
+        );
+      }
+      await queueRecordForSync(
+        'settings',
+        nextSettings as unknown as Record<string, unknown>,
+        database
+      );
+      await queueRecordForSync(
+        'monthlyBudgets',
+        monthlyBudget as unknown as Record<string, unknown>,
+        database
+      );
     }
   );
 
-  await upsertMonthlyBudget(
-    {
-      month,
-      totalBudget: normalizeAmount(input.monthlyBudget),
-      rolloverFromPreviousMonth: 0,
-    },
-    database
-  );
-
-  for (const checkpoint of openingCheckpoints) {
-    void pushRecord(
-      'balanceCheckpoints',
-      checkpoint as unknown as Record<string, unknown>,
-      database
-    );
-  }
-
-  if (updatedSettings) {
-    void pushRecord('settings', updatedSettings as unknown as Record<string, unknown>, database);
-  }
-
-  const settings = await database.settings.get(DEFAULT_SETTINGS_ID);
-  if (!settings) {
-    throw new Error('Settings were not saved.');
-  }
-  return settings;
+  void flushSyncQueueBestEffort(database);
+  return nextSettings;
 }
 
 function normalizeAmount(value: number) {
