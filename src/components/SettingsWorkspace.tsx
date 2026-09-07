@@ -362,7 +362,7 @@ export default function SettingsWorkspace() {
         />
         <div className="mt-5 border-t border-subtle pt-5">
           <p className="text-sm text-muted">
-            AI categorization sends the transaction title and available category names to TapTrack's
+            AI categorization sends the transaction title and available category names to the TapTrack
             server, which asks Groq for a category suggestion. A signed-in account is required.
           </p>
           <ToggleRow
