@@ -1,6 +1,7 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { TapTrackDatabase, ensureDatabaseSeeded } from '@/database';
 import { createTransaction } from '@/transactions/createTransaction';
+import { seedOpeningBalance } from '@/test/ledgerTestUtils';
 import * as syncService from '@/sync/syncService';
 import {
   calculateRollover,
@@ -28,7 +29,7 @@ afterEach(async () => {
 describe('budgetService', () => {
   it('calculates total budget status from TRY expenses', async () => {
     await upsertMonthlyBudget({ month: '2026-05', totalBudget: 20000 }, database);
-    await database.balances.update('TRY-cash', { amount: 1000 });
+    await seedOpeningBalance(database, 'TRY-cash', 1000);
     await createTransaction(
       {
         type: 'expense',
@@ -51,7 +52,7 @@ describe('budgetService', () => {
 
   it('calculates category budget status without rollover', async () => {
     await upsertCategoryBudget({ month: '2026-05', categoryId: 'cat-food', amount: 5000 }, database);
-    await database.balances.update('TRY-cash', { amount: 1000 });
+    await seedOpeningBalance(database, 'TRY-cash', 1000);
     await createTransaction(
       {
         type: 'expense',
@@ -74,7 +75,7 @@ describe('budgetService', () => {
 
   it('rolls unused total budget into the next month', async () => {
     await upsertMonthlyBudget({ month: '2026-04', totalBudget: 20000 }, database);
-    await database.balances.update('TRY-cash', { amount: 30000 });
+    await seedOpeningBalance(database, 'TRY-cash', 30000);
     await createTransaction(
       {
         type: 'expense',
@@ -160,7 +161,7 @@ describe('budgetService', () => {
       createdAt: now,
       updatedAt: now,
     });
-    await database.balances.update('TRY-cash', { amount: 1000 });
+    await seedOpeningBalance(database, 'TRY-cash', 1000);
     const transaction = await createTransaction(
       {
         type: 'expense',
