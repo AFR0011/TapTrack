@@ -2,6 +2,7 @@ import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 import { TapTrackDatabase, ensureDatabaseSeeded } from '@/database';
 import { upsertCategoryBudget, upsertMonthlyBudget } from '@/budgets/budgetService';
 import { createTransaction } from '@/transactions/createTransaction';
+import { seedOpeningBalance } from '@/test/ledgerTestUtils';
 import {
   getBudgetPerformanceReport,
   getCategorySpending,
@@ -30,7 +31,7 @@ describe('reportService', () => {
   it('aggregates monthly report data from TRY transactions', async () => {
     await upsertMonthlyBudget({ month: '2026-05', totalBudget: 20000 }, database);
     await upsertCategoryBudget({ month: '2026-05', categoryId: 'cat-food', amount: 5000 }, database);
-    await database.balances.update('TRY-cash', { amount: 1000 });
+    await seedOpeningBalance(database, 'TRY-cash', 1000);
     await createTransaction(
       {
         type: 'income',
@@ -79,7 +80,7 @@ describe('reportService', () => {
   });
 
   it('aggregates inclusive custom date ranges', async () => {
-    await database.balances.update('TRY-cash', { amount: 1000 });
+    await seedOpeningBalance(database, 'TRY-cash', 1000);
     await createTransaction(
       {
         type: 'expense',
@@ -134,8 +135,8 @@ describe('reportService', () => {
   });
 
   it('builds yearly summaries from monthly TRY totals', async () => {
-    await database.balances.update('TRY-card', { amount: 5000 });
-    await database.balances.update('TRY-cash', { amount: 5000 });
+    await seedOpeningBalance(database, 'TRY-card', 5000);
+    await seedOpeningBalance(database, 'TRY-cash', 5000);
     await createTransaction(
       {
         type: 'income',
