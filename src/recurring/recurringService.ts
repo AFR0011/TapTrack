@@ -12,6 +12,10 @@ export type DueRecurringResult = {
   failed: number;
 };
 
+export function getRecurringOccurrenceId(recurringId: string, date: string): string {
+  return `recurring-occurrence-${recurringId}-${date}`;
+}
+
 export async function createRecurringTransaction(
   recurring: RecurringInput,
   database: TapTrackDatabase = db
@@ -119,15 +123,10 @@ export async function createDueRecurringTransactions(
     }
 
     while (nextRunDate <= today && safety < 366) {
-      if (endDate && nextRunDate > endDate) {
-        break;
-      }
+      if (endDate && nextRunDate > endDate) break;
 
-      const existingTransaction = await database.transactions
-        .where('recurringSourceId')
-        .equals(recurring.id)
-        .filter((transaction) => transaction.date === nextRunDate)
-        .first();
+      const occurrenceId = getRecurringOccurrenceId(recurring.id, nextRunDate);
+      const existingTransaction = await database.transactions.get(occurrenceId);
 
       if (existingTransaction) {
         result.skipped += 1;
@@ -144,19 +143,24 @@ export async function createDueRecurringTransactions(
         };
 
         try {
-          await createTransaction(transactionDraft, database);
+          await createTransaction(transactionDraft, database, currentDate, occurrenceId);
           result.created += 1;
-        } catch {
-          result.failed += 1;
-          break;
+        } catch (error) {
+          // A concurrent local invocation may have inserted the deterministic ID
+          // between the read and add. Treat that as the same logical occurrence.
+          if (await database.transactions.get(occurrenceId)) {
+            result.skipped += 1;
+          } else {
+            void error;
+            result.failed += 1;
+            break;
+          }
         }
       }
 
       nextRunDate = formatLocalDate(addFrequency(parseLocalDate(nextRunDate), recurring.frequency));
       const updates: Partial<RecurringTransaction> = { nextRunDate };
-      if (endDate && nextRunDate > endDate) {
-        updates.isActive = false;
-      }
+      if (endDate && nextRunDate > endDate) updates.isActive = false;
       await updateRecurringTransaction(recurring.id, updates, database);
       safety += 1;
     }
