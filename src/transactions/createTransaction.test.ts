@@ -1,7 +1,7 @@
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 import { getBalanceId } from '@/defaultData';
 import { TapTrackDatabase, ensureDatabaseSeeded } from '@/database';
-import type { TransactionDraft } from '@/types';
+import type { Currency, Method, TransactionDraft } from '@/types';
 import {
   InsufficientBalanceError,
   createTransaction,
@@ -30,6 +30,25 @@ const baseExpense: TransactionDraft = {
   date: '2026-04-30',
 };
 
+async function setOpeningBalance(currency: Currency, method: Method, amount: number) {
+  const balanceId = getBalanceId(currency, method);
+  const effectiveAt = '2026-01-01T00:00:00.000Z';
+  await database.balanceCheckpoints.put({
+    id: `opening-${balanceId}`,
+    balanceId,
+    currency,
+    method,
+    kind: 'opening',
+    observedAmount: amount,
+    deltaAmount: amount,
+    date: '2026-01-01',
+    effectiveAt,
+    month: '2026-01',
+    createdAt: effectiveAt,
+    updatedAt: effectiveAt,
+  });
+}
+
 describe('createTransaction', () => {
   it('does not leak an unhandled sync rejection from the committed local write', async () => {
     const unhandled: unknown[] = [];
@@ -37,7 +56,7 @@ describe('createTransaction', () => {
     process.on('unhandledRejection', listener);
 
     try {
-      await database.balances.update(getBalanceId('TRY', 'cash'), { amount: 200 });
+      await setOpeningBalance('TRY', 'cash', 200);
       await createTransaction(baseExpense, database);
       await new Promise((resolve) => setTimeout(resolve, 0));
       expect(unhandled).toEqual([]);
@@ -78,7 +97,7 @@ describe('createTransaction', () => {
     expect(historical.occurredAt).toBeUndefined();
   });
 
-  it('creates an income transaction and updates the matching balance', async () => {
+  it('creates an income transaction and updates the matching derived balance', async () => {
     const transaction = await createTransaction(
       {
         ...baseExpense,
@@ -97,8 +116,8 @@ describe('createTransaction', () => {
     expect(balance?.amount).toBe(20000);
   });
 
-  it('creates an expense transaction when the balance is funded', async () => {
-    await database.balances.update(getBalanceId('TRY', 'cash'), { amount: 200 });
+  it('creates an expense transaction when the opening balance is funded', async () => {
+    await setOpeningBalance('TRY', 'cash', 200);
 
     await createTransaction(baseExpense, database);
 
@@ -109,7 +128,7 @@ describe('createTransaction', () => {
     expect(transactions).toHaveLength(1);
   });
 
-  it('blocks an expense that would make a balance negative', async () => {
+  it('blocks an expense that would make a derived balance negative', async () => {
     await expect(createTransaction(baseExpense, database)).rejects.toBeInstanceOf(
       InsufficientBalanceError
     );
@@ -117,9 +136,9 @@ describe('createTransaction', () => {
     expect(await database.transactions.count()).toBe(0);
   });
 
-  it('updates a transaction by reversing the old balance effect first', async () => {
-    await database.balances.update(getBalanceId('TRY', 'cash'), { amount: 300 });
-    await database.balances.update(getBalanceId('TRY', 'card'), { amount: 100 });
+  it('updates a transaction by rebuilding from the authoritative ledger', async () => {
+    await setOpeningBalance('TRY', 'cash', 300);
+    await setOpeningBalance('TRY', 'card', 100);
     const transaction = await createTransaction(baseExpense, database);
 
     await updateTransaction(
@@ -140,7 +159,7 @@ describe('createTransaction', () => {
   });
 
   it('blocks edits that would make the destination balance negative', async () => {
-    await database.balances.update(getBalanceId('TRY', 'cash'), { amount: 300 });
+    await setOpeningBalance('TRY', 'cash', 300);
     const transaction = await createTransaction(baseExpense, database);
 
     await expect(
@@ -159,8 +178,8 @@ describe('createTransaction', () => {
     expect(original?.method).toBe('cash');
   });
 
-  it('deletes a transaction and reverses its balance effect', async () => {
-    await database.balances.update(getBalanceId('TRY', 'cash'), { amount: 300 });
+  it('deletes a transaction and rebuilds its balance effect away', async () => {
+    await setOpeningBalance('TRY', 'cash', 300);
     const transaction = await createTransaction(baseExpense, database);
 
     await deleteTransaction(transaction.id, database);
