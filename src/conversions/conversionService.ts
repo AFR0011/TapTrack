@@ -1,6 +1,7 @@
 import { db, type TapTrackDatabase } from '@/database';
 import { getBalanceId } from '@/defaultData';
 import { getAutomaticOccurredAt } from '@/dates';
+import { rebuildDerivedBalances } from '@/balances/ledgerService';
 import type { Conversion, Currency, Method } from '@/types';
 import { pushRecord } from '@/sync/syncService';
 
@@ -30,13 +31,7 @@ export class InvalidConversionError extends Error {
   }
 }
 
-/**
- * Creates a currency exchange or card-to-cash transfer record atomically.
- *
- * - Deducts `fromAmount` from the source balance (fromCurrency + fromMethod).
- * - Adds `toAmount` to the destination balance (toCurrency + toMethod).
- * - Rejects if the source balance would go negative.
- */
+/** Creates a conversion record and rebuilds the derived balance cache atomically. */
 export async function createConversion(
   draft: ConversionDraft,
   database: TapTrackDatabase = db,
@@ -65,7 +60,6 @@ export async function createConversion(
   }
 
   const now = nowDate.toISOString();
-
   const conversion: Conversion = {
     id: crypto.randomUUID(),
     fromCurrency: draft.fromCurrency,
@@ -81,64 +75,29 @@ export async function createConversion(
     updatedAt: now,
   };
 
-  const syncBalances = await database.transaction('rw', database.conversions, database.balances, async () => {
-    const fromId = getBalanceId(draft.fromCurrency, draft.fromMethod);
-    const toId = getBalanceId(draft.toCurrency, draft.toMethod);
+  await database.transaction(
+    'rw',
+    database.transactions,
+    database.conversions,
+    database.balanceCheckpoints,
+    database.balances,
+    async () => {
+      const sourceId = getBalanceId(draft.fromCurrency, draft.fromMethod);
+      const previousSource = await database.balances.get(sourceId);
 
-    const fromBalance = await database.balances.get(fromId);
-    const toBalance = await database.balances.get(toId);
-
-    if (!fromBalance) {
-      throw new InsufficientConversionBalanceError(draft.fromCurrency, draft.fromMethod, 0);
+      await database.conversions.add(conversion);
+      const rebuilt = await rebuildDerivedBalances(database, now);
+      const source = rebuilt.find((balance) => balance.id === sourceId);
+      if (source && source.amount < 0) {
+        throw new InsufficientConversionBalanceError(
+          draft.fromCurrency,
+          draft.fromMethod,
+          previousSource?.amount ?? 0
+        );
+      }
     }
-    if (fromBalance.amount < draft.fromAmount) {
-      throw new InsufficientConversionBalanceError(
-        draft.fromCurrency,
-        draft.fromMethod,
-        fromBalance.amount
-      );
-    }
-
-    const updatedFromBalance = {
-      ...fromBalance,
-      amount: fromBalance.amount - draft.fromAmount,
-      updatedAt: now,
-    };
-    await database.balances.put(updatedFromBalance);
-
-    let updatedToBalance: {
-      id: string;
-      currency: Currency;
-      method: Method;
-      amount: number;
-      updatedAt: string;
-    };
-    if (toBalance) {
-      updatedToBalance = {
-        ...toBalance,
-        amount: toBalance.amount + draft.toAmount,
-        updatedAt: now,
-      };
-      await database.balances.put(updatedToBalance);
-    } else {
-      updatedToBalance = {
-        id: toId,
-        currency: draft.toCurrency,
-        method: draft.toMethod,
-        amount: draft.toAmount,
-        updatedAt: now,
-      };
-      await database.balances.put(updatedToBalance);
-    }
-
-    await database.conversions.add(conversion);
-
-    return { updatedFromBalance, updatedToBalance };
-  });
+  );
 
   void pushRecord('conversions', conversion as unknown as Record<string, unknown>, database);
-  void pushRecord('balances', syncBalances.updatedFromBalance as unknown as Record<string, unknown>, database);
-  void pushRecord('balances', syncBalances.updatedToBalance as unknown as Record<string, unknown>, database);
-
   return conversion;
 }
