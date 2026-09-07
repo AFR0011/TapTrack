@@ -1,6 +1,7 @@
 import { db, ensureDatabaseSeeded, type TapTrackDatabase } from '@/database';
 import { DEFAULT_SETTINGS_ID } from '@/defaultData';
 import { formatLocalDate, getCurrentMonth } from '@/dates';
+import { rebuildDerivedBalances } from '@/balances/ledgerService';
 import type { Balance, BalanceCheckpoint } from '@/types';
 
 export type ReconciliationObservedAmounts = Record<string, number>;
@@ -115,19 +116,15 @@ export async function reconcileCurrentMonth(
     };
   });
 
-  const reconciledBalances: Balance[] = balances.map((balance) => ({
-    ...balance,
-    amount: observedAmounts[balance.id]!,
-    updatedAt: effectiveAt,
-  }));
-
   await database.transaction(
     'rw',
+    database.transactions,
+    database.conversions,
     database.balanceCheckpoints,
     database.balances,
     async () => {
       await database.balanceCheckpoints.bulkAdd(checkpoints);
-      await database.balances.bulkPut(reconciledBalances);
+      await rebuildDerivedBalances(database, effectiveAt);
     }
   );
 
