@@ -102,6 +102,12 @@ export default function DashboardSummary() {
           </div>
           <Link
             href="/app/budgets"
+            prefetch={false}
+            onClick={(event) => {
+              if (navigator.onLine !== false) return;
+              event.preventDefault();
+              window.location.assign('/app/budgets');
+            }}
             className={cn(
               buttonVariants({ variant: budgetAvailable > 0 ? 'secondary' : 'primary', size: 'sm' }),
               'w-full sm:w-auto'
