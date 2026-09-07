@@ -14,7 +14,8 @@ export type InitialSetupInput = {
 
 export async function completeInitialSetup(
   input: InitialSetupInput,
-  database: TapTrackDatabase = db
+  database: TapTrackDatabase = db,
+  nowDate = new Date()
 ): Promise<Settings> {
   await ensureDatabaseSeeded(database);
 
@@ -23,7 +24,6 @@ export async function completeInitialSetup(
     throw new Error('Initial balances are already locked. Use monthly reconciliation instead.');
   }
 
-  const nowDate = new Date();
   const now = nowDate.toISOString();
   const date = formatLocalDate(nowDate);
   const month = input.month ?? getCurrentMonth(nowDate);
