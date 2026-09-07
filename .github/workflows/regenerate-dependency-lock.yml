@@ -1,0 +1,45 @@
+name: Regenerate dependency lock
+
+on:
+  push:
+    branches:
+      - remediation/taptrack-correctness-b002
+    paths:
+      - .github/workflows/regenerate-dependency-lock.yml
+
+permissions:
+  contents: write
+
+jobs:
+  regenerate:
+    if: github.actor != 'github-actions[bot]'
+    runs-on: ubuntu-latest
+    steps:
+      - name: Check out remediation branch
+        uses: actions/checkout@v7
+        with:
+          ref: remediation/taptrack-correctness-b002
+          fetch-depth: 0
+
+      - name: Set up Node
+        uses: actions/setup-node@v5
+        with:
+          node-version: "22"
+          cache: npm
+
+      - name: Regenerate package lock with patched toolchain
+        run: >-
+          npm install --package-lock-only --ignore-scripts --save-exact
+          next@16.3.4 eslint-config-next@16.3.4 eslint@9.39.5
+
+      - name: Commit regenerated manifests
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add package.json package-lock.json
+          if git diff --cached --quiet; then
+            echo "Dependency manifests already match requested versions."
+            exit 0
+          fi
+          git commit -m "Upgrade Next and align ESLint"
+          git push origin HEAD:remediation/taptrack-correctness-b002
