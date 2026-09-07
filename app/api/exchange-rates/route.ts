@@ -1,46 +1,123 @@
-import { NextResponse } from 'next/server';
-import type { ExchangeRates } from '@/types';
+import { NextRequest, NextResponse } from 'next/server';
+import type { Currency } from '@/types';
 
-/**
- * Returns live USD→TRY and EUR→TRY exchange rates.
- * Source: open.er-api.com (free, no key required, 1500 req/month).
- * Next.js ISR caches the response for 1 hour server-side.
- * The response also carries a Cache-Control header so Vercel's edge cache
- * and the browser serve it stale for up to 1 hour.
- */
-export const revalidate = 3600;
+const SUPPORTED = new Set<Currency>(['TRY', 'USD', 'EUR']);
+const MAX_LOOKBACK_DAYS = 14;
+const SOURCE = 'TCMB via Frankfurter';
 
-export async function GET(): Promise<NextResponse> {
-  try {
-    const res = await fetch('https://open.er-api.com/v6/latest/TRY', {
-      next: { revalidate: 3600 },
-    });
+type FrankfurterRateResponse = {
+  date?: string;
+  base?: string;
+  quote?: string;
+  rate?: number;
+};
 
-    if (!res.ok) throw new Error(`upstream ${res.status}`);
+export type HistoricalExchangeRateResponse = {
+  base: Currency;
+  quote: Currency;
+  dateRequested: string;
+  dateUsed: string;
+  rate: number;
+  source: typeof SOURCE;
+  status: 'historical' | 'prior-available';
+};
 
-    const data = (await res.json()) as {
-      rates: Record<string, number>;
-    };
+export async function GET(request: NextRequest): Promise<NextResponse> {
+  const dateRequested = request.nextUrl.searchParams.get('date') ?? '';
+  const base = request.nextUrl.searchParams.get('base') as Currency | null;
+  const quote = request.nextUrl.searchParams.get('quote') as Currency | null;
 
-    // open.er-api.com returns rates with TRY as base, so:
-    //   data.rates.USD = 0.026 → 1 TRY = 0.026 USD → 1 USD = 1/0.026 TRY ≈ 38.5
-    const usdRate = data.rates['USD'];
-    const eurRate = data.rates['EUR'];
-    if (!usdRate || !eurRate) throw new Error('missing rates');
-
-    const rates: ExchangeRates = {
-      USD: 1 / usdRate,
-      EUR: 1 / eurRate,
-    };
-
-    return NextResponse.json(rates, {
-      headers: { 'Cache-Control': 's-maxage=3600, stale-while-revalidate=86400' },
-    });
-  } catch {
-    // Return rough fallback so the toggle degrades gracefully
-    const fallback: ExchangeRates = { USD: 38.5, EUR: 42 };
-    return NextResponse.json(fallback, {
-      headers: { 'Cache-Control': 'no-store' },
-    });
+  if (!isValidIsoDate(dateRequested)) {
+    return NextResponse.json({ error: 'A valid date in YYYY-MM-DD format is required.' }, { status: 400 });
   }
+  if (!base || !quote || !SUPPORTED.has(base) || !SUPPORTED.has(quote)) {
+    return NextResponse.json({ error: 'Supported base and quote currencies are required.' }, { status: 400 });
+  }
+
+  if (base === quote) {
+    return NextResponse.json(
+      {
+        base,
+        quote,
+        dateRequested,
+        dateUsed: dateRequested,
+        rate: 1,
+        source: SOURCE,
+        status: 'historical',
+      } satisfies HistoricalExchangeRateResponse,
+      { headers: cacheHeaders(dateRequested) }
+    );
+  }
+
+  try {
+    for (let offset = 0; offset <= MAX_LOOKBACK_DAYS; offset += 1) {
+      const candidateDate = subtractUtcDays(dateRequested, offset);
+      const upstream = await fetch(
+        `https://api.frankfurter.dev/v2/rate/${base}/${quote}?date=${candidateDate}&providers=TCMB`,
+        { cache: 'no-store' }
+      );
+
+      if (upstream.status === 404 || upstream.status === 422) continue;
+      if (!upstream.ok) throw new Error(`Frankfurter returned ${upstream.status}`);
+
+      const data = (await upstream.json()) as FrankfurterRateResponse;
+      const rate = Number(data.rate);
+      if (!Number.isFinite(rate) || rate <= 0) continue;
+
+      const dateUsed = isValidIsoDate(data.date ?? '') ? data.date! : candidateDate;
+      if (dateUsed > dateRequested) {
+        throw new Error('Exchange-rate provider returned a future rate.');
+      }
+
+      const response: HistoricalExchangeRateResponse = {
+        base,
+        quote,
+        dateRequested,
+        dateUsed,
+        rate,
+        source: SOURCE,
+        status: dateUsed === dateRequested ? 'historical' : 'prior-available',
+      };
+
+      return NextResponse.json(response, { headers: cacheHeaders(dateRequested) });
+    }
+
+    return NextResponse.json(
+      { error: 'No published exchange rate was available for the selected date or prior days.' },
+      { status: 503, headers: { 'Cache-Control': 'no-store' } }
+    );
+  } catch {
+    return NextResponse.json(
+      { error: 'Exchange rates are temporarily unavailable. No estimated fallback was used.' },
+      { status: 503, headers: { 'Cache-Control': 'no-store' } }
+    );
+  }
+}
+
+function isValidIsoDate(value: string): boolean {
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(value)) return false;
+  const [year, month, day] = value.split('-').map(Number);
+  const date = new Date(Date.UTC(year, month - 1, day));
+  return (
+    date.getUTCFullYear() === year &&
+    date.getUTCMonth() === month - 1 &&
+    date.getUTCDate() === day
+  );
+}
+
+function subtractUtcDays(value: string, days: number): string {
+  const [year, month, day] = value.split('-').map(Number);
+  const date = new Date(Date.UTC(year, month - 1, day));
+  date.setUTCDate(date.getUTCDate() - days);
+  return date.toISOString().slice(0, 10);
+}
+
+function cacheHeaders(dateRequested: string): Record<string, string> {
+  const todayUtc = new Date().toISOString().slice(0, 10);
+  return {
+    'Cache-Control':
+      dateRequested < todayUtc
+        ? 'public, s-maxage=86400, stale-while-revalidate=604800'
+        : 'public, s-maxage=3600, stale-while-revalidate=3600',
+  };
 }
