@@ -37,7 +37,6 @@ begin
   end if;
 end $$;
 
--- Fail closed if an unknown legacy conversion somehow lacks any method.
 do $$
 begin
   if exists (
@@ -118,6 +117,9 @@ begin
     'balance_checkpoints'
   ]
   loop
+    pk_name := null;
+    pk_columns := null;
+
     select c.conname,
            array_agg(a.attname::text order by key_columns.ordinality)
       into pk_name, pk_columns
@@ -132,16 +134,16 @@ begin
 
     if pk_name is null then
       execute format(
-        'alter table public.%I add constraint %I_pkey primary key (user_id, id)',
+        'alter table public.%I add constraint %I primary key (user_id, id)',
         table_name,
-        table_name
+        table_name || '_pkey'
       );
     elsif pk_columns is distinct from array['user_id', 'id']::text[] then
       execute format('alter table public.%I drop constraint %I', table_name, pk_name);
       execute format(
-        'alter table public.%I add constraint %I_pkey primary key (user_id, id)',
+        'alter table public.%I add constraint %I primary key (user_id, id)',
         table_name,
-        table_name
+        table_name || '_pkey'
       );
     end if;
   end loop;
@@ -167,7 +169,6 @@ create index if not exists conversions_user_updated_idx on public.conversions (u
 create index if not exists settings_user_updated_idx on public.settings (user_id, updated_at);
 create index if not exists balance_checkpoints_user_updated_idx on public.balance_checkpoints (user_id, updated_at);
 
--- Reuse the existing updated_at trigger helper if present; create it otherwise.
 create or replace function public.touch_updated_at()
 returns trigger
 language plpgsql
@@ -181,6 +182,7 @@ $$;
 do $$
 declare
   table_name text;
+  trigger_name text;
 begin
   foreach table_name in array array[
     'transactions',
@@ -193,10 +195,11 @@ begin
     'balance_checkpoints'
   ]
   loop
-    execute format('drop trigger if exists touch_%I_updated_at on public.%I', table_name, table_name);
+    trigger_name := 'touch_' || table_name || '_updated_at';
+    execute format('drop trigger if exists %I on public.%I', trigger_name, table_name);
     execute format(
-      'create trigger touch_%I_updated_at before update on public.%I for each row execute function public.touch_updated_at()',
-      table_name,
+      'create trigger %I before update on public.%I for each row execute function public.touch_updated_at()',
+      trigger_name,
       table_name
     );
   end loop;
@@ -208,6 +211,7 @@ alter table public.balance_checkpoints enable row level security;
 do $$
 declare
   table_name text;
+  policy_name text;
 begin
   foreach table_name in array array[
     'transactions',
@@ -220,7 +224,8 @@ begin
     'settings'
   ]
   loop
-    execute format('drop policy if exists users_%I on public.%I', table_name, table_name);
+    policy_name := 'users_' || table_name;
+    execute format('drop policy if exists %I on public.%I', policy_name, table_name);
   end loop;
 end $$;
 
