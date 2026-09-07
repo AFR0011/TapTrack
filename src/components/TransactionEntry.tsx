@@ -1,12 +1,14 @@
 'use client';
 
 import Link from 'next/link';
-import { useEffect, useState } from 'react';
+import { useState, useSyncExternalStore } from 'react';
 import CommandInput from '@/components/CommandInput';
 import { QuickAddTransaction, type QuickAddPrefill } from '@/components/QuickAddTransaction';
 import {
+  getServerTransactionInputMode,
   getTransactionInputMode,
   setTransactionInputMode,
+  subscribeTransactionInputMode,
   type TransactionInputMode,
 } from '@/transactions/inputPreferences';
 
@@ -19,18 +21,16 @@ export function TransactionEntry({
   prefill?: QuickAddPrefill;
   onSaved?: () => void;
 }) {
-  const [mode, setMode] = useState<TransactionInputMode>(initialMode ?? 'quick');
-
-  useEffect(() => {
-    if (initialMode) {
-      setMode(initialMode);
-      return;
-    }
-    setMode(getTransactionInputMode());
-  }, [initialMode]);
+  const preferredMode = useSyncExternalStore(
+    subscribeTransactionInputMode,
+    getTransactionInputMode,
+    getServerTransactionInputMode
+  );
+  const [sessionMode, setSessionMode] = useState<TransactionInputMode | null>(null);
+  const mode = sessionMode ?? initialMode ?? preferredMode;
 
   const chooseMode = (nextMode: TransactionInputMode) => {
-    setMode(nextMode);
+    setSessionMode(nextMode);
     setTransactionInputMode(nextMode);
   };
 
