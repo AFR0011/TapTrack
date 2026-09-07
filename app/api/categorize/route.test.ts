@@ -78,7 +78,7 @@ describe('POST /api/categorize', () => {
 
     expect(response.status).toBe(200);
     expect(body).toEqual({ categoryId: 'cat-subscriptions' });
-    expect(rpc).toHaveBeenCalledWith('consume_ai_categorization_quota', { max_requests: 30 });
+    expect(rpc).toHaveBeenCalledWith('consume_ai_categorization_quota');
   });
 
   it('rejects oversized titles without calling Groq', async () => {
