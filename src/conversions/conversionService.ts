@@ -3,7 +3,7 @@ import { getBalanceId } from '@/defaultData';
 import { getAutomaticOccurredAt } from '@/dates';
 import { rebuildDerivedBalances } from '@/balances/ledgerService';
 import type { Conversion, Currency, Method } from '@/types';
-import { pushRecord } from '@/sync/syncService';
+import { flushSyncQueueBestEffort, queueRecordForSync } from '@/sync/syncService';
 
 export interface ConversionDraft {
   fromCurrency: Currency;
@@ -31,7 +31,7 @@ export class InvalidConversionError extends Error {
   }
 }
 
-/** Creates a conversion record and rebuilds the derived balance cache atomically. */
+/** Creates a conversion record, rebuilds balances, and queues sync intent atomically. */
 export async function createConversion(
   draft: ConversionDraft,
   database: TapTrackDatabase = db,
@@ -77,10 +77,13 @@ export async function createConversion(
 
   await database.transaction(
     'rw',
-    database.transactions,
-    database.conversions,
-    database.balanceCheckpoints,
-    database.balances,
+    [
+      database.transactions,
+      database.conversions,
+      database.balanceCheckpoints,
+      database.balances,
+      database.syncOutbox,
+    ],
     async () => {
       const sourceId = getBalanceId(draft.fromCurrency, draft.fromMethod);
       const previousSource = await database.balances.get(sourceId);
@@ -95,9 +98,15 @@ export async function createConversion(
           previousSource?.amount ?? 0
         );
       }
+
+      await queueRecordForSync(
+        'conversions',
+        conversion as unknown as Record<string, unknown>,
+        database
+      );
     }
   );
 
-  void pushRecord('conversions', conversion as unknown as Record<string, unknown>, database);
+  void flushSyncQueueBestEffort(database);
   return conversion;
 }
