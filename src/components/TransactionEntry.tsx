@@ -62,10 +62,10 @@ export function TransactionEntry({
             ))}
           </div>
           <Link
-            href="/app/transactions?add=1"
+            href="/app/transactions"
             className="flex min-h-11 items-center px-2 text-xs font-semibold text-accent hover:underline"
           >
-            Detailed
+            Full editor
           </Link>
         </div>
       </div>
