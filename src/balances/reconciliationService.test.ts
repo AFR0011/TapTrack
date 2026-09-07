@@ -70,6 +70,13 @@ describe('monthly balance reconciliation', () => {
       deltaAmount: -30,
     });
 
+    const checkpointIds = new Set(checkpoints.map((checkpoint) => checkpoint.id));
+    const queuedCheckpoints = (await database.syncOutbox.toArray()).filter(
+      (item) => item.tableName === 'balanceCheckpoints' && checkpointIds.has(item.recordId)
+    );
+    expect(queuedCheckpoints).toHaveLength(6);
+    expect(queuedCheckpoints.every((item) => item.operation === 'upsert')).toBe(true);
+
     const after = await getMonthlyReconciliationState('2026-06', database);
     expect(after.required).toBe(false);
     expect(after.completedBalanceIds).toHaveLength(6);
