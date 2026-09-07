@@ -15,6 +15,7 @@ import {
   type LedgerLinkPlan,
 } from '@/sync/syncBinding';
 import { pullUpdates, pushLocalChanges, pushRecord } from '@/sync/syncService';
+import type { Category } from '@/types';
 
 type CanonicalTableName =
   | 'transactions'
@@ -151,7 +152,7 @@ async function replaceLocalCanonicalSnapshot(
     .filter((id) => !cloudCategoryIds.has(id));
   const repairedCategories = (
     await Promise.all(missingDefaultIds.map((id) => database.categories.get(id)))
-  ).filter((category): category is NonNullable<typeof category> => Boolean(category));
+  ).filter((category): category is Category => category !== undefined);
 
   return {
     settings: synthesizedSettings,
