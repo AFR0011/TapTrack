@@ -4,7 +4,11 @@ import { getAutomaticOccurredAt } from '@/dates';
 import { rebuildDerivedBalances } from '@/balances/ledgerService';
 import { getInsufficientBalanceMessage, getTransactionBalanceDelta } from '@/balances/balanceEffects';
 import type { Settings, Transaction, TransactionDraft } from '@/types';
-import { deleteRecord, pushRecord } from '@/sync/syncService';
+import {
+  flushSyncQueueBestEffort,
+  queueDeleteForSync,
+  queueRecordForSync,
+} from '@/sync/syncService';
 
 export class InsufficientBalanceError extends Error {
   readonly code = 'INSUFFICIENT_BALANCE';
@@ -36,8 +40,6 @@ export async function createTransaction(
     updatedAt: now,
   };
 
-  let updatedSettings: Settings | null = null;
-
   await database.transaction(
     'rw',
     [
@@ -46,6 +48,7 @@ export async function createTransaction(
       database.balanceCheckpoints,
       database.balances,
       database.settings,
+      database.syncOutbox,
     ],
     async () => {
       const previousBalance = await database.balances.get(getBalanceId(input.currency, input.method));
@@ -65,20 +68,27 @@ export async function createTransaction(
 
       const settings =
         (await database.settings.get(DEFAULT_SETTINGS_ID)) ?? createDefaultSettings(now);
-      updatedSettings = {
+      const updatedSettings: Settings = {
         ...settings,
         lastUsedMethod: input.method,
         updatedAt: now,
       };
       await database.settings.put(updatedSettings);
+
+      await queueRecordForSync(
+        'transactions',
+        transaction as unknown as Record<string, unknown>,
+        database
+      );
+      await queueRecordForSync(
+        'settings',
+        updatedSettings as unknown as Record<string, unknown>,
+        database
+      );
     }
   );
 
-  void pushRecord('transactions', transaction as unknown as Record<string, unknown>, database);
-  if (updatedSettings) {
-    void pushRecord('settings', updatedSettings as unknown as Record<string, unknown>, database);
-  }
-
+  void flushSyncQueueBestEffort(database);
   return transaction;
 }
 
@@ -92,7 +102,6 @@ export async function updateTransaction(
   const nowDate = new Date();
   const now = nowDate.toISOString();
   let updatedTransaction: Transaction | null = null;
-  let updatedSettings: Settings | null = null;
 
   await database.transaction(
     'rw',
@@ -102,6 +111,7 @@ export async function updateTransaction(
       database.balanceCheckpoints,
       database.balances,
       database.settings,
+      database.syncOutbox,
     ],
     async () => {
       const existingTransaction = await database.transactions.get(id);
@@ -139,22 +149,29 @@ export async function updateTransaction(
       updatedTransaction = nextTransaction;
       const settings =
         (await database.settings.get(DEFAULT_SETTINGS_ID)) ?? createDefaultSettings(now);
-      updatedSettings = {
+      const updatedSettings: Settings = {
         ...settings,
         lastUsedMethod: input.method,
         updatedAt: now,
       };
       await database.settings.put(updatedSettings);
+
+      await queueRecordForSync(
+        'transactions',
+        nextTransaction as unknown as Record<string, unknown>,
+        database
+      );
+      await queueRecordForSync(
+        'settings',
+        updatedSettings as unknown as Record<string, unknown>,
+        database
+      );
     }
   );
 
   if (!updatedTransaction) throw new Error('Transaction was not updated');
 
-  void pushRecord('transactions', updatedTransaction as unknown as Record<string, unknown>, database);
-  if (updatedSettings) {
-    void pushRecord('settings', updatedSettings as unknown as Record<string, unknown>, database);
-  }
-
+  void flushSyncQueueBestEffort(database);
   return updatedTransaction;
 }
 
@@ -172,6 +189,7 @@ export async function deleteTransaction(
     database.conversions,
     database.balanceCheckpoints,
     database.balances,
+    database.syncOutbox,
     async () => {
       const transaction = await database.transactions.get(id);
       if (!transaction) throw new Error('Transaction not found');
@@ -189,10 +207,12 @@ export async function deleteTransaction(
           previousBalance?.amount ?? 0
         );
       }
+
+      await queueDeleteForSync('transactions', id, database);
     }
   );
 
-  void deleteRecord('transactions', id, database);
+  void flushSyncQueueBestEffort(database);
 }
 
 /** Creates multiple transactions atomically and rebuilds all derived balances once. */
@@ -214,7 +234,6 @@ export async function createTransactions(
     createdAt: now,
     updatedAt: now,
   }));
-  let updatedSettings: Settings | null = null;
 
   await database.transaction(
     'rw',
@@ -224,6 +243,7 @@ export async function createTransactions(
       database.balanceCheckpoints,
       database.balances,
       database.settings,
+      database.syncOutbox,
     ],
     async () => {
       const previousBalances = new Map(
@@ -243,21 +263,28 @@ export async function createTransactions(
       const lastInput = inputs.at(-1)!;
       const settings =
         (await database.settings.get(DEFAULT_SETTINGS_ID)) ?? createDefaultSettings(now);
-      updatedSettings = {
+      const updatedSettings: Settings = {
         ...settings,
         lastUsedMethod: lastInput.method,
         updatedAt: now,
       };
       await database.settings.put(updatedSettings);
+
+      for (const transaction of transactions) {
+        await queueRecordForSync(
+          'transactions',
+          transaction as unknown as Record<string, unknown>,
+          database
+        );
+      }
+      await queueRecordForSync(
+        'settings',
+        updatedSettings as unknown as Record<string, unknown>,
+        database
+      );
     }
   );
 
-  for (const transaction of transactions) {
-    void pushRecord('transactions', transaction as unknown as Record<string, unknown>, database);
-  }
-  if (updatedSettings) {
-    void pushRecord('settings', updatedSettings as unknown as Record<string, unknown>, database);
-  }
-
+  void flushSyncQueueBestEffort(database);
   return transactions;
 }
