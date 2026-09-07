@@ -17,6 +17,11 @@ export interface Transaction {
   categoryId: string;
   method: Method;
   date: string;
+  /**
+   * Exact occurrence ordering when known. New same-day activity records this
+   * automatically. Older/historical rows may omit it until ordering matters.
+   */
+  occurredAt?: string;
   note?: string;
   createdAt: string;
   updatedAt: string;
@@ -115,6 +120,8 @@ export interface Conversion {
   fromAmount: number;
   toAmount: number;
   date: string;
+  /** See Transaction.occurredAt. */
+  occurredAt?: string;
   note?: string;
   createdAt: string;
   updatedAt?: string;
