@@ -89,14 +89,16 @@ export function getInitialNextRunDate(startDate: string, currentDate = new Date(
 }
 
 export function calculateNextRunDate(
-  recurring: Pick<RecurringTransaction, 'frequency' | 'nextRunDate'>,
+  recurring: Pick<RecurringTransaction, 'frequency' | 'nextRunDate'> &
+    Partial<Pick<RecurringTransaction, 'startDate'>>,
   currentDate: Date = new Date()
 ): string {
   const currentDay = parseLocalDate(formatLocalDate(currentDate));
+  const anchorDate = parseLocalDate(recurring.startDate ?? recurring.nextRunDate);
   let nextDate = parseLocalDate(recurring.nextRunDate);
 
   do {
-    nextDate = addFrequency(nextDate, recurring.frequency);
+    nextDate = addFrequency(nextDate, recurring.frequency, anchorDate);
   } while (nextDate <= currentDay);
 
   return formatLocalDate(nextDate);
@@ -116,6 +118,7 @@ export async function createDueRecurringTransactions(
     let nextRunDate = recurring.nextRunDate;
     let safety = 0;
     const endDate = recurring.endDate;
+    const anchorDate = parseLocalDate(recurring.startDate);
 
     if (endDate && nextRunDate > endDate) {
       await updateRecurringTransaction(recurring.id, { isActive: false }, database);
@@ -158,7 +161,9 @@ export async function createDueRecurringTransactions(
         }
       }
 
-      nextRunDate = formatLocalDate(addFrequency(parseLocalDate(nextRunDate), recurring.frequency));
+      nextRunDate = formatLocalDate(
+        addFrequency(parseLocalDate(nextRunDate), recurring.frequency, anchorDate)
+      );
       const updates: Partial<RecurringTransaction> = { nextRunDate };
       if (endDate && nextRunDate > endDate) updates.isActive = false;
       await updateRecurringTransaction(recurring.id, updates, database);
