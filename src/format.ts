@@ -5,7 +5,10 @@ export function formatMoney(amount: number, currency: Currency | 'TRY' = 'TRY') 
 }
 
 export function parseAmountInput(value: string) {
-  const parsed = Number.parseFloat(value.replace(',', '.'));
+  const normalized = value.trim().replace(',', '.');
+  if (!/^(?:\d+(?:\.\d*)?|\.\d+)$/.test(normalized)) return 0;
+
+  const parsed = Number(normalized);
   return Number.isFinite(parsed) && parsed > 0 ? parsed : 0;
 }
 
