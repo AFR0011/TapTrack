@@ -1,5 +1,5 @@
 const CACHE_PREFIX = 'taptrack-shell-';
-const CACHE_NAME = `${CACHE_PREFIX}2026-09-07-v6`;
+const CACHE_NAME = `${CACHE_PREFIX}2026-09-07-v7`;
 const APP_ROUTES = [
   '/app',
   '/app/transactions',
@@ -16,15 +16,10 @@ const STATIC_SHELL_ASSETS = [
 ];
 
 self.addEventListener('install', (event) => {
-  // Do not call skipWaiting(). A newly installed worker should not replace an
-  // already-running Next.js client mid-session. It will control a subsequent
-  // navigation/reload after activation instead.
   event.waitUntil(cacheAppShell());
 });
 
 self.addEventListener('activate', (event) => {
-  // Do not call clients.claim(). Taking control of an already-hydrated Next.js
-  // page can change its fetch environment underneath the running router.
   event.waitUntil(
     caches.keys().then((keys) =>
       Promise.all(
@@ -89,13 +84,14 @@ function extractNextStaticAssetUrls(html) {
   return [...urls];
 }
 
-async function networkWithPrecachedFallback(request, fallbackRequest = request) {
-  try {
-    return await fetch(request);
-  } catch {
-    const cache = await caches.open(CACHE_NAME);
-    return (await cache.match(fallbackRequest)) ?? Response.error();
+async function precachedResponse(request, fallbackToApp = false) {
+  const cache = await caches.open(CACHE_NAME);
+  const matched = await cache.match(request);
+  if (matched) return matched;
+  if (fallbackToApp) {
+    return (await cache.match(new Request(`${self.location.origin}/app`))) ?? Response.error();
   }
+  return Response.error();
 }
 
 self.addEventListener('fetch', (event) => {
@@ -106,20 +102,19 @@ self.addEventListener('fetch', (event) => {
   if (url.origin !== self.location.origin) return;
   if (url.pathname.startsWith('/api/') || url.pathname.startsWith('/auth/')) return;
 
+  // Do not proxy healthy Next.js traffic through the service worker. Next 16's
+  // App Router/Turbopack runtime is sensitive to a generic worker fetch layer,
+  // even when that layer simply forwards fetch(request). The worker exists as
+  // an offline shell only: online requests use the browser/network unchanged.
+  if (self.navigator.onLine !== false) return;
+
   if (request.mode === 'navigate') {
-    const canonicalRequest = canonicalRouteRequest(request);
-    event.respondWith(
-      networkWithPrecachedFallback(request, canonicalRequest).then(async (response) => {
-        if (response.type !== 'error') return response;
-        const cache = await caches.open(CACHE_NAME);
-        return (await cache.match(new Request(`${url.origin}/app`))) ?? response;
-      })
-    );
+    event.respondWith(precachedResponse(canonicalRouteRequest(request), true));
     return;
   }
 
   if (url.pathname.startsWith('/_next/static/')) {
-    event.respondWith(networkWithPrecachedFallback(request));
+    event.respondWith(precachedResponse(request));
     return;
   }
 
@@ -129,6 +124,5 @@ self.addEventListener('fetch', (event) => {
     ['font', 'image'].includes(request.destination);
 
   if (!cacheableStatic) return;
-
-  event.respondWith(networkWithPrecachedFallback(request));
+  event.respondWith(precachedResponse(request));
 });
