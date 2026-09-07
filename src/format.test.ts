@@ -9,12 +9,16 @@ describe('format helpers', () => {
   it('parses decimal inputs with dot or comma', () => {
     expect(parseAmountInput('12.5')).toBe(12.5);
     expect(parseAmountInput('12,5')).toBe(12.5);
+    expect(parseAmountInput('  .5  ')).toBe(0.5);
   });
 
-  it('normalizes invalid or non-positive values to 0', () => {
+  it('normalizes invalid, partial, or non-positive values to 0', () => {
     expect(parseAmountInput('')).toBe(0);
     expect(parseAmountInput('-1')).toBe(0);
     expect(parseAmountInput('abc')).toBe(0);
+    expect(parseAmountInput('123abc')).toBe(0);
+    expect(parseAmountInput('12.5junk')).toBe(0);
+    expect(parseAmountInput('1,2,3')).toBe(0);
   });
 
   it('clamps percent between 0 and 100', () => {
