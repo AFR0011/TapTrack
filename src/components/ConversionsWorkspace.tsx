@@ -1,6 +1,6 @@
 'use client';
 
-import { useMemo, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import { AnimatePresence, motion } from 'framer-motion';
 import { useLiveQuery } from 'dexie-react-hooks';
 import { db } from '@/database';
@@ -12,6 +12,10 @@ import {
   InsufficientConversionBalanceError,
   type ConversionDraft,
 } from '@/conversions/conversionService';
+import {
+  fetchHistoricalExchangeRate,
+  type HistoricalExchangeRateResponse,
+} from '@/exchangeRates';
 import { SUPPORTED_CURRENCIES, SUPPORTED_METHODS, type Currency, type Method } from '@/types';
 import { Button } from '@/components/ui/Button';
 import { Card, CardHeader } from '@/components/ui/Card';
@@ -38,11 +42,13 @@ export default function ConversionsWorkspace() {
   const [fromAmountRaw, setFromAmountRaw] = useState('');
   const [toCurrency, setToCurrency] = useState<Currency>('TRY');
   const [toMethod, setToMethod] = useState<Method>('card');
-  const [toAmountRaw, setToAmountRaw] = useState('');
   const [date, setDate] = useState(today);
   const [note, setNote] = useState('');
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState('');
+  const [exchangeRate, setExchangeRate] = useState<HistoricalExchangeRateResponse | null>(null);
+  const [rateLoading, setRateLoading] = useState(false);
+  const [rateError, setRateError] = useState('');
 
   const balances = useLiveQuery(() => db.balances.toArray());
   const conversions = useLiveQuery(() => db.conversions.orderBy('date').reverse().limit(30).toArray());
@@ -54,22 +60,71 @@ export default function ConversionsWorkspace() {
   );
 
   const fromAmount = parseAmountInput(fromAmountRaw);
-  const toAmount = parseAmountInput(toAmountRaw);
-
   const opKind: OpKind = fromCurrency !== toCurrency ? 'exchange' : 'transfer';
+
+  useEffect(() => {
+    if (opKind !== 'exchange') {
+      setExchangeRate(null);
+      setRateError('');
+      setRateLoading(false);
+      return;
+    }
+
+    const controller = new AbortController();
+    setExchangeRate(null);
+    setRateError('');
+    setRateLoading(true);
+
+    void fetchHistoricalExchangeRate({
+      base: fromCurrency,
+      quote: toCurrency,
+      date,
+      signal: controller.signal,
+    })
+      .then((rate) => {
+        if (!controller.signal.aborted) setExchangeRate(rate);
+      })
+      .catch((err: unknown) => {
+        if (controller.signal.aborted) return;
+        setRateError(err instanceof Error ? err.message : 'Exchange rate could not be loaded.');
+      })
+      .finally(() => {
+        if (!controller.signal.aborted) setRateLoading(false);
+      });
+
+    return () => controller.abort();
+  }, [date, fromCurrency, opKind, toCurrency]);
+
+  const toAmount =
+    opKind === 'transfer'
+      ? fromAmount
+      : exchangeRate && fromAmount > 0
+        ? roundCurrencyAmount(fromAmount * exchangeRate.rate)
+        : 0;
+  const calculatedToAmountRaw = fromAmount > 0 && toAmount > 0 ? toAmount.toFixed(2) : '';
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     setError('');
 
-    if (fromAmount <= 0) { setError('Enter a valid "from" amount.'); return; }
-    if (toAmount <= 0) { setError('Enter a valid "to" amount.'); return; }
-    if (opKind === 'transfer' && fromMethod === toMethod) {
-      setError('Source and destination method must differ for a transfer (e.g. card → cash).');
+    if (fromAmount <= 0) {
+      setError('Enter a valid "from" amount.');
       return;
     }
-    if (opKind === 'transfer' && Math.abs(fromAmount - toAmount) > 0.000001) {
-      setError('For same-currency transfers, "from" and "to" amounts must match.');
+    if (opKind === 'exchange' && rateLoading) {
+      setError('The historical exchange rate is still loading.');
+      return;
+    }
+    if (opKind === 'exchange' && !exchangeRate) {
+      setError(rateError || 'A published exchange rate is required before saving.');
+      return;
+    }
+    if (toAmount <= 0) {
+      setError('The calculated destination amount is not valid.');
+      return;
+    }
+    if (opKind === 'transfer' && fromMethod === toMethod) {
+      setError('Source and destination method must differ for a transfer (e.g. card → cash).');
       return;
     }
 
@@ -89,7 +144,6 @@ export default function ConversionsWorkspace() {
       await createConversion(draft);
       toast.success(opKind === 'exchange' ? 'Exchange recorded.' : 'Transfer recorded.');
       setFromAmountRaw('');
-      setToAmountRaw('');
       setNote('');
     } catch (err) {
       setError(
@@ -105,11 +159,6 @@ export default function ConversionsWorkspace() {
   const fromBalanceId = `${fromCurrency}-${fromMethod}`;
   const toBalanceId = `${toCurrency}-${toMethod}`;
   const fromAvailable = balanceMap.get(fromBalanceId) ?? 0;
-
-  const impliedRate =
-    opKind === 'exchange' && fromAmount > 0 && toAmount > 0
-      ? toAmount / fromAmount
-      : null;
 
   if (isLoading) {
     return (
@@ -175,12 +224,11 @@ export default function ConversionsWorkspace() {
               <legend className="px-1 text-sm font-semibold text-secondary">To</legend>
               <div className="grid grid-cols-1 gap-3 sm:grid-cols-[minmax(0,1fr)_96px_96px]">
                 <Field
-                  label="Amount"
+                  label={opKind === 'exchange' ? 'Calculated amount' : 'Amount'}
                   inputMode="decimal"
-                  value={toAmountRaw}
-                  onChange={(e) => setToAmountRaw(e.target.value)}
-                  placeholder="0.00"
-                  required
+                  value={calculatedToAmountRaw}
+                  placeholder={rateLoading ? 'Loading rate…' : '0.00'}
+                  readOnly
                   disabled={saving}
                   autoComplete="off"
                 />
@@ -202,11 +250,17 @@ export default function ConversionsWorkspace() {
                   }))}
                 />
               </div>
-              {impliedRate !== null ? (
-                <p className="text-xs font-medium text-ai">
-                  Implied rate: 1 {fromCurrency} = {impliedRate.toFixed(4)} {toCurrency}
+              {opKind === 'exchange' ? (
+                <ExchangeRateStatus
+                  rate={exchangeRate}
+                  loading={rateLoading}
+                  error={rateError}
+                />
+              ) : (
+                <p className="text-xs font-medium text-muted">
+                  Same-currency transfers move the exact source amount 1:1.
                 </p>
-              ) : null}
+              )}
             </fieldset>
 
             <div className="grid gap-3 sm:grid-cols-2">
@@ -214,6 +268,7 @@ export default function ConversionsWorkspace() {
                 label="Date"
                 type="date"
                 value={date}
+                max={today}
                 onChange={(e) => setDate(e.target.value)}
                 required
                 disabled={saving}
@@ -246,7 +301,7 @@ export default function ConversionsWorkspace() {
               type="submit"
               fullWidth
               loading={saving}
-              disabled={saving || fromAmount <= 0 || toAmount <= 0}
+              disabled={saving || rateLoading || fromAmount <= 0 || toAmount <= 0}
               className="leading-tight"
             >
               {opKind === 'exchange'
@@ -337,6 +392,37 @@ export default function ConversionsWorkspace() {
       </Card>
     </div>
   );
+}
+
+function ExchangeRateStatus({
+  rate,
+  loading,
+  error,
+}: {
+  rate: HistoricalExchangeRateResponse | null;
+  loading: boolean;
+  error: string;
+}) {
+  if (loading) {
+    return <p className="text-xs font-medium text-muted">Loading the published rate for this date…</p>;
+  }
+  if (error) {
+    return <p className="text-xs font-medium text-danger">{error}</p>;
+  }
+  if (!rate) return null;
+
+  return (
+    <p className="text-xs font-medium text-ai">
+      1 {rate.base} = {rate.rate.toFixed(6)} {rate.quote} · {rate.source}
+      {rate.dateUsed !== rate.dateRequested
+        ? ` · no rate was published on ${rate.dateRequested}; using ${rate.dateUsed}`
+        : ` · ${rate.dateUsed}`}
+    </p>
+  );
+}
+
+function roundCurrencyAmount(value: number) {
+  return Math.round((value + Number.EPSILON) * 100) / 100;
 }
 
 function TransferDivider() {
