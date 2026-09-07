@@ -1,7 +1,8 @@
 const CACHE_PREFIX = 'taptrack-shell-';
-const CACHE_NAME = `${CACHE_PREFIX}2026-09-07-v7`;
+const CACHE_NAME = `${CACHE_PREFIX}2026-09-07-v8`;
 const APP_ROUTES = [
   '/app',
+  '/app/add',
   '/app/transactions',
   '/app/conversions',
   '/app/budgets',
@@ -102,10 +103,6 @@ self.addEventListener('fetch', (event) => {
   if (url.origin !== self.location.origin) return;
   if (url.pathname.startsWith('/api/') || url.pathname.startsWith('/auth/')) return;
 
-  // Do not proxy healthy Next.js traffic through the service worker. Next 16's
-  // App Router/Turbopack runtime is sensitive to a generic worker fetch layer,
-  // even when that layer simply forwards fetch(request). The worker exists as
-  // an offline shell only: online requests use the browser/network unchanged.
   if (self.navigator.onLine !== false) return;
 
   if (request.mode === 'navigate') {
