@@ -23,7 +23,9 @@ export default function LoginPage() {
   useEffect(() => {
     const authState = new URLSearchParams(window.location.search).get('auth');
     if (authState === 'confirmation-failed') {
-      setError('Email confirmation could not be completed. Please try the confirmation link again or sign in.');
+      queueMicrotask(() => {
+        setError('Email confirmation could not be completed. Please try the confirmation link again or sign in.');
+      });
     }
   }, []);
 
