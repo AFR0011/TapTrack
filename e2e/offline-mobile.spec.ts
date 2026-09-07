@@ -32,16 +32,16 @@ async function assertMobileLayout(page: Page) {
   expect(hasHorizontalOverflow).toBe(false);
 }
 
-async function getOfflineDiagnostics(page: Page) {
+async function getRouteDiagnostics(page: Page) {
   return page.evaluate(async () => {
     const registrations = await navigator.serviceWorker.getRegistrations();
     const keys = await caches.keys();
     const cacheEntries = Object.fromEntries(
       await Promise.all(
-        keys.map(async (key) => [
-          key,
-          (await caches.open(key)).keys().then((requests) => requests.map((request) => request.url)),
-        ])
+        keys.map(async (key) => {
+          const requests = await (await caches.open(key)).keys();
+          return [key, requests.map((request) => request.url)] as const;
+        })
       )
     );
 
@@ -64,15 +64,21 @@ async function getOfflineDiagnostics(page: Page) {
   });
 }
 
-async function expectOfflineHeading(page: Page, heading: string) {
+async function expectHeadingWithDiagnostics(
+  page: Page,
+  heading: string,
+  phase: string,
+  pageErrors: string[]
+) {
   try {
     await expect(page.getByRole('heading', { name: heading, exact: true })).toBeVisible();
   } catch (error) {
-    const diagnostics = await getOfflineDiagnostics(page);
+    const diagnostics = await getRouteDiagnostics(page);
     throw new Error(
-      `Offline route did not render heading "${heading}". Diagnostics: ${JSON.stringify(diagnostics)}\n${
-        error instanceof Error ? error.message : String(error)
-      }`
+      `${phase} did not render heading "${heading}". Diagnostics: ${JSON.stringify({
+        ...diagnostics,
+        pageErrors,
+      })}\n${error instanceof Error ? error.message : String(error)}`
     );
   }
 }
@@ -93,7 +99,7 @@ test('device-local ledger works across warmed offline mobile routes', async ({ p
   await expect(page.getByRole('heading', { name: 'Welcome to TapTrack' })).toBeVisible();
   await page.getByLabel('TRY cash').fill('1000');
   await page.getByRole('button', { name: 'Start tracking' }).click();
-  await expect(page.getByRole('heading', { name: 'Dashboard' })).toBeVisible();
+  await expectHeadingWithDiagnostics(page, 'Dashboard', 'Post-setup app state', pageErrors);
 
   await page.evaluate(async () => {
     await navigator.serviceWorker.ready;
@@ -106,7 +112,7 @@ test('device-local ledger works across warmed offline mobile routes', async ({ p
 
   for (const route of CORE_ROUTES) {
     await page.goto(route.path);
-    await expect(page.getByRole('heading', { name: route.heading, exact: true })).toBeVisible();
+    await expectHeadingWithDiagnostics(page, route.heading, `Warmed route ${route.path}`, pageErrors);
     await assertMobileLayout(page);
   }
 
@@ -130,7 +136,7 @@ test('device-local ledger works across warmed offline mobile routes', async ({ p
 
   for (const route of CORE_ROUTES) {
     await page.goto(route.path);
-    await expectOfflineHeading(page, route.heading);
+    await expectHeadingWithDiagnostics(page, route.heading, `Offline route ${route.path}`, pageErrors);
     await assertMobileLayout(page);
   }
 
@@ -140,7 +146,7 @@ test('device-local ledger works across warmed offline mobile routes', async ({ p
   await page.getByRole('button', { name: 'Save', exact: true }).click();
   await expect(page.getByText('offlinecheck', { exact: true }).last()).toBeVisible();
   await page.reload();
-  await expectOfflineHeading(page, 'Dashboard');
+  await expectHeadingWithDiagnostics(page, 'Dashboard', 'Offline reload', pageErrors);
   await expect(page.getByText('offlinecheck', { exact: true })).toBeVisible();
 
   expect(externalRequests).toEqual([]);
