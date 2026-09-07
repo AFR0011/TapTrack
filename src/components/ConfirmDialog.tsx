@@ -8,7 +8,11 @@ interface ConfirmDialogProps {
   title: string;
   message: string;
   confirmLabel?: string;
+  cancelLabel?: string;
   confirmVariant?: 'danger' | 'primary';
+  confirmDisabled?: boolean;
+  confirmLoading?: boolean;
+  cancelDisabled?: boolean;
   onConfirm: () => void;
   onCancel: () => void;
   children?: ReactNode;
@@ -19,7 +23,11 @@ export function ConfirmDialog({
   title,
   message,
   confirmLabel = 'Confirm',
+  cancelLabel = 'Cancel',
   confirmVariant = 'primary',
+  confirmDisabled = false,
+  confirmLoading = false,
+  cancelDisabled = false,
   onConfirm,
   onCancel,
   children,
@@ -36,7 +44,7 @@ export function ConfirmDialog({
     cancelRef.current?.focus();
 
     const handleKeyDown = (event: KeyboardEvent) => {
-      if (event.key === 'Escape') {
+      if (event.key === 'Escape' && !cancelDisabled) {
         event.preventDefault();
         onCancel();
         return;
@@ -44,7 +52,7 @@ export function ConfirmDialog({
       if (event.key !== 'Tab') return;
 
       const focusableElements = panelRef.current?.querySelectorAll<HTMLElement>(
-        'button, [href], input, select, textarea, [tabindex]:not([tabindex="-1"])'
+        'button:not(:disabled), [href], input:not(:disabled), select:not(:disabled), textarea:not(:disabled), [tabindex]:not([tabindex="-1"])'
       );
       if (!focusableElements || focusableElements.length === 0) return;
 
@@ -64,7 +72,7 @@ export function ConfirmDialog({
       document.removeEventListener('keydown', handleKeyDown);
       previousActiveElement?.focus();
     };
-  }, [onCancel, open]);
+  }, [cancelDisabled, onCancel, open]);
 
   if (!open) return null;
 
@@ -72,7 +80,7 @@ export function ConfirmDialog({
     <div
       className="fixed inset-0 z-50 flex items-center justify-center bg-[var(--overlay)] p-4"
       onClick={(event) => {
-        if (event.target === event.currentTarget) onCancel();
+        if (event.target === event.currentTarget && !cancelDisabled) onCancel();
       }}
     >
       <div
@@ -87,10 +95,15 @@ export function ConfirmDialog({
         <p id={descriptionId} className="mt-2 text-sm font-medium text-secondary">{message}</p>
         {children}
         <div className="mt-5 flex justify-end gap-2">
-          <Button ref={cancelRef} variant="ghost" onClick={onCancel}>
-            Cancel
+          <Button ref={cancelRef} variant="ghost" onClick={onCancel} disabled={cancelDisabled}>
+            {cancelLabel}
           </Button>
-          <Button variant={confirmVariant === 'danger' ? 'danger' : 'primary'} onClick={onConfirm}>
+          <Button
+            variant={confirmVariant === 'danger' ? 'danger' : 'primary'}
+            onClick={onConfirm}
+            disabled={confirmDisabled || confirmLoading}
+            loading={confirmLoading}
+          >
             {confirmLabel}
           </Button>
         </div>
