@@ -1,6 +1,7 @@
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 import { TapTrackDatabase, ensureDatabaseSeeded } from '@/database';
 import { createTransaction } from '@/transactions/createTransaction';
+import { seedOpeningBalance } from '@/test/ledgerTestUtils';
 import { exportCSV, exportJSON, exportPDF, importJSON } from './exportService';
 import type { TransactionDraft } from '@/types';
 
@@ -27,7 +28,7 @@ const expense: TransactionDraft = {
 
 describe('exportService', () => {
   it('exports transaction CSV with headers', async () => {
-    await database.balances.update('TRY-cash', { amount: 200 });
+    await seedOpeningBalance(database, 'TRY-cash', 200);
     await createTransaction(expense, database);
 
     const csvData = await exportCSV(database);
@@ -37,7 +38,7 @@ describe('exportService', () => {
   });
 
   it('round-trips a full JSON backup', async () => {
-    await database.balances.update('TRY-cash', { amount: 200 });
+    await seedOpeningBalance(database, 'TRY-cash', 200);
     await createTransaction(expense, database);
 
     const backup = await exportJSON(database);
@@ -64,7 +65,7 @@ describe('exportService', () => {
   });
 
   it('exports a PDF blob with monthly report content', async () => {
-    await database.balances.update('TRY-cash', { amount: 200 });
+    await seedOpeningBalance(database, 'TRY-cash', 200);
     await createTransaction(expense, database);
 
     const pdf = await exportPDF('2026-05', database);
@@ -77,7 +78,7 @@ describe('exportService', () => {
   });
 
   it('exports a PDF blob for custom date ranges', async () => {
-    await database.balances.update('TRY-cash', { amount: 500 });
+    await seedOpeningBalance(database, 'TRY-cash', 500);
     await createTransaction(expense, database);
 
     const pdf = await exportPDF({ mode: 'range', startDate: '2026-05-01', endDate: '2026-05-31' }, database);
@@ -90,7 +91,7 @@ describe('exportService', () => {
   });
 
   it('exports a PDF blob for yearly summaries', async () => {
-    await database.balances.update('TRY-card', { amount: 1000 });
+    await seedOpeningBalance(database, 'TRY-card', 1000);
     await createTransaction(
       {
         type: 'income',
