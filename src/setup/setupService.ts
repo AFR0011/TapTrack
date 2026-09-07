@@ -58,6 +58,7 @@ export async function completeInitialSetup(
         deltaAmount: balance.amount,
         date,
         effectiveAt: now,
+        month,
         createdAt: now,
         updatedAt: now,
       }));
