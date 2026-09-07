@@ -147,9 +147,13 @@ export async function ensureDatabaseSeeded(database: TapTrackDatabase = db) {
   const now = new Date().toISOString();
 
   await database.transaction('rw', database.categories, database.balances, database.settings, async () => {
-    const categoryCount = await database.categories.count();
-    if (categoryCount === 0) {
-      await database.categories.bulkPut(createDefaultCategories(now));
+    const existingCategories = await database.categories.toArray();
+    const existingCategoryIds = new Set(existingCategories.map((category) => category.id));
+    const missingCategories = createDefaultCategories(now).filter(
+      (category) => !existingCategoryIds.has(category.id)
+    );
+    if (missingCategories.length > 0) {
+      await database.categories.bulkPut(missingCategories);
     }
 
     const existingBalances = await database.balances.toArray();
