@@ -3,6 +3,11 @@
 import { useEffect, useMemo, useState } from 'react';
 import { AnimatePresence, motion } from 'framer-motion';
 import { useLiveQuery } from 'dexie-react-hooks';
+import { AmbiguousLedgerOrderingError } from '@/balances/ledgerService';
+import {
+  resolveHistoricalOccurrenceAroundCheckpoint,
+  type HistoricalOrderingRelation,
+} from '@/balances/reconciliationService';
 import { db } from '@/database';
 import { formatLocalDate } from '@/dates';
 import { formatMoney, parseAmountInput } from '@/format';
@@ -35,6 +40,11 @@ type RateState = {
   error: string;
 };
 
+type PendingOrdering = {
+  draft: ConversionDraft;
+  checkpointId: string;
+};
+
 function kindLabel(draft: { fromCurrency: Currency; toCurrency: Currency; fromMethod: Method; toMethod: Method }): string {
   if (draft.fromCurrency !== draft.toCurrency) return 'Currency exchange';
   return 'Cash / card transfer';
@@ -52,6 +62,7 @@ export default function ConversionsWorkspace() {
   const [note, setNote] = useState('');
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState('');
+  const [pendingOrdering, setPendingOrdering] = useState<PendingOrdering | null>(null);
   const [rateState, setRateState] = useState<RateState>({
     requestKey: '',
     rate: null,
@@ -73,6 +84,11 @@ export default function ConversionsWorkspace() {
   const exchangeRate = rateState.requestKey === rateRequestKey ? rateState.rate : null;
   const rateError = rateState.requestKey === rateRequestKey ? rateState.error : '';
   const rateLoading = opKind === 'exchange' && rateState.requestKey !== rateRequestKey;
+
+  const clearPendingOrdering = () => {
+    setPendingOrdering(null);
+    setError('');
+  };
 
   useEffect(() => {
     if (opKind !== 'exchange') return;
@@ -110,9 +126,38 @@ export default function ConversionsWorkspace() {
         : 0;
   const calculatedToAmountRaw = fromAmount > 0 && toAmount > 0 ? toAmount.toFixed(2) : '';
 
+  const persistDraft = async (draft: ConversionDraft) => {
+    setSaving(true);
+    setError('');
+    try {
+      await createConversion(draft);
+      toast.success(
+        draft.fromCurrency !== draft.toCurrency ? 'Exchange recorded.' : 'Transfer recorded.'
+      );
+      setFromAmountRaw('');
+      setNote('');
+      setPendingOrdering(null);
+    } catch (err) {
+      if (err instanceof AmbiguousLedgerOrderingError) {
+        setPendingOrdering({ draft, checkpointId: err.checkpointId });
+        setError('This transfer or exchange is on the same date as a balance reconciliation. Choose when it happened.');
+      } else {
+        setPendingOrdering(null);
+        setError(
+          err instanceof InsufficientConversionBalanceError || err instanceof InvalidConversionError
+            ? err.message
+            : 'Could not save. Please try again.'
+        );
+      }
+    } finally {
+      setSaving(false);
+    }
+  };
+
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     setError('');
+    setPendingOrdering(null);
 
     if (fromAmount <= 0) {
       setError('Enter a valid "from" amount.');
@@ -146,21 +191,22 @@ export default function ConversionsWorkspace() {
       note: note.trim() || undefined,
     };
 
-    setSaving(true);
-    try {
-      await createConversion(draft);
-      toast.success(opKind === 'exchange' ? 'Exchange recorded.' : 'Transfer recorded.');
-      setFromAmountRaw('');
-      setNote('');
-    } catch (err) {
-      setError(
-        err instanceof InsufficientConversionBalanceError || err instanceof InvalidConversionError
-          ? err.message
-          : 'Could not save. Please try again.'
-      );
-    } finally {
-      setSaving(false);
+    await persistDraft(draft);
+  };
+
+  const resolveOrdering = async (relation: HistoricalOrderingRelation) => {
+    if (!pendingOrdering) return;
+    const checkpoint = await db.balanceCheckpoints.get(pendingOrdering.checkpointId);
+    if (!checkpoint) {
+      setError('The reconciliation checkpoint could not be found.');
+      setPendingOrdering(null);
+      return;
     }
+
+    await persistDraft({
+      ...pendingOrdering.draft,
+      occurredAt: resolveHistoricalOccurrenceAroundCheckpoint(checkpoint, relation),
+    });
   };
 
   const fromBalanceId = `${fromCurrency}-${fromMethod}`;
@@ -196,7 +242,10 @@ export default function ConversionsWorkspace() {
                   label="Amount"
                   inputMode="decimal"
                   value={fromAmountRaw}
-                  onChange={(e) => setFromAmountRaw(e.target.value)}
+                  onChange={(e) => {
+                    clearPendingOrdering();
+                    setFromAmountRaw(e.target.value);
+                  }}
                   placeholder="0.00"
                   required
                   disabled={saving}
@@ -205,14 +254,20 @@ export default function ConversionsWorkspace() {
                 <SelectField
                   label="Currency"
                   value={fromCurrency}
-                  onChange={(e) => setFromCurrency(e.target.value as Currency)}
+                  onChange={(e) => {
+                    clearPendingOrdering();
+                    setFromCurrency(e.target.value as Currency);
+                  }}
                   disabled={saving}
                   options={SUPPORTED_CURRENCIES}
                 />
                 <SelectField
                   label="Method"
                   value={fromMethod}
-                  onChange={(e) => setFromMethod(e.target.value as Method)}
+                  onChange={(e) => {
+                    clearPendingOrdering();
+                    setFromMethod(e.target.value as Method);
+                  }}
                   disabled={saving}
                   options={SUPPORTED_METHODS.map((method) => ({
                     value: method,
@@ -242,14 +297,20 @@ export default function ConversionsWorkspace() {
                 <SelectField
                   label="Currency"
                   value={toCurrency}
-                  onChange={(e) => setToCurrency(e.target.value as Currency)}
+                  onChange={(e) => {
+                    clearPendingOrdering();
+                    setToCurrency(e.target.value as Currency);
+                  }}
                   disabled={saving}
                   options={SUPPORTED_CURRENCIES}
                 />
                 <SelectField
                   label="Method"
                   value={toMethod}
-                  onChange={(e) => setToMethod(e.target.value as Method)}
+                  onChange={(e) => {
+                    clearPendingOrdering();
+                    setToMethod(e.target.value as Method);
+                  }}
                   disabled={saving}
                   options={SUPPORTED_METHODS.map((method) => ({
                     value: method,
@@ -276,14 +337,20 @@ export default function ConversionsWorkspace() {
                 type="date"
                 value={date}
                 max={today}
-                onChange={(e) => setDate(e.target.value)}
+                onChange={(e) => {
+                  clearPendingOrdering();
+                  setDate(e.target.value);
+                }}
                 required
                 disabled={saving}
               />
               <Field
                 label="Note (optional)"
                 value={note}
-                onChange={(e) => setNote(e.target.value)}
+                onChange={(e) => {
+                  clearPendingOrdering();
+                  setNote(e.target.value);
+                }}
                 placeholder="ATM, Papara…"
                 disabled={saving}
               />
@@ -291,7 +358,7 @@ export default function ConversionsWorkspace() {
 
             <AnimatePresence>
               {error ? (
-                <motion.p
+                <motion.div
                   initial={{ opacity: 0, y: -4 }}
                   animate={{ opacity: 1, y: 0 }}
                   exit={{ opacity: 0 }}
@@ -299,8 +366,28 @@ export default function ConversionsWorkspace() {
                   aria-live="polite"
                   className="rounded-lg border border-danger bg-danger-muted px-3 py-2 text-sm font-medium text-danger"
                 >
-                  {error}
-                </motion.p>
+                  <p>{error}</p>
+                  {pendingOrdering ? (
+                    <div className="mt-3 flex flex-wrap gap-2">
+                      <Button
+                        type="button"
+                        variant="secondary"
+                        onClick={() => void resolveOrdering('before')}
+                        disabled={saving}
+                      >
+                        Before reconciliation
+                      </Button>
+                      <Button
+                        type="button"
+                        variant="secondary"
+                        onClick={() => void resolveOrdering('after')}
+                        disabled={saving}
+                      >
+                        After reconciliation
+                      </Button>
+                    </div>
+                  ) : null}
+                </motion.div>
               ) : null}
             </AnimatePresence>
 
