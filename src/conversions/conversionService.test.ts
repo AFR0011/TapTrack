@@ -50,6 +50,23 @@ describe('createConversion', () => {
     expect(await database.conversions.count()).toBe(0);
   });
 
+  it('rejects non-finite conversion amounts before touching balances', async () => {
+    const invalidDrafts: ConversionDraft[] = [
+      { ...baseDraft, fromAmount: Number.NaN },
+      { ...baseDraft, fromAmount: Number.POSITIVE_INFINITY },
+      { ...baseDraft, toAmount: Number.NaN },
+      { ...baseDraft, toAmount: Number.NEGATIVE_INFINITY },
+    ];
+
+    for (const draft of invalidDrafts) {
+      await expect(createConversion(draft, database)).rejects.toBeInstanceOf(
+        InvalidConversionError
+      );
+    }
+
+    expect(await database.conversions.count()).toBe(0);
+  });
+
   it('enforces valid same-currency transfer constraints', async () => {
     const invalidSameMethod: ConversionDraft = {
       ...baseDraft,
