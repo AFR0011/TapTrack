@@ -9,7 +9,9 @@ import { getCurrentMonth } from '@/dates';
 import { formatMoney } from '@/format';
 import { exportCSV, exportJSON, exportPDF, importJSON } from '@/exports/exportService';
 import { deleteCategory, updateCategory } from '@/budgets/budgetService';
+import { createCustomCategory } from '@/categories/categoryService';
 import { getAdjustmentHistory } from '@/balances/reconciliationService';
+import { updateSettingsPreferences } from '@/settings/settingsService';
 import {
   SUPPORTED_METHODS,
   type BalanceCheckpoint,
@@ -22,7 +24,6 @@ import { CloudLedgerLink } from './CloudLedgerLink';
 import { toast } from 'sonner';
 import {
   getSyncStatus,
-  pushRecord,
   syncNow,
   type SyncStatusSnapshot,
 } from '@/sync/syncService';
@@ -121,19 +122,12 @@ export default function SettingsWorkspace() {
 
   const addCategory = async () => {
     if (!categoryName.trim()) return;
-    const now = new Date().toISOString();
-    const category = {
-      id: `cat-${crypto.randomUUID()}`,
-      name: categoryName.trim(),
+    await createCustomCategory({
+      name: categoryName,
       color: categoryColor,
       icon: categoryIcon,
-      isDefault: false,
       type: categoryType,
-      createdAt: now,
-      updatedAt: now,
-    };
-    await db.categories.add(category);
-    void pushRecord('categories', category as unknown as Record<string, unknown>);
+    });
     setCategoryName('');
     setCategoryIcon('circle');
     toast.success('Category added.');
@@ -229,13 +223,7 @@ export default function SettingsWorkspace() {
 
   const handleChangeDefaultMethod = async (method: Method) => {
     if (!settings) return;
-    const updatedSettings = {
-      ...settings,
-      lastUsedMethod: method,
-      updatedAt: new Date().toISOString(),
-    };
-    await db.settings.put(updatedSettings);
-    void pushRecord('settings', updatedSettings as unknown as Record<string, unknown>);
+    await updateSettingsPreferences({ lastUsedMethod: method });
     toast.success('Default method updated.');
   };
 
@@ -249,26 +237,14 @@ export default function SettingsWorkspace() {
       return;
     }
 
-    const updatedSettings = {
-      ...settings,
-      aiCategorizationEnabled: next,
-      updatedAt: new Date().toISOString(),
-    };
-    await db.settings.put(updatedSettings);
-    void pushRecord('settings', updatedSettings as unknown as Record<string, unknown>);
+    await updateSettingsPreferences({ aiCategorizationEnabled: next });
     toast.success(next ? 'AI categorization enabled.' : 'AI categorization disabled.');
   };
 
   const handleToggleDarkMode = async () => {
     if (!settings) return;
     const next = !(settings.darkModeEnabled ?? false);
-    const updatedSettings = {
-      ...settings,
-      darkModeEnabled: next,
-      updatedAt: new Date().toISOString(),
-    };
-    await db.settings.put(updatedSettings);
-    void pushRecord('settings', updatedSettings as unknown as Record<string, unknown>);
+    await updateSettingsPreferences({ darkModeEnabled: next });
 
     const theme: ThemeMode = next ? 'dark' : 'light';
     setStoredTheme(theme);
