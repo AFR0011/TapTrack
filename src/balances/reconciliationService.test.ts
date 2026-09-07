@@ -45,6 +45,18 @@ describe('monthly balance reconciliation', () => {
     expect(state.completedBalanceIds).toHaveLength(6);
   });
 
+  it('remains a pure read when observed inside a Dexie read-only transaction', async () => {
+    const state = await database.transaction(
+      'r',
+      [database.settings, database.balances, database.balanceCheckpoints],
+      () => getMonthlyReconciliationState('2026-06', database)
+    );
+
+    expect(state.required).toBe(true);
+    expect(state.balances).toHaveLength(6);
+    expect(state.completedBalanceIds).toEqual([]);
+  });
+
   it('requires the first reconciliation of a new calendar month and completes all balances together', async () => {
     const before = await getMonthlyReconciliationState('2026-06', database);
     expect(before.required).toBe(true);
