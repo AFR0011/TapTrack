@@ -9,6 +9,7 @@ import type {
   MonthlyBudget,
   RecurringTransaction,
   Settings,
+  SyncOutboxItem,
   Transaction,
 } from '@/types';
 import {
@@ -31,6 +32,8 @@ export class TapTrackDatabase extends Dexie {
   conversions!: Table<Conversion, string>;
   settings!: Table<Settings, string>;
   deviceMetadata!: Table<DeviceMetadata, string>;
+  /** Device-local durable queue. Never synced as finance data itself. */
+  syncOutbox!: Table<SyncOutboxItem, string>;
 
   constructor(name = 'TapTrackDB') {
     super(name);
@@ -44,19 +47,12 @@ export class TapTrackDatabase extends Dexie {
       conversions: 'id, date, fromCurrency, toCurrency',
       settings: 'id',
     });
-    // Version 2: conversions gain fromMethod + toMethod (replaces single method field).
-    // No index change needed; Dexie will keep existing records as-is.
     this.version(2).stores({
       conversions: 'id, date, fromCurrency, toCurrency, fromMethod, toMethod',
     });
-    // Version 3 adds device-only metadata. It is intentionally excluded from
-    // finance sync, backup/import, and normal ledger reset.
     this.version(3).stores({
       deviceMetadata: 'id',
     });
-    // Version 4 introduces authoritative absolute balance checkpoints. Existing
-    // completed installations snapshot their current balance cache exactly once
-    // so the migration does not replay historical transactions on top of it.
     this.version(4)
       .stores({
         balanceCheckpoints: 'id, balanceId, kind, month, effectiveAt',
@@ -93,6 +89,53 @@ export class TapTrackDatabase extends Dexie {
         }));
 
         await checkpointTable.bulkPut(checkpoints);
+      });
+
+    // Version 5 replaces best-effort localStorage retries with a durable
+    // IndexedDB outbox. An already-linked pre-v5 device is the original ledger
+    // (older linking rejected accounts that already had cloud data), so its
+    // canonical rows are safely queued once for migration/backfill.
+    this.version(5)
+      .stores({
+        syncOutbox: 'id, tableName, recordId, operation, queuedAt',
+      })
+      .upgrade(async (transaction) => {
+        const binding = (await transaction.table('deviceMetadata').get('ledger-binding')) as
+          | DeviceMetadata
+          | undefined;
+        if (!binding) return;
+
+        const outbox = transaction.table('syncOutbox');
+        const tableNames = [
+          'transactions',
+          'balanceCheckpoints',
+          'categories',
+          'monthlyBudgets',
+          'categoryBudgets',
+          'recurringTransactions',
+          'conversions',
+          'settings',
+        ] as const;
+        const queuedAt = new Date().toISOString();
+
+        for (const tableName of tableNames) {
+          const rows = (await transaction.table(tableName).toArray()) as Array<
+            Record<string, unknown>
+          >;
+          for (const row of rows) {
+            if (typeof row.id !== 'string' || row.id.length === 0) continue;
+            const item: SyncOutboxItem = {
+              id: `${tableName}:${row.id}`,
+              tableName,
+              operation: 'upsert',
+              recordId: row.id,
+              record: row,
+              queuedAt,
+              attempts: 0,
+            };
+            await outbox.put(item);
+          }
+        }
       });
   }
 }
