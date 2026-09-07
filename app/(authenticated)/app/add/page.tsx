@@ -59,6 +59,14 @@ function CaptureContent() {
     [searchParams]
   );
 
+  const returnToDashboard = () => {
+    if (navigator.onLine === false) {
+      window.location.replace('/app');
+      return;
+    }
+    router.replace('/app');
+  };
+
   return (
     <div className="space-y-5">
       <div className="flex items-center justify-between gap-3">
@@ -68,6 +76,12 @@ function CaptureContent() {
         </div>
         <Link
           href="/app"
+          prefetch={false}
+          onClick={(event) => {
+            if (navigator.onLine !== false) return;
+            event.preventDefault();
+            window.location.assign('/app');
+          }}
           className="flex min-h-11 items-center rounded-lg px-3 text-sm font-semibold text-secondary hover:bg-surface-muted hover:text-primary"
         >
           Back
@@ -77,7 +91,7 @@ function CaptureContent() {
       <TransactionEntry
         initialMode={capture.mode}
         prefill={capture.prefill}
-        onSaved={() => router.replace('/app')}
+        onSaved={returnToDashboard}
       />
     </div>
   );
