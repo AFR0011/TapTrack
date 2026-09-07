@@ -14,14 +14,10 @@ export async function GET(request: NextRequest) {
   const code = requestUrl.searchParams.get('code');
   const tokenHash = requestUrl.searchParams.get('token_hash');
   const type = requestUrl.searchParams.get('type') as EmailOtpType | null;
-  const flowId = requestUrl.searchParams.get('sb_flow_id');
   const supabase = await createSupabaseServerClient();
 
   if (code) {
-    const { error } = await supabase.auth.exchangeCodeForSession(
-      code,
-      flowId ? { flowId } : undefined
-    );
+    const { error } = await supabase.auth.exchangeCodeForSession(code);
     return NextResponse.redirect(`${origin}${error ? AUTH_FAILURE_PATH : '/app'}`);
   }
 
