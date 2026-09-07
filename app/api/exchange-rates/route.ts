@@ -1,25 +1,18 @@
 import { NextRequest, NextResponse } from 'next/server';
+import {
+  EXCHANGE_RATE_SOURCE,
+  type HistoricalExchangeRateResponse,
+} from '@/exchangeRates';
 import type { Currency } from '@/types';
 
 const SUPPORTED = new Set<Currency>(['TRY', 'USD', 'EUR']);
 const MAX_LOOKBACK_DAYS = 14;
-const SOURCE = 'TCMB via Frankfurter';
 
 type FrankfurterRateResponse = {
   date?: string;
   base?: string;
   quote?: string;
   rate?: number;
-};
-
-export type HistoricalExchangeRateResponse = {
-  base: Currency;
-  quote: Currency;
-  dateRequested: string;
-  dateUsed: string;
-  rate: number;
-  source: typeof SOURCE;
-  status: 'historical' | 'prior-available';
 };
 
 export async function GET(request: NextRequest): Promise<NextResponse> {
@@ -42,7 +35,7 @@ export async function GET(request: NextRequest): Promise<NextResponse> {
         dateRequested,
         dateUsed: dateRequested,
         rate: 1,
-        source: SOURCE,
+        source: EXCHANGE_RATE_SOURCE,
         status: 'historical',
       } satisfies HistoricalExchangeRateResponse,
       { headers: cacheHeaders(dateRequested) }
@@ -75,7 +68,7 @@ export async function GET(request: NextRequest): Promise<NextResponse> {
         dateRequested,
         dateUsed,
         rate,
-        source: SOURCE,
+        source: EXCHANGE_RATE_SOURCE,
         status: dateUsed === dateRequested ? 'historical' : 'prior-available',
       };
 
