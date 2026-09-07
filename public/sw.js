@@ -1,5 +1,5 @@
 const CACHE_PREFIX = 'taptrack-shell-';
-const CACHE_NAME = `${CACHE_PREFIX}2026-09-07-v5`;
+const CACHE_NAME = `${CACHE_PREFIX}2026-09-07-v6`;
 const APP_ROUTES = [
   '/app',
   '/app/transactions',
@@ -16,21 +16,23 @@ const STATIC_SHELL_ASSETS = [
 ];
 
 self.addEventListener('install', (event) => {
-  event.waitUntil(cacheAppShell().then(() => self.skipWaiting()));
+  // Do not call skipWaiting(). A newly installed worker should not replace an
+  // already-running Next.js client mid-session. It will control a subsequent
+  // navigation/reload after activation instead.
+  event.waitUntil(cacheAppShell());
 });
 
 self.addEventListener('activate', (event) => {
+  // Do not call clients.claim(). Taking control of an already-hydrated Next.js
+  // page can change its fetch environment underneath the running router.
   event.waitUntil(
-    caches
-      .keys()
-      .then((keys) =>
-        Promise.all(
-          keys
-            .filter((key) => key.startsWith(CACHE_PREFIX) && key !== CACHE_NAME)
-            .map((key) => caches.delete(key))
-        )
+    caches.keys().then((keys) =>
+      Promise.all(
+        keys
+          .filter((key) => key.startsWith(CACHE_PREFIX) && key !== CACHE_NAME)
+          .map((key) => caches.delete(key))
       )
-      .then(() => self.clients.claim())
+    )
   );
 });
 
@@ -61,7 +63,10 @@ async function cacheNavigationResponse(cache, request, response) {
   await Promise.all(
     assetUrls.map(async (assetUrl) => {
       const absoluteUrl = new URL(assetUrl, self.location.origin);
-      if (absoluteUrl.origin !== self.location.origin || !absoluteUrl.pathname.startsWith('/_next/static/')) {
+      if (
+        absoluteUrl.origin !== self.location.origin ||
+        !absoluteUrl.pathname.startsWith('/_next/static/')
+      ) {
         return;
       }
 
