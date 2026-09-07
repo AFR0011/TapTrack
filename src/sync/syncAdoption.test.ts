@@ -15,6 +15,7 @@ vi.mock('@/sync/syncService', async () => {
   const actual = await vi.importActual<typeof import('@/sync/syncService')>('@/sync/syncService');
   return {
     ...actual,
+    pushRecord: vi.fn(),
     pushLocalChanges: vi.fn(),
     pullUpdates: vi.fn(),
   };
@@ -25,18 +26,23 @@ import {
   inspectDeviceLedgerLinkToCurrentUser,
   linkDeviceLedgerToCurrentUser,
 } from '@/sync/syncBinding';
-import { pullUpdates, pushLocalChanges } from '@/sync/syncService';
+import { pullUpdates, pushLocalChanges, pushRecord } from '@/sync/syncService';
 import { adoptCloudLedger, linkEmptyCloudLedger, mergeLocalLedgerIntoCloud } from './syncAdoption';
 
-function createCloudClient(options?: { failedTable?: string }) {
+type CloudClientOptions = {
+  failedTable?: string;
+  tableData?: Record<string, unknown[]>;
+};
+
+function createCloudClient(options: CloudClientOptions = {}) {
   return {
     from: vi.fn((tableName: string) => {
       const chain = {
         select: vi.fn(() => chain),
         eq: vi.fn(() => chain),
         is: vi.fn(async () => ({
-          data: [],
-          error: options?.failedTable === tableName ? { message: 'network read failed' } : null,
+          data: options.tableData?.[tableName] ?? [],
+          error: options.failedTable === tableName ? { message: 'network read failed' } : null,
         })),
       };
       return chain;
@@ -88,6 +94,69 @@ describe('cloud ledger adoption', () => {
     await expect(adoptCloudLedger(database)).rejects.toThrow('categories');
     await expect(database.transactions.get('local-transaction')).resolves.toBeDefined();
     expect(linkDeviceLedgerToCurrentUser).not.toHaveBeenCalled();
+  });
+
+  it('repairs only seed rows missing from a legacy cloud snapshot', async () => {
+    vi.mocked(createSupabaseBrowserClient).mockReturnValue(
+      createCloudClient({
+        tableData: {
+          transactions: [
+            {
+              user_id: 'user-1',
+              id: 'cloud-transaction',
+              type: 'expense',
+              amount: 25,
+              currency: 'TRY',
+              title: 'Cloud lunch',
+              category_id: 'cat-food',
+              method: 'card',
+              date: '2026-09-07',
+              occurred_at: '2026-09-07T12:00:00.000Z',
+              created_at: '2026-09-07T12:00:00.000Z',
+              updated_at: '2026-09-07T12:00:00.000Z',
+              deleted_at: null,
+            },
+          ],
+          categories: [
+            {
+              user_id: 'user-1',
+              id: 'cat-food',
+              name: 'Meals',
+              icon: 'utensils',
+              color: '#16a34a',
+              is_default: true,
+              type: 'expense',
+              created_at: '2026-09-01T00:00:00.000Z',
+              updated_at: '2026-09-02T00:00:00.000Z',
+              deleted_at: null,
+            },
+          ],
+          settings: [],
+        },
+      }) as never
+    );
+
+    await adoptCloudLedger(database);
+
+    expect(linkDeviceLedgerToCurrentUser).toHaveBeenCalledWith(database, 'use-cloud');
+    await expect(database.transactions.get('cloud-transaction')).resolves.toBeDefined();
+    await expect(database.categories.get('cat-food')).resolves.toMatchObject({ name: 'Meals' });
+    await expect(database.categories.get('cat-other')).resolves.toMatchObject({ name: 'Other' });
+    await expect(database.settings.get('default')).resolves.toMatchObject({ setupCompleted: true });
+
+    const repairedIds = vi.mocked(pushRecord).mock.calls.map(([, record]) => record.id);
+    expect(new Set(repairedIds)).toEqual(
+      new Set([
+        'cat-rent',
+        'cat-subscriptions',
+        'cat-fun',
+        'cat-other',
+        'cat-income',
+        'default',
+      ])
+    );
+    expect(repairedIds).not.toContain('cat-food');
+    expect(repairedIds).not.toContain('cloud-transaction');
   });
 
   it('uses explicit merge mode before pushing and pulling', async () => {
