@@ -3,7 +3,7 @@ import { db, ensureDatabaseSeeded, type TapTrackDatabase } from '@/database';
 import { getAutomaticOccurredAt } from '@/dates';
 import { rebuildDerivedBalances } from '@/balances/ledgerService';
 import { getInsufficientBalanceMessage, getTransactionBalanceDelta } from '@/balances/balanceEffects';
-import type { Balance, Settings, Transaction, TransactionDraft } from '@/types';
+import type { Settings, Transaction, TransactionDraft } from '@/types';
 import { deleteRecord, pushRecord } from '@/sync/syncService';
 
 export class InsufficientBalanceError extends Error {
@@ -39,11 +39,13 @@ export async function createTransaction(
 
   await database.transaction(
     'rw',
-    database.transactions,
-    database.conversions,
-    database.balanceCheckpoints,
-    database.balances,
-    database.settings,
+    [
+      database.transactions,
+      database.conversions,
+      database.balanceCheckpoints,
+      database.balances,
+      database.settings,
+    ],
     async () => {
       const previousBalance = await database.balances.get(getBalanceId(input.currency, input.method));
       await database.transactions.add(transaction);
@@ -93,11 +95,13 @@ export async function updateTransaction(
 
   await database.transaction(
     'rw',
-    database.transactions,
-    database.conversions,
-    database.balanceCheckpoints,
-    database.balances,
-    database.settings,
+    [
+      database.transactions,
+      database.conversions,
+      database.balanceCheckpoints,
+      database.balances,
+      database.settings,
+    ],
     async () => {
       const existingTransaction = await database.transactions.get(id);
       if (!existingTransaction) throw new Error('Transaction not found');
@@ -213,11 +217,13 @@ export async function createTransactions(
 
   await database.transaction(
     'rw',
-    database.transactions,
-    database.conversions,
-    database.balanceCheckpoints,
-    database.balances,
-    database.settings,
+    [
+      database.transactions,
+      database.conversions,
+      database.balanceCheckpoints,
+      database.balances,
+      database.settings,
+    ],
     async () => {
       const previousBalances = new Map(
         (await database.balances.toArray()).map((balance) => [balance.id, balance] as const)
