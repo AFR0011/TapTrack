@@ -35,6 +35,19 @@ const CANONICAL_TABLES: Array<{ local: CanonicalTableName; remote: string }> = [
 
 type RemoteSnapshot = Record<CanonicalTableName, Array<Record<string, unknown>>>;
 
+function createEmptySnapshot(): RemoteSnapshot {
+  return {
+    transactions: [],
+    balanceCheckpoints: [],
+    categories: [],
+    monthlyBudgets: [],
+    categoryBudgets: [],
+    recurringTransactions: [],
+    conversions: [],
+    settings: [],
+  };
+}
+
 function getLocalTable(
   database: TapTrackDatabase,
   tableName: CanonicalTableName
@@ -59,9 +72,7 @@ async function fetchValidatedCloudSnapshot(userId: string): Promise<RemoteSnapsh
   const client = createSupabaseBrowserClient();
   if (!client) throw new Error('Cloud sync is not configured.');
 
-  const snapshot = Object.fromEntries(
-    CANONICAL_TABLES.map(({ local }) => [local, []])
-  ) as RemoteSnapshot;
+  const snapshot = createEmptySnapshot();
 
   for (const { local, remote } of CANONICAL_TABLES) {
     const { data, error } = await client
