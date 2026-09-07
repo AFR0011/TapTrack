@@ -6,10 +6,17 @@ import { useLiveQuery } from 'dexie-react-hooks';
 import { db, ensureDatabaseSeeded } from '@/database';
 import { DEFAULT_SETTINGS_ID } from '@/defaultData';
 import { getCurrentMonth } from '@/dates';
-import { parseAmountInput } from '@/format';
+import { formatMoney } from '@/format';
 import { exportCSV, exportJSON, exportPDF, importJSON } from '@/exports/exportService';
 import { deleteCategory, updateCategory } from '@/budgets/budgetService';
-import { SUPPORTED_METHODS, type Category, type Method, type TransactionType } from '@/types';
+import { getAdjustmentHistory } from '@/balances/reconciliationService';
+import {
+  SUPPORTED_METHODS,
+  type BalanceCheckpoint,
+  type Category,
+  type Method,
+  type TransactionType,
+} from '@/types';
 import { ConfirmDialog } from './ConfirmDialog';
 import { toast } from 'sonner';
 import {
@@ -47,9 +54,14 @@ const CATEGORY_TYPE_OPTIONS = [
 export default function SettingsWorkspace() {
   const router = useRouter();
   const balances = useLiveQuery(() => db.balances.toArray());
+  const adjustments = useLiveQuery(() => getAdjustmentHistory());
   const categories = useLiveQuery(() => db.categories.toArray());
   const settings = useLiveQuery(() => db.settings.get(DEFAULT_SETTINGS_ID));
-  const isLoading = balances === undefined || categories === undefined || settings === undefined;
+  const isLoading =
+    balances === undefined ||
+    adjustments === undefined ||
+    categories === undefined ||
+    settings === undefined;
   const importInputRef = useRef<HTMLInputElement | null>(null);
   const [month, setMonth] = useState(getCurrentMonth());
   const [categoryName, setCategoryName] = useState('');
@@ -65,7 +77,7 @@ export default function SettingsWorkspace() {
   const [signingOut, setSigningOut] = useState(false);
   const [linking, setLinking] = useState(false);
   const [showLinkConfirm, setShowLinkConfirm] = useState(false);
-  const darkModeEnabled = settings?.darkModeEnabled ?? (resolveStoredTheme() === 'dark');
+  const darkModeEnabled = settings?.darkModeEnabled ?? resolveStoredTheme() === 'dark';
 
   useEffect(() => {
     if (settings?.darkModeEnabled === undefined) return;
@@ -103,20 +115,6 @@ export default function SettingsWorkspace() {
     } finally {
       setSigningOut(false);
     }
-  };
-
-  const updateBalance = async (id: string, value: string) => {
-    const existing = await db.balances.get(id);
-    if (!existing) return;
-
-    const updatedBalance = {
-      ...existing,
-      amount: parseAmountInput(value),
-      updatedAt: new Date().toISOString(),
-    };
-    await db.balances.put(updatedBalance);
-    void pushRecord('balances', updatedBalance as unknown as Record<string, unknown>);
-    toast.success('Balance updated.');
   };
 
   const addCategory = async () => {
@@ -200,6 +198,7 @@ export default function SettingsWorkspace() {
       [
         db.transactions,
         db.balances,
+        db.balanceCheckpoints,
         db.categories,
         db.monthlyBudgets,
         db.categoryBudgets,
@@ -211,6 +210,7 @@ export default function SettingsWorkspace() {
         await Promise.all([
           db.transactions.clear(),
           db.balances.clear(),
+          db.balanceCheckpoints.clear(),
           db.categories.clear(),
           db.monthlyBudgets.clear(),
           db.categoryBudgets.clear(),
@@ -227,7 +227,11 @@ export default function SettingsWorkspace() {
 
   const handleChangeDefaultMethod = async (method: Method) => {
     if (!settings) return;
-    const updatedSettings = { ...settings, lastUsedMethod: method, updatedAt: new Date().toISOString() };
+    const updatedSettings = {
+      ...settings,
+      lastUsedMethod: method,
+      updatedAt: new Date().toISOString(),
+    };
     await db.settings.put(updatedSettings);
     void pushRecord('settings', updatedSettings as unknown as Record<string, unknown>);
     toast.success('Default method updated.');
@@ -236,7 +240,11 @@ export default function SettingsWorkspace() {
   const handleToggleAI = async () => {
     if (!settings) return;
     const next = !settings.aiCategorizationEnabled;
-    const updatedSettings = { ...settings, aiCategorizationEnabled: next, updatedAt: new Date().toISOString() };
+    const updatedSettings = {
+      ...settings,
+      aiCategorizationEnabled: next,
+      updatedAt: new Date().toISOString(),
+    };
     await db.settings.put(updatedSettings);
     void pushRecord('settings', updatedSettings as unknown as Record<string, unknown>);
     toast.success(next ? 'AI categorization enabled.' : 'AI categorization disabled.');
@@ -245,7 +253,11 @@ export default function SettingsWorkspace() {
   const handleToggleDarkMode = async () => {
     if (!settings) return;
     const next = !(settings.darkModeEnabled ?? false);
-    const updatedSettings = { ...settings, darkModeEnabled: next, updatedAt: new Date().toISOString() };
+    const updatedSettings = {
+      ...settings,
+      darkModeEnabled: next,
+      updatedAt: new Date().toISOString(),
+    };
     await db.settings.put(updatedSettings);
     void pushRecord('settings', updatedSettings as unknown as Record<string, unknown>);
 
@@ -314,7 +326,12 @@ export default function SettingsWorkspace() {
             Sign out
           </Button>
         ) : (
-          <Button type="button" variant="secondary" className="mt-4" onClick={() => router.push('/login')}>
+          <Button
+            type="button"
+            variant="secondary"
+            className="mt-4"
+            onClick={() => router.push('/login')}
+          >
             Optional account sign in
           </Button>
         )}
@@ -341,18 +358,22 @@ export default function SettingsWorkspace() {
         />
         <div className="mt-5 border-t border-subtle pt-5">
           <p className="text-sm text-muted">
-            When enabled, the quick command can suggest a category using AI on your device.
+            When enabled, the quick command can suggest a category using AI.
           </p>
           <ToggleRow
             className="mt-4"
-            label={settings.aiCategorizationEnabled ? 'AI categorization enabled' : 'AI categorization disabled'}
+            label={
+              settings.aiCategorizationEnabled
+                ? 'AI categorization enabled'
+                : 'AI categorization disabled'
+            }
             checked={settings.aiCategorizationEnabled ?? false}
             onChange={handleToggleAI}
             variant="ai"
           />
           {settings.aiCategorizationEnabled ? (
             <p className="mt-3 rounded-md border border-ai-border bg-ai-muted px-3 py-2 text-xs font-medium text-ai-text">
-              Set <code className="font-mono">OLLAMA_BASE_URL</code> and <code className="font-mono">OLLAMA_MODEL</code> in your environment.
+              AI provider setup is being migrated to the hosted Groq integration.
             </p>
           ) : null}
         </div>
@@ -360,17 +381,43 @@ export default function SettingsWorkspace() {
 
       <section className="rounded-2xl border border-subtle bg-surface p-5">
         <h2 className="text-base font-semibold text-primary">Money</h2>
-        <p className="mt-1 text-sm text-muted">Update your cash and card balances. TRY is the main currency; USD and EUR stay separate.</p>
-        <div className="mt-4 grid gap-3">
+        <p className="mt-1 text-sm text-muted">
+          Starting balances are set once during setup. After that, balances change only through
+          recorded activity and monthly reconciliation.
+        </p>
+        <div className="mt-4 grid gap-2 sm:grid-cols-2">
           {balances.map((balance) => (
-            <BalanceRow
-              key={`${balance.id}:${balance.amount}`}
-              label={`${balance.currency} ${balance.method}`}
-              amount={balance.amount}
-              onSave={(value) => updateBalance(balance.id, value)}
-            />
+            <div
+              key={balance.id}
+              className="flex items-center justify-between gap-3 rounded-lg border border-subtle bg-surface-muted px-3 py-3"
+            >
+              <span className="text-sm font-semibold capitalize text-secondary">
+                {balance.currency} {balance.method}
+              </span>
+              <span className="text-sm font-semibold tabular-nums text-primary">
+                {formatMoney(balance.amount, balance.currency)}
+              </span>
+            </div>
           ))}
         </div>
+      </section>
+
+      <section className="rounded-2xl border border-subtle bg-surface p-5">
+        <h2 className="text-base font-semibold text-primary">Adjustment history</h2>
+        <p className="mt-1 text-sm text-muted">
+          Monthly reconciliation corrections are kept separate from income and spending reports.
+        </p>
+        {adjustments.length === 0 ? (
+          <p className="mt-4 rounded-lg border border-subtle bg-surface-muted p-3 text-sm text-muted">
+            No monthly reconciliations recorded yet.
+          </p>
+        ) : (
+          <div className="mt-4 divide-y divide-subtle overflow-hidden rounded-lg border border-subtle">
+            {adjustments.map((checkpoint) => (
+              <AdjustmentRow key={checkpoint.id} checkpoint={checkpoint} />
+            ))}
+          </div>
+        )}
       </section>
 
       <section className="rounded-2xl border border-subtle bg-surface p-5">
@@ -411,11 +458,20 @@ export default function SettingsWorkspace() {
             />
           </label>
           <div className="flex flex-col gap-2 sm:flex-row md:col-span-2">
-            <Button type="button" className="w-full sm:w-auto" onClick={editingCategory ? saveCategoryEdit : addCategory}>
+            <Button
+              type="button"
+              className="w-full sm:w-auto"
+              onClick={editingCategory ? saveCategoryEdit : addCategory}
+            >
               {editingCategory ? 'Save' : 'Add'}
             </Button>
             {editingCategory ? (
-              <Button type="button" variant="secondary" className="w-full sm:w-auto" onClick={cancelCategoryEdit}>
+              <Button
+                type="button"
+                variant="secondary"
+                className="w-full sm:w-auto"
+                onClick={cancelCategoryEdit}
+              >
                 Cancel
               </Button>
             ) : null}
@@ -434,7 +490,9 @@ export default function SettingsWorkspace() {
                     style={{ background: category.color ?? '#64748b' }}
                     aria-hidden
                   />
-                  <span className="min-w-0 truncate text-sm font-semibold text-primary">{category.name}</span>
+                  <span className="min-w-0 truncate text-sm font-semibold text-primary">
+                    {category.name}
+                  </span>
                   <CategoryTypeBadge type={category.type} />
                 </div>
                 <div className="flex shrink-0 items-center gap-2 self-stretch sm:self-auto">
@@ -480,9 +538,7 @@ export default function SettingsWorkspace() {
             Sync now
           </Button>
         </div>
-        <p className="mt-4 text-sm font-medium text-secondary">
-          {buildSyncSummary(syncStatus)}
-        </p>
+        <p className="mt-4 text-sm font-medium text-secondary">{buildSyncSummary(syncStatus)}</p>
         <details className="mt-3 rounded-lg border border-subtle bg-surface-muted">
           <summary
             className={cn(
@@ -493,12 +549,24 @@ export default function SettingsWorkspace() {
             Sync details
           </summary>
           <dl className="divide-y divide-subtle border-t border-subtle px-3 text-sm">
-            <SyncDetailRow label="Account" value={syncStatus?.authenticated ? 'Signed in' : 'Not signed in'} />
+            <SyncDetailRow
+              label="Account"
+              value={syncStatus?.authenticated ? 'Signed in' : 'Not signed in'}
+            />
             <SyncDetailRow label="Network" value={syncStatus?.online ? 'Online' : 'Offline'} />
-            <SyncDetailRow label="Last download" value={formatSyncTimestamp(syncStatus?.lastSyncAt)} />
-            <SyncDetailRow label="Last upload" value={formatSyncTimestamp(syncStatus?.lastPushAt)} />
+            <SyncDetailRow
+              label="Last download"
+              value={formatSyncTimestamp(syncStatus?.lastSyncAt)}
+            />
+            <SyncDetailRow
+              label="Last upload"
+              value={formatSyncTimestamp(syncStatus?.lastPushAt)}
+            />
             {(syncStatus?.pendingRetryCount ?? 0) > 0 ? (
-              <SyncDetailRow label="Waiting to sync" value={String(syncStatus?.pendingRetryCount ?? 0)} />
+              <SyncDetailRow
+                label="Waiting to sync"
+                value={String(syncStatus?.pendingRetryCount ?? 0)}
+              />
             ) : null}
           </dl>
           <p className="border-t border-subtle px-3 py-2 text-xs font-medium text-muted">
@@ -519,7 +587,10 @@ export default function SettingsWorkspace() {
           </Button>
         ) : null}
         {syncStatus?.bindingState === 'account-mismatch' ? (
-          <p role="alert" className="mt-4 rounded-lg border border-danger bg-danger-muted p-3 text-sm text-danger">
+          <p
+            role="alert"
+            className="mt-4 rounded-lg border border-danger bg-danger-muted p-3 text-sm text-danger"
+          >
             This browser ledger is linked to a different account. Local tracking remains available,
             but every cloud read and write is blocked.
           </p>
@@ -544,7 +615,12 @@ export default function SettingsWorkspace() {
           <Button type="button" variant="secondary" size="sm" onClick={handleExportJSON}>
             Export JSON
           </Button>
-          <Button type="button" variant="secondary" size="sm" onClick={() => importInputRef.current?.click()}>
+          <Button
+            type="button"
+            variant="secondary"
+            size="sm"
+            onClick={() => importInputRef.current?.click()}
+          >
             Import JSON
           </Button>
           <Button type="button" variant="secondary" size="sm" onClick={handleExportPDF}>
@@ -563,9 +639,15 @@ export default function SettingsWorkspace() {
       <section className="rounded-2xl border border-danger/30 bg-danger-muted p-5">
         <h2 className="text-base font-semibold text-danger">Danger zone</h2>
         <p className="mt-1 text-sm text-muted">
-          Permanently erase all transactions, balances, budgets, categories, and settings. This cannot be undone.
+          Permanently erase local transactions, balances, reconciliation history, budgets,
+          categories, and settings. This cannot be undone.
         </p>
-        <Button type="button" variant="danger" className="mt-4" onClick={() => setShowResetConfirm(true)}>
+        <Button
+          type="button"
+          variant="danger"
+          className="mt-4"
+          onClick={() => setShowResetConfirm(true)}
+        >
           Reset all data
         </Button>
       </section>
@@ -573,7 +655,7 @@ export default function SettingsWorkspace() {
       <ConfirmDialog
         open={showLinkConfirm}
         title="Link this device ledger"
-        message="This permanently associates the browser-profile ledger with the signed-in account. Linking is allowed only when that account has no existing TapTrack cloud data, and it cannot be changed in this version."
+        message="TapTrack will check this browser ledger and the signed-in account before linking. Existing cloud data is never replaced automatically."
         confirmLabel="Check and link"
         onConfirm={async () => {
           setShowLinkConfirm(false);
@@ -584,9 +666,9 @@ export default function SettingsWorkspace() {
 
       <ConfirmDialog
         open={showResetConfirm}
-        title="Reset all app data"
-        message="This will permanently erase all transactions, balances, budgets, categories, and settings. This cannot be undone."
-        confirmLabel="Reset everything"
+        title="Reset local app data"
+        message="This will erase the local finance ledger and reconciliation history on this browser. Cloud reset behavior is handled separately."
+        confirmLabel="Reset local data"
         confirmVariant="danger"
         onConfirm={async () => {
           setShowResetConfirm(false);
@@ -614,79 +696,38 @@ export default function SettingsWorkspace() {
   );
 }
 
-function parseBalanceAmount(value: string): number | null {
-  const trimmed = value.trim();
-  if (!trimmed) return null;
-  const parsed = Number.parseFloat(trimmed.replace(',', '.'));
-  if (!Number.isFinite(parsed) || parsed < 0) return null;
-  return parsed;
-}
-
-function BalanceRow({
-  label,
-  amount,
-  onSave,
-}: {
-  label: string;
-  amount: number;
-  onSave: (value: string) => Promise<void>;
-}) {
-  const [input, setInput] = useState(String(amount));
-  const [error, setError] = useState('');
-  const [saving, setSaving] = useState(false);
-
-  const parsed = parseBalanceAmount(input);
-  const dirty = parsed !== null && parsed !== amount;
-  const showInvalid = input.trim() !== '' && parsed === null;
-
-  const handleSave = async () => {
-    if (parsed === null) {
-      setError('Enter a valid amount.');
-      return;
-    }
-
-    setSaving(true);
-    setError('');
-    try {
-      await onSave(input);
-    } catch (err) {
-      setError(err instanceof Error ? err.message : 'Balance could not be saved.');
-    } finally {
-      setSaving(false);
-    }
-  };
+function AdjustmentRow({ checkpoint }: { checkpoint: BalanceCheckpoint }) {
+  const deltaLabel =
+    checkpoint.deltaAmount === 0
+      ? 'No change'
+      : `${checkpoint.deltaAmount > 0 ? '+' : ''}${formatMoney(
+          checkpoint.deltaAmount,
+          checkpoint.currency
+        )}`;
 
   return (
-    <div className="grid gap-2 md:grid-cols-[1fr_140px_auto] md:items-center">
-      <div>
-        <p className="text-sm font-semibold text-primary">{label}</p>
+    <div className="flex items-center justify-between gap-3 bg-surface px-3 py-3">
+      <div className="min-w-0">
+        <p className="text-sm font-semibold capitalize text-primary">
+          {checkpoint.currency} {checkpoint.method}
+        </p>
+        <p className="mt-0.5 text-xs font-medium text-muted">
+          {checkpoint.month ?? checkpoint.date ?? 'Reconciliation'} · observed{' '}
+          {formatMoney(checkpoint.observedAmount, checkpoint.currency)}
+        </p>
       </div>
-      <input
-        value={input}
-        onChange={(event) => {
-          setInput(event.target.value);
-          setError('');
-        }}
-        inputMode="decimal"
+      <span
         className={cn(
-          'min-h-11 rounded-lg border border-subtle px-3 py-2 text-sm font-medium text-primary outline-none focus-visible:border-accent',
-          focusVisibleRing
+          'shrink-0 text-sm font-semibold tabular-nums',
+          checkpoint.deltaAmount > 0
+            ? 'text-success'
+            : checkpoint.deltaAmount < 0
+              ? 'text-danger'
+              : 'text-muted'
         )}
-      />
-      <Button
-        type="button"
-        variant="secondary"
-        size="sm"
-        className="min-w-11 shrink-0"
-        loading={saving}
-        disabled={saving || !dirty}
-        onClick={handleSave}
       >
-        Save
-      </Button>
-      {error || showInvalid ? (
-        <p className="text-sm font-medium text-danger md:col-span-3">{error || 'Enter a valid amount.'}</p>
-      ) : null}
+        {deltaLabel}
+      </span>
     </div>
   );
 }
@@ -750,4 +791,3 @@ function formatSyncTimestamp(value: string | null | undefined) {
   if (!value) return 'Never';
   return new Date(value).toLocaleString();
 }
-
