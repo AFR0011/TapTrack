@@ -59,7 +59,12 @@ export default function AppShell({ children }: { children: ReactNode }) {
       <header className="sticky top-0 z-30 hidden border-b border-subtle bg-surface md:block">
         <div className="mx-auto flex max-w-7xl flex-col gap-3 px-4 py-3 md:flex-row md:items-center md:justify-between">
           <div>
-            <Link href="/app" className={cn('rounded-lg text-xl font-bold tracking-tight text-accent', focusVisibleRing)}>
+            <Link
+              href="/app"
+              prefetch={false}
+              onClick={(event) => forceDocumentNavigationOffline(event, '/app')}
+              className={cn('rounded-lg text-xl font-bold tracking-tight text-accent', focusVisibleRing)}
+            >
               TapTrack
             </Link>
             <p className="text-xs font-medium text-muted">Personal finance tracker</p>
@@ -67,6 +72,8 @@ export default function AppShell({ children }: { children: ReactNode }) {
           <div className="flex items-center gap-2">
             <Link
               href="/app/add"
+              prefetch={false}
+              onClick={(event) => forceDocumentNavigationOffline(event, '/app/add')}
               className={cn(
                 'inline-flex min-h-11 items-center gap-1.5 rounded-lg bg-accent px-3 py-2 text-sm font-semibold text-white transition-opacity hover:opacity-90',
                 focusVisibleRing
@@ -82,6 +89,8 @@ export default function AppShell({ children }: { children: ReactNode }) {
                   <Link
                     key={item.href}
                     href={item.href}
+                    prefetch={false}
+                    onClick={(event) => forceDocumentNavigationOffline(event, item.href)}
                     className={cn(
                       'relative inline-flex min-h-11 items-center whitespace-nowrap rounded-lg px-3 py-2 text-sm font-medium transition-colors',
                       focusVisibleRing,
@@ -105,6 +114,7 @@ export default function AppShell({ children }: { children: ReactNode }) {
 
       <Link
         href="/app/add"
+        prefetch={false}
         onClick={(event) => forceDocumentNavigationOffline(event, '/app/add')}
         aria-label="Add transaction"
         className={cn(
@@ -123,6 +133,7 @@ export default function AppShell({ children }: { children: ReactNode }) {
               <Link
                 key={item.href}
                 href={item.href}
+                prefetch={false}
                 onClick={(event) => forceDocumentNavigationOffline(event, item.href)}
                 className={cn(
                   'relative flex min-h-11 min-w-0 flex-col items-center justify-center gap-0.5 rounded-xl px-1 py-1.5 text-xs leading-none transition-all',
