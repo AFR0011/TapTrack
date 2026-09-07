@@ -1,5 +1,5 @@
 const CACHE_PREFIX = 'taptrack-shell-';
-const CACHE_NAME = `${CACHE_PREFIX}2026-09-07-v3`;
+const CACHE_NAME = `${CACHE_PREFIX}2026-09-07-v4`;
 const APP_ROUTES = [
   '/app',
   '/app/transactions',
@@ -16,9 +16,7 @@ const STATIC_SHELL_ASSETS = [
 ];
 
 self.addEventListener('install', (event) => {
-  event.waitUntil(
-    cacheAppShell().then(() => self.skipWaiting())
-  );
+  event.waitUntil(cacheAppShell().then(() => self.skipWaiting()));
 });
 
 self.addEventListener('activate', (event) => {
@@ -86,6 +84,21 @@ function extractNextStaticAssetUrls(html) {
   return [...urls];
 }
 
+async function networkFirstWithCacheFallback(request) {
+  const cache = await caches.open(CACHE_NAME);
+
+  try {
+    const response = await fetch(request);
+    if (response.ok) {
+      const copy = response.clone();
+      await cache.put(request, copy);
+    }
+    return response;
+  } catch {
+    return (await cache.match(request)) ?? Response.error();
+  }
+}
+
 self.addEventListener('fetch', (event) => {
   const { request } = event;
   if (request.method !== 'GET') return;
@@ -117,11 +130,15 @@ self.addEventListener('fetch', (event) => {
     return;
   }
 
+  if (url.pathname.startsWith('/_next/static/')) {
+    event.respondWith(networkFirstWithCacheFallback(request));
+    return;
+  }
+
   const cacheableStatic =
-    url.pathname.startsWith('/_next/static/') ||
     url.pathname.startsWith('/icons/') ||
     url.pathname === '/manifest.webmanifest' ||
-    ['font', 'image', 'script', 'style'].includes(request.destination);
+    ['font', 'image'].includes(request.destination);
 
   if (!cacheableStatic) return;
 
