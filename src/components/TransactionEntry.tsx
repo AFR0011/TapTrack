@@ -63,6 +63,12 @@ export function TransactionEntry({
           </div>
           <Link
             href="/app/transactions"
+            prefetch={false}
+            onClick={(event) => {
+              if (navigator.onLine !== false) return;
+              event.preventDefault();
+              window.location.assign('/app/transactions');
+            }}
             className="flex min-h-11 items-center px-2 text-xs font-semibold text-accent hover:underline"
           >
             Full editor
