@@ -4,12 +4,22 @@ export function formatMoney(amount: number, currency: Currency | 'TRY' = 'TRY') 
   return `${amount.toLocaleString(undefined, { maximumFractionDigits: 2 })} ${currency}`;
 }
 
-export function parseAmountInput(value: string) {
+function parseStrictDecimal(value: string): number | null {
   const normalized = value.trim().replace(',', '.');
-  if (!/^(?:\d+(?:\.\d*)?|\.\d+)$/.test(normalized)) return 0;
+  if (!/^(?:\d+(?:\.\d*)?|\.\d+)$/.test(normalized)) return null;
 
   const parsed = Number(normalized);
-  return Number.isFinite(parsed) && parsed > 0 ? parsed : 0;
+  return Number.isFinite(parsed) ? parsed : null;
+}
+
+export function parseAmountInput(value: string) {
+  const parsed = parseStrictDecimal(value);
+  return parsed !== null && parsed > 0 ? parsed : 0;
+}
+
+export function parseNonNegativeAmountInput(value: string): number | null {
+  const parsed = parseStrictDecimal(value);
+  return parsed !== null && parsed >= 0 ? parsed : null;
 }
 
 export function clampPercent(value: number) {
