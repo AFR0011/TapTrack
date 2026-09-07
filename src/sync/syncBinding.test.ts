@@ -23,13 +23,15 @@ function createClient(options?: {
 }) {
   const userId = options?.userId === undefined ? 'user-1' : options.userId;
   const from = vi.fn((tableName: string) => {
+    const response = () => ({
+      data: options?.nonEmptyTable === tableName ? [{ id: 'remote-row' }] : [],
+      error: options?.failedTable === tableName ? { message: 'read failed' } : null,
+    });
     const chain = {
       select: vi.fn(() => chain),
       eq: vi.fn(() => chain),
-      limit: vi.fn(async () => ({
-        data: options?.nonEmptyTable === tableName ? [{ id: 'remote-row' }] : [],
-        error: options?.failedTable === tableName ? { message: 'read failed' } : null,
-      })),
+      is: vi.fn(() => chain),
+      limit: vi.fn(async () => response()),
     };
     return chain;
   });
@@ -134,7 +136,7 @@ describe('device ledger sync binding', () => {
 
   it('fails closed when remote preflight cannot be completed', async () => {
     vi.mocked(createSupabaseBrowserClient).mockReturnValue(
-      createClient({ failedTable: 'balances' }) as never
+      createClient({ failedTable: 'transactions' }) as never
     );
     await expect(linkDeviceLedgerToCurrentUser(database)).rejects.toThrow('could not be checked');
     await expect(database.deviceMetadata.get(DEVICE_LEDGER_BINDING_ID)).resolves.toBeUndefined();
