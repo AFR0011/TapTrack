@@ -29,6 +29,12 @@ const ARROW_DOWN_ICON = 'M19 14l-7 7m0 0l-7-7m7 7V3';
 
 type OpKind = 'exchange' | 'transfer';
 
+type RateState = {
+  requestKey: string;
+  rate: HistoricalExchangeRateResponse | null;
+  error: string;
+};
+
 function kindLabel(draft: { fromCurrency: Currency; toCurrency: Currency; fromMethod: Method; toMethod: Method }): string {
   if (draft.fromCurrency !== draft.toCurrency) return 'Currency exchange';
   return 'Cash / card transfer';
@@ -46,9 +52,11 @@ export default function ConversionsWorkspace() {
   const [note, setNote] = useState('');
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState('');
-  const [exchangeRate, setExchangeRate] = useState<HistoricalExchangeRateResponse | null>(null);
-  const [rateLoading, setRateLoading] = useState(false);
-  const [rateError, setRateError] = useState('');
+  const [rateState, setRateState] = useState<RateState>({
+    requestKey: '',
+    rate: null,
+    error: '',
+  });
 
   const balances = useLiveQuery(() => db.balances.toArray());
   const conversions = useLiveQuery(() => db.conversions.orderBy('date').reverse().limit(30).toArray());
@@ -61,19 +69,15 @@ export default function ConversionsWorkspace() {
 
   const fromAmount = parseAmountInput(fromAmountRaw);
   const opKind: OpKind = fromCurrency !== toCurrency ? 'exchange' : 'transfer';
+  const rateRequestKey = opKind === 'exchange' ? `${fromCurrency}|${toCurrency}|${date}` : '';
+  const exchangeRate = rateState.requestKey === rateRequestKey ? rateState.rate : null;
+  const rateError = rateState.requestKey === rateRequestKey ? rateState.error : '';
+  const rateLoading = opKind === 'exchange' && rateState.requestKey !== rateRequestKey;
 
   useEffect(() => {
-    if (opKind !== 'exchange') {
-      setExchangeRate(null);
-      setRateError('');
-      setRateLoading(false);
-      return;
-    }
+    if (opKind !== 'exchange') return;
 
     const controller = new AbortController();
-    setExchangeRate(null);
-    setRateError('');
-    setRateLoading(true);
 
     void fetchHistoricalExchangeRate({
       base: fromCurrency,
@@ -82,18 +86,21 @@ export default function ConversionsWorkspace() {
       signal: controller.signal,
     })
       .then((rate) => {
-        if (!controller.signal.aborted) setExchangeRate(rate);
+        if (!controller.signal.aborted) {
+          setRateState({ requestKey: rateRequestKey, rate, error: '' });
+        }
       })
       .catch((err: unknown) => {
         if (controller.signal.aborted) return;
-        setRateError(err instanceof Error ? err.message : 'Exchange rate could not be loaded.');
-      })
-      .finally(() => {
-        if (!controller.signal.aborted) setRateLoading(false);
+        setRateState({
+          requestKey: rateRequestKey,
+          rate: null,
+          error: err instanceof Error ? err.message : 'Exchange rate could not be loaded.',
+        });
       });
 
     return () => controller.abort();
-  }, [date, fromCurrency, opKind, toCurrency]);
+  }, [date, fromCurrency, opKind, rateRequestKey, toCurrency]);
 
   const toAmount =
     opKind === 'transfer'
