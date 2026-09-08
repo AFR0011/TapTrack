@@ -13,9 +13,10 @@ import type {
 import { flushSyncQueueBestEffort, queueRecordForSync } from '@/sync/syncService';
 
 export type InitialSetupInput = {
-  balances: Record<Currency, Record<Method, number>>;
+  balances: Record<string, Record<Method, number>>;
   monthlyBudget: number;
   defaultMethod: Method;
+  defaultCurrency: Currency;
   month?: string;
 };
 
@@ -31,14 +32,18 @@ export async function completeInitialSetup(
     throw new Error('Initial balances are already locked. Use monthly reconciliation instead.');
   }
 
+  if (!/^[A-Z]{3}$/.test(input.defaultCurrency) || !input.balances[input.defaultCurrency]) {
+    throw new Error('Choose a valid default currency from your active currencies.');
+  }
+
   const now = nowDate.toISOString();
   const date = formatLocalDate(nowDate);
   const month = input.month ?? getCurrentMonth(nowDate);
 
   const balances: Balance[] = Object.entries(input.balances).flatMap(([currency, methods]) =>
     Object.entries(methods).map(([method, amount]) => ({
-      id: getBalanceId(currency as Currency, method as Method),
-      currency: currency as Currency,
+      id: getBalanceId(currency, method as Method),
+      currency,
       method: method as Method,
       amount: normalizeAmount(amount),
       updatedAt: now,
@@ -60,11 +65,11 @@ export async function completeInitialSetup(
     updatedAt: now,
   }));
 
-  const currentSettings =
-    (await database.settings.get(DEFAULT_SETTINGS_ID)) ?? createDefaultSettings(now);
+  const currentSettings = (await database.settings.get(DEFAULT_SETTINGS_ID)) ?? createDefaultSettings(now);
   const nextSettings: Settings = {
     ...currentSettings,
     id: DEFAULT_SETTINGS_ID,
+    defaultCurrency: input.defaultCurrency,
     lastUsedMethod: input.defaultMethod,
     setupCompleted: true,
     updatedAt: now,
@@ -75,20 +80,14 @@ export async function completeInitialSetup(
     month,
     totalBudget: normalizeAmount(input.monthlyBudget),
     rolloverFromPreviousMonth: 0,
-    currency: 'TRY',
+    currency: input.defaultCurrency,
     createdAt: now,
     updatedAt: now,
   };
 
   await database.transaction(
     'rw',
-    [
-      database.balances,
-      database.balanceCheckpoints,
-      database.settings,
-      database.monthlyBudgets,
-      database.syncOutbox,
-    ],
+    [database.balances, database.balanceCheckpoints, database.settings, database.monthlyBudgets, database.syncOutbox],
     async () => {
       const settingsInTransaction = await database.settings.get(DEFAULT_SETTINGS_ID);
       if (settingsInTransaction?.setupCompleted) {
@@ -101,22 +100,10 @@ export async function completeInitialSetup(
       await database.monthlyBudgets.put(monthlyBudget);
 
       for (const checkpoint of checkpoints) {
-        await queueRecordForSync(
-          'balanceCheckpoints',
-          checkpoint as unknown as Record<string, unknown>,
-          database
-        );
+        await queueRecordForSync('balanceCheckpoints', checkpoint as unknown as Record<string, unknown>, database);
       }
-      await queueRecordForSync(
-        'settings',
-        nextSettings as unknown as Record<string, unknown>,
-        database
-      );
-      await queueRecordForSync(
-        'monthlyBudgets',
-        monthlyBudget as unknown as Record<string, unknown>,
-        database
-      );
+      await queueRecordForSync('settings', nextSettings as unknown as Record<string, unknown>, database);
+      await queueRecordForSync('monthlyBudgets', monthlyBudget as unknown as Record<string, unknown>, database);
     }
   );
 
