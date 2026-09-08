@@ -1,0 +1,28 @@
+name: Patch B004 backup currency validation
+
+on:
+  push:
+    branches:
+      - feature/taptrack-b004-personalization-dashboard
+    paths:
+      - .github/workflows/patch-b004-backup-currency.yml
+
+permissions:
+  contents: write
+
+jobs:
+  patch:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          ref: feature/taptrack-b004-personalization-dashboard
+      - name: Apply backup currency patch
+        run: python scripts/patch_b004_backup_currency.py
+      - name: Commit patch
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add src/exports/backupService.ts src/exports/backupService.test.ts
+          git commit -m "Generalize backup restore currency validation"
+          git push
