@@ -8,6 +8,11 @@ import { DEFAULT_SETTINGS_ID } from '@/defaultData';
 import { getCurrentMonth } from '@/dates';
 import { formatMoney } from '@/format';
 import { exportCSV, exportJSON, exportPDF, importJSON } from '@/exports/exportService';
+import { normalizeBackupJSON } from '@/exports/backupService';
+import {
+  restoreOnlyThisDevice,
+  restoreSyncedAccount,
+} from '@/exports/linkedRestoreService';
 import { deleteCategory, updateCategory } from '@/budgets/budgetService';
 import { createCustomCategory } from '@/categories/categoryService';
 import { getAdjustmentHistory } from '@/balances/reconciliationService';
@@ -21,6 +26,7 @@ import {
 } from '@/types';
 import { ConfirmDialog } from './ConfirmDialog';
 import { CloudLedgerLink } from './CloudLedgerLink';
+import { RestoreScopeDialog } from './RestoreScopeDialog';
 import { toast } from 'sonner';
 import {
   getSyncStatus,
@@ -77,6 +83,10 @@ export default function SettingsWorkspace() {
   const [accountEmail, setAccountEmail] = useState<string | null>(null);
   const [accountChecked, setAccountChecked] = useState(false);
   const [signingOut, setSigningOut] = useState(false);
+  const [pendingRestoreJson, setPendingRestoreJson] = useState<string | null>(null);
+  const [showRestoreScope, setShowRestoreScope] = useState(false);
+  const [showAccountRestoreConfirm, setShowAccountRestoreConfirm] = useState(false);
+  const [restoreBusy, setRestoreBusy] = useState(false);
   const darkModeEnabled = settings?.darkModeEnabled ?? resolveStoredTheme() === 'dark';
 
   useEffect(() => {
@@ -181,19 +191,40 @@ export default function SettingsWorkspace() {
     toast.success('PDF report created.');
   };
 
+  const persistPreRestoreSafetyBackup = useCallback((safetyBackup: string) => {
+    const timestamp = new Date().toISOString().replace(/[:.]/g, '-');
+    downloadText(
+      `taptrack-pre-restore-${timestamp}.json`,
+      safetyBackup,
+      'application/json'
+    );
+  }, []);
+
+  const clearPendingRestore = useCallback(() => {
+    setPendingRestoreJson(null);
+    setShowRestoreScope(false);
+    setShowAccountRestoreConfirm(false);
+    if (importInputRef.current) importInputRef.current.value = '';
+  }, []);
+
   const handleImportFile = async (file: File | undefined) => {
     if (!file) return;
+    let keepPendingFile = false;
 
     try {
-      const result = await importJSON(await file.text(), db, {
-        beforeReplace: (safetyBackup) => {
-          const timestamp = new Date().toISOString().replace(/[:.]/g, '-');
-          downloadText(
-            `taptrack-pre-restore-${timestamp}.json`,
-            safetyBackup,
-            'application/json'
-          );
-        },
+      const jsonData = await file.text();
+      // Validate before asking a destructive-scope question.
+      normalizeBackupJSON(jsonData);
+
+      if (syncStatus?.bindingState === 'linked') {
+        setPendingRestoreJson(jsonData);
+        setShowRestoreScope(true);
+        keepPendingFile = true;
+        return;
+      }
+
+      const result = await importJSON(jsonData, db, {
+        beforeReplace: persistPreRestoreSafetyBackup,
       });
       await refreshSyncStatus();
       toast.success(
@@ -204,9 +235,58 @@ export default function SettingsWorkspace() {
     } catch (err) {
       toast.error(err instanceof Error ? err.message : 'Backup could not be restored.');
     } finally {
-      if (importInputRef.current) importInputRef.current.value = '';
+      if (!keepPendingFile && importInputRef.current) importInputRef.current.value = '';
     }
   };
+
+  const executeDeviceOnlyRestore = async () => {
+    if (!pendingRestoreJson || restoreBusy) return;
+    setRestoreBusy(true);
+    try {
+      const result = await restoreOnlyThisDevice(
+        pendingRestoreJson,
+        persistPreRestoreSafetyBackup,
+        db
+      );
+      await refreshSyncStatus();
+      toast.success(
+        result.legacyMigrated
+          ? 'Legacy backup restored on this device. Cloud sync was disconnected and the account was left unchanged.'
+          : 'Backup restored on this device. Cloud sync was disconnected and the account was left unchanged.'
+      );
+      clearPendingRestore();
+    } catch (err) {
+      toast.error(err instanceof Error ? err.message : 'This device could not be restored.');
+      setShowRestoreScope(true);
+    } finally {
+      setRestoreBusy(false);
+    }
+  };
+
+  const executeAccountRestore = async () => {
+    if (!pendingRestoreJson || restoreBusy) return;
+    setRestoreBusy(true);
+    try {
+      const result = await restoreSyncedAccount(
+        pendingRestoreJson,
+        persistPreRestoreSafetyBackup,
+        db
+      );
+      await refreshSyncStatus();
+      toast.success(
+        result.legacyMigrated
+          ? 'Legacy backup restored to the synced account. Other linked devices will adopt the restored ledger.'
+          : 'Synced account restored. Other linked devices will adopt the restored ledger.'
+      );
+      clearPendingRestore();
+    } catch (err) {
+      toast.error(err instanceof Error ? err.message : 'Synced account could not be restored.');
+      setShowRestoreScope(true);
+    } finally {
+      setRestoreBusy(false);
+    }
+  };
+
 
   const resetAppData = async () => {
     await db.transaction(
@@ -603,7 +683,7 @@ export default function SettingsWorkspace() {
 
       <section className="rounded-2xl border border-subtle bg-surface p-5">
         <h2 className="text-base font-semibold text-primary">Data &amp; export</h2>
-        <p className="mt-1 text-sm text-muted">Export a canonical backup or restore/replace this local ledger from JSON. A safety backup is downloaded before replacement.</p>
+        <p className="mt-1 text-sm text-muted">Export a canonical backup or restore/replace from JSON. Linked browsers choose explicitly between replacing the synced account or detaching and restoring only this device. A safety backup is downloaded before replacement.</p>
         <div className="mt-4 max-w-xs">
           <Field
             label="Report month"
@@ -655,6 +735,33 @@ export default function SettingsWorkspace() {
           Reset all data
         </Button>
       </section>
+
+      <RestoreScopeDialog
+        open={showRestoreScope}
+        busy={restoreBusy}
+        onRestoreAccount={() => {
+          setShowRestoreScope(false);
+          setShowAccountRestoreConfirm(true);
+        }}
+        onRestoreDevice={() => void executeDeviceOnlyRestore()}
+        onCancel={clearPendingRestore}
+      />
+
+      <ConfirmDialog
+        open={showAccountRestoreConfirm}
+        title="Replace synced account ledger"
+        message="This will replace the signed-in account’s canonical finance ledger with the selected backup. Other linked devices will adopt the restored ledger, and stale pre-restore pending changes on those devices will be discarded."
+        confirmLabel="Replace synced account"
+        confirmVariant="danger"
+        onConfirm={() => {
+          setShowAccountRestoreConfirm(false);
+          void executeAccountRestore();
+        }}
+        onCancel={() => {
+          setShowAccountRestoreConfirm(false);
+          setShowRestoreScope(true);
+        }}
+      />
 
       <ConfirmDialog
         open={showResetConfirm}
