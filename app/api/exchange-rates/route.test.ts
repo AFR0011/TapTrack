@@ -47,12 +47,20 @@ describe('historical exchange-rate route', () => {
       .mockResolvedValueOnce(new Response(JSON.stringify({ message: 'not found' }), { status: 404 }))
       .mockResolvedValueOnce(
         new Response(
-          JSON.stringify({
-            date: '2026-09-04',
-            base: 'TRY',
-            quote: 'USD',
-            rate: 0.02061,
-          }),
+          JSON.stringify([
+            {
+              date: '2026-09-03',
+              base: 'TRY',
+              quote: 'USD',
+              rate: 0.0205,
+            },
+            {
+              date: '2026-09-04',
+              base: 'TRY',
+              quote: 'USD',
+              rate: 0.02061,
+            },
+          ]),
           { status: 200, headers: { 'Content-Type': 'application/json' } }
         )
       );
@@ -76,7 +84,49 @@ describe('historical exchange-rate route', () => {
     );
     expect(fetchMock).toHaveBeenNthCalledWith(
       2,
-      expect.stringContaining('date=2026-09-04'),
+      expect.stringContaining('/v2/rates?from=2026-08-05&to=2026-09-04'),
+      { cache: 'no-store' }
+    );
+  });
+
+  it('continues past the initial lookback window instead of inventing a cutoff', async () => {
+    const fetchMock = vi
+      .fn()
+      .mockResolvedValueOnce(new Response(JSON.stringify({ message: 'not found' }), { status: 404 }))
+      .mockResolvedValueOnce(
+        new Response(JSON.stringify([]), {
+          status: 200,
+          headers: { 'Content-Type': 'application/json' },
+        })
+      )
+      .mockResolvedValueOnce(
+        new Response(
+          JSON.stringify([
+            {
+              date: '2026-07-01',
+              base: 'TRY',
+              quote: 'USD',
+              rate: 0.0198,
+            },
+          ]),
+          { status: 200, headers: { 'Content-Type': 'application/json' } }
+        )
+      );
+    vi.stubGlobal('fetch', fetchMock);
+
+    const response = await GET(request('date=2026-09-05&base=TRY&quote=USD'));
+    const body = await response.json();
+
+    expect(response.status).toBe(200);
+    expect(body).toMatchObject({
+      dateUsed: '2026-07-01',
+      rate: 0.0198,
+      status: 'prior-available',
+    });
+    expect(fetchMock).toHaveBeenCalledTimes(3);
+    expect(fetchMock).toHaveBeenNthCalledWith(
+      3,
+      expect.stringContaining('/v2/rates?from=2022-08-04&to=2026-08-04'),
       { cache: 'no-store' }
     );
   });
