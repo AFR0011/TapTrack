@@ -24,19 +24,19 @@ export default function LoginPage() {
     const authState = new URLSearchParams(window.location.search).get('auth');
     if (authState === 'confirmation-failed') {
       queueMicrotask(() => {
-        setError('Email confirmation could not be completed. Please try the confirmation link again or sign in.');
+        setError('Email confirmation failed. Open the confirmation link again or sign in.');
       });
     }
   }, []);
 
-  const handleSubmit = async (e: React.FormEvent) => {
-    e.preventDefault();
+  const handleSubmit = async (event: React.FormEvent) => {
+    event.preventDefault();
     setLoading(true);
     setError('');
 
     const supabase = createSupabaseBrowserClient();
     if (!supabase) {
-      setError('Cloud accounts are not configured. Continue with the local ledger.');
+      setError('Accounts are unavailable right now.');
       setLoading(false);
       return;
     }
@@ -45,9 +45,7 @@ export default function LoginPage() {
       const { data, error: signUpError } = await supabase.auth.signUp({
         email,
         password,
-        options: {
-          emailRedirectTo: `${window.location.origin}/auth/callback`,
-        },
+        options: { emailRedirectTo: `${window.location.origin}/auth/callback` },
       });
       if (signUpError) {
         setError(signUpError.message);
@@ -71,98 +69,106 @@ export default function LoginPage() {
   };
 
   return (
-    <div className="flex min-h-screen items-center justify-center bg-background p-4">
-      <Card className="w-full max-w-sm">
-        <div className="mb-6">
-          <h1 className="text-xl font-semibold text-primary">TapTrack</h1>
-          <p className="mt-1 text-sm text-muted">Personal finance tracker</p>
+    <div className="flex min-h-screen items-center justify-center bg-background p-4 sm:p-6">
+      <div className="w-full max-w-md">
+        <div className="mb-6 text-center">
+          <div className="mx-auto grid h-12 w-12 place-items-center rounded-2xl bg-accent text-lg font-black text-white shadow-sm">T</div>
+          <h1 className="mt-4 text-3xl font-semibold tracking-tight text-primary">
+            {mode === 'signin' ? 'Welcome back.' : 'Create your account.'}
+          </h1>
+          <p className="mt-2 text-sm text-muted">
+            {mode === 'signin' ? 'Pick up where you left off.' : 'Sync, Smart Categories, and Quick Capture.'}
+          </p>
         </div>
 
-        <Button type="button" fullWidth onClick={() => router.replace('/app')}>
-          Continue with local ledger
-        </Button>
-        <p className="mt-2 text-xs text-muted">
-          Local data belongs to this browser profile. An account is optional and is used only for
-          explicitly linked cloud sync.
-        </p>
-
-        {!providerConfigured ? (
-          <p className="mt-5 rounded-lg border border-subtle bg-surface-muted p-3 text-sm text-muted">
-            Cloud accounts are not configured on this installation.
-          </p>
-        ) : registered ? (
-          <div className="space-y-4">
-            <div className="rounded-lg border border-success bg-success-muted p-4 text-sm font-medium text-success">
-              Account created. Check your email to confirm the address, then sign in.
+        <Card className="overflow-hidden">
+          {!providerConfigured ? (
+            <div className="space-y-4">
+              <p className="rounded-xl border border-subtle bg-surface-muted p-3 text-sm text-muted">Accounts are unavailable on this installation.</p>
+              <Button type="button" fullWidth onClick={() => router.replace('/app')}>Continue locally</Button>
             </div>
-            <Button
-              type="button"
-              fullWidth
-              onClick={() => {
-                setRegistered(false);
-                setMode('signin');
-              }}
-            >
-              Sign in
-            </Button>
-          </div>
-        ) : (
-          <>
-            <div className="mt-5 mb-5 flex rounded-lg border border-subtle bg-surface-muted p-1">
-              {(['signin', 'register'] as Mode[]).map((m) => (
-                <button
-                  key={m}
-                  type="button"
-                  onClick={() => {
-                    setMode(m);
-                    setError('');
-                  }}
-                  className={cn(
-                    'min-h-11 flex-1 rounded-md text-sm font-semibold transition-colors focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-accent',
-                    mode === m ? 'bg-accent text-white' : 'text-muted hover:text-secondary'
-                  )}
-                >
-                  {m === 'signin' ? 'Sign in' : 'Register'}
-                </button>
-              ))}
-            </div>
-
-            <form onSubmit={handleSubmit} className="flex flex-col gap-4">
-              <Field
-                id="email"
-                label="Email address"
-                type="email"
-                value={email}
-                onChange={(e) => setEmail(e.target.value)}
-                placeholder="you@example.com"
-                required
-                autoComplete="email"
-                disabled={loading}
-              />
-              <Field
-                id="password"
-                label="Password"
-                type="password"
-                value={password}
-                onChange={(e) => setPassword(e.target.value)}
-                placeholder={mode === 'register' ? 'At least 6 characters' : '••••••••'}
-                required
-                minLength={6}
-                autoComplete={mode === 'register' ? 'new-password' : 'current-password'}
-                disabled={loading}
-              />
-              {error ? (
-                <p role="alert" className="rounded-lg border border-danger bg-danger-muted px-3 py-2 text-sm font-medium text-danger">
-                  {error}
-                </p>
-              ) : null}
-              <Button type="submit" fullWidth loading={loading} disabled={loading || !email || !password}>
-                {mode === 'signin' ? 'Sign in' : 'Create account'}
+          ) : registered ? (
+            <div className="text-center">
+              <div className="mx-auto grid h-12 w-12 place-items-center rounded-full bg-success-muted text-xl text-success">✓</div>
+              <h2 className="mt-4 text-xl font-semibold text-primary">Check your inbox.</h2>
+              <p className="mt-2 text-sm text-muted">Confirm {email}, then come back to sign in.</p>
+              <Button
+                type="button"
+                fullWidth
+                className="mt-6"
+                onClick={() => {
+                  setRegistered(false);
+                  setMode('signin');
+                }}
+              >
+                Back to sign in
               </Button>
-            </form>
-          </>
-        )}
-      </Card>
+            </div>
+          ) : (
+            <>
+              <div className="mb-5 flex rounded-xl border border-subtle bg-surface-muted p-1">
+                {(['signin', 'register'] as Mode[]).map((item) => (
+                  <button
+                    key={item}
+                    type="button"
+                    onClick={() => {
+                      setMode(item);
+                      setError('');
+                    }}
+                    className={cn(
+                      'min-h-11 flex-1 rounded-lg text-sm font-semibold transition-colors focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-accent',
+                      mode === item ? 'bg-surface text-primary shadow-sm' : 'text-muted hover:text-secondary'
+                    )}
+                  >
+                    {item === 'signin' ? 'Sign in' : 'Create account'}
+                  </button>
+                ))}
+              </div>
+
+              <form onSubmit={handleSubmit} className="grid gap-4">
+                <Field
+                  id="email"
+                  label="Email"
+                  type="email"
+                  value={email}
+                  onChange={(event) => setEmail(event.target.value)}
+                  placeholder="you@example.com"
+                  required
+                  autoComplete="email"
+                  disabled={loading}
+                />
+                <Field
+                  id="password"
+                  label="Password"
+                  type="password"
+                  value={password}
+                  onChange={(event) => setPassword(event.target.value)}
+                  placeholder={mode === 'register' ? 'At least 6 characters' : '••••••••'}
+                  required
+                  minLength={6}
+                  autoComplete={mode === 'register' ? 'new-password' : 'current-password'}
+                  disabled={loading}
+                />
+                {error ? (
+                  <p role="alert" className="rounded-xl border border-danger bg-danger-muted px-3 py-2 text-sm font-medium text-danger">{error}</p>
+                ) : null}
+                <Button type="submit" fullWidth size="lg" loading={loading} disabled={loading || !email || !password}>
+                  {mode === 'signin' ? 'Sign in' : 'Create account'}
+                </Button>
+              </form>
+
+              <div className="my-5 flex items-center gap-3 text-xs font-medium text-muted">
+                <span className="h-px flex-1 bg-subtle" />
+                or
+                <span className="h-px flex-1 bg-subtle" />
+              </div>
+              <Button type="button" fullWidth variant="ghost" onClick={() => router.replace('/app')}>
+                Continue without an account
+              </Button>
+            </>
+          )}
+        </Card>
+      </div>
     </div>
   );
 }
