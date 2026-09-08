@@ -1,7 +1,7 @@
 import { getBudgetPerformance } from '@/reports/reportTransforms';
 import { db, ensureDatabaseSeeded, type TapTrackDatabase } from '@/database';
 import { getPreviousMonth } from '@/dates';
-import type { CategoryBudget, Transaction } from '@/types';
+import type { CategoryBudget, Currency, Transaction } from '@/types';
 
 export type CategorySpending = { categoryId: string; amount: number };
 export type SpendingPoint = { date: string; amount: number };
@@ -15,6 +15,7 @@ export type YearlySummary = {
   net: number;
 };
 export type BudgetPerformance = {
+  currency: Currency;
   totalBudget: number;
   rollover: number;
   available: number;
@@ -22,6 +23,7 @@ export type BudgetPerformance = {
   remaining: number;
   categoryBudgets: {
     categoryId: string;
+    currency: Currency;
     budget: number;
     spent: number;
     remaining: number;
@@ -30,34 +32,38 @@ export type BudgetPerformance = {
 
 export async function getCategorySpending(
   month: string,
-  database: TapTrackDatabase = db
+  database: TapTrackDatabase = db,
+  currency: Currency = 'TRY'
 ): Promise<CategorySpending[]> {
   await ensureDatabaseSeeded(database);
   const transactions = await getTransactionsForMonth(month, database);
-  return calculateCategorySpending(transactions);
+  return calculateCategorySpending(transactions, currency);
 }
 
 export async function getSpendingOverTime(
   month: string,
-  database: TapTrackDatabase = db
+  database: TapTrackDatabase = db,
+  currency: Currency = 'TRY'
 ): Promise<SpendingPoint[]> {
   await ensureDatabaseSeeded(database);
   const transactions = await getTransactionsForMonth(month, database);
-  return calculateSpendingOverTime(transactions);
+  return calculateSpendingOverTime(transactions, currency);
 }
 
 export async function getIncomeVsExpense(
   month: string,
-  database: TapTrackDatabase = db
+  database: TapTrackDatabase = db,
+  currency: Currency = 'TRY'
 ): Promise<IncomeVsExpense> {
   await ensureDatabaseSeeded(database);
   const transactions = await getTransactionsForMonth(month, database);
-  return calculateIncomeVsExpense(transactions);
+  return calculateIncomeVsExpense(transactions, currency);
 }
 
 export async function getMonthlyComparison(
   month: string,
-  database: TapTrackDatabase = db
+  database: TapTrackDatabase = db,
+  currency: Currency = 'TRY'
 ): Promise<{
   currentMonth: IncomeVsExpense;
   previousMonth: IncomeVsExpense;
@@ -70,14 +76,15 @@ export async function getMonthlyComparison(
   ]);
 
   return {
-    currentMonth: calculateIncomeVsExpense(currentTransactions),
-    previousMonth: calculateIncomeVsExpense(previousTransactions),
+    currentMonth: calculateIncomeVsExpense(currentTransactions, currency),
+    previousMonth: calculateIncomeVsExpense(previousTransactions, currency),
   };
 }
 
 export async function getBudgetPerformanceReport(
   month: string,
-  database: TapTrackDatabase = db
+  database: TapTrackDatabase = db,
+  fallbackCurrency: Currency = 'TRY'
 ): Promise<BudgetPerformance> {
   await ensureDatabaseSeeded(database);
 
@@ -87,7 +94,7 @@ export async function getBudgetPerformanceReport(
     getTransactionsForMonth(month, database),
   ]);
 
-  return getBudgetPerformance(month, budget ?? null, categoryBudgets, transactions);
+  return getBudgetPerformance(month, budget ?? null, categoryBudgets, transactions, fallbackCurrency);
 }
 
 export async function getFullTransactionList(
@@ -112,36 +119,40 @@ export async function getDateRangeTransactionList(
 export async function getDateRangeIncomeVsExpense(
   startDate: string,
   endDate: string,
-  database: TapTrackDatabase = db
+  database: TapTrackDatabase = db,
+  currency: Currency = 'TRY'
 ): Promise<IncomeVsExpense> {
   await ensureDatabaseSeeded(database);
   const transactions = await getTransactionsForDateRange(startDate, endDate, database);
-  return calculateIncomeVsExpense(transactions);
+  return calculateIncomeVsExpense(transactions, currency);
 }
 
 export async function getDateRangeCategorySpending(
   startDate: string,
   endDate: string,
-  database: TapTrackDatabase = db
+  database: TapTrackDatabase = db,
+  currency: Currency = 'TRY'
 ): Promise<CategorySpending[]> {
   await ensureDatabaseSeeded(database);
   const transactions = await getTransactionsForDateRange(startDate, endDate, database);
-  return calculateCategorySpending(transactions);
+  return calculateCategorySpending(transactions, currency);
 }
 
 export async function getDateRangeSpendingOverTime(
   startDate: string,
   endDate: string,
-  database: TapTrackDatabase = db
+  database: TapTrackDatabase = db,
+  currency: Currency = 'TRY'
 ): Promise<SpendingPoint[]> {
   await ensureDatabaseSeeded(database);
   const transactions = await getTransactionsForDateRange(startDate, endDate, database);
-  return calculateSpendingOverTime(transactions);
+  return calculateSpendingOverTime(transactions, currency);
 }
 
 export async function getYearlySummary(
   year: string,
-  database: TapTrackDatabase = db
+  database: TapTrackDatabase = db,
+  currency: Currency = 'TRY'
 ): Promise<YearlySummary> {
   await ensureDatabaseSeeded(database);
 
@@ -149,7 +160,8 @@ export async function getYearlySummary(
     Array.from({ length: 12 }, async (_, index) => {
       const month = `${year}-${String(index + 1).padStart(2, '0')}`;
       const { income, expense, net } = calculateIncomeVsExpense(
-        await getTransactionsForMonth(month, database)
+        await getTransactionsForMonth(month, database),
+        currency
       );
       return { month, income, expense, net };
     })
@@ -167,24 +179,20 @@ export async function getYearlySummary(
   };
 }
 
-export function calculateIncomeVsExpense(transactions: Transaction[]): IncomeVsExpense {
+export function calculateIncomeVsExpense(
+  transactions: Transaction[],
+  currency: Currency = 'TRY'
+): IncomeVsExpense {
   let income = 0;
   let expense = 0;
 
   for (const transaction of transactions) {
-    if (transaction.currency !== 'TRY') continue;
-    if (transaction.type === 'income') {
-      income += transaction.amount;
-    } else {
-      expense += transaction.amount;
-    }
+    if (transaction.currency !== currency) continue;
+    if (transaction.type === 'income') income += transaction.amount;
+    else expense += transaction.amount;
   }
 
-  return {
-    income,
-    expense,
-    net: income - expense,
-  };
+  return { income, expense, net: income - expense };
 }
 
 export function sortTransactionsDescending(transactions: Transaction[]) {
@@ -195,11 +203,14 @@ export function sortTransactionsDescending(transactions: Transaction[]) {
   });
 }
 
-export function calculateCategorySpending(transactions: Transaction[]): CategorySpending[] {
+export function calculateCategorySpending(
+  transactions: Transaction[],
+  currency: Currency = 'TRY'
+): CategorySpending[] {
   const spendingByCategory = new Map<string, number>();
 
   for (const transaction of transactions) {
-    if (transaction.type !== 'expense' || transaction.currency !== 'TRY') continue;
+    if (transaction.type !== 'expense' || transaction.currency !== currency) continue;
     spendingByCategory.set(
       transaction.categoryId,
       (spendingByCategory.get(transaction.categoryId) ?? 0) + transaction.amount
@@ -211,11 +222,14 @@ export function calculateCategorySpending(transactions: Transaction[]): Category
     .sort((a, b) => b.amount - a.amount);
 }
 
-export function calculateSpendingOverTime(transactions: Transaction[]): SpendingPoint[] {
+export function calculateSpendingOverTime(
+  transactions: Transaction[],
+  currency: Currency = 'TRY'
+): SpendingPoint[] {
   const spendingByDate = new Map<string, number>();
 
   for (const transaction of transactions) {
-    if (transaction.type !== 'expense' || transaction.currency !== 'TRY') continue;
+    if (transaction.type !== 'expense' || transaction.currency !== currency) continue;
     spendingByDate.set(transaction.date, (spendingByDate.get(transaction.date) ?? 0) + transaction.amount);
   }
 
@@ -234,10 +248,7 @@ async function getTransactionsForDateRange(
   database: TapTrackDatabase
 ) {
   const [start, end] = startDate <= endDate ? [startDate, endDate] : [endDate, startDate];
-  return database.transactions
-    .where('date')
-    .between(start, end, true, true)
-    .toArray();
+  return database.transactions.where('date').between(start, end, true, true).toArray();
 }
 
 export type { CategoryBudget };
