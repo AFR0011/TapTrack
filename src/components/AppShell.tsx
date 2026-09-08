@@ -2,8 +2,8 @@
 
 import Link from 'next/link';
 import { usePathname } from 'next/navigation';
-import { useState, type MouseEvent, type ReactNode } from 'react';
-import { motion } from 'framer-motion';
+import { useEffect, useRef, useState, type MouseEvent, type ReactNode } from 'react';
+import { motion, useReducedMotion } from 'framer-motion';
 import { cn, focusVisibleRing } from '@/lib/cn';
 import MonthlyReconciliationPrompt from '@/components/MonthlyReconciliationPrompt';
 
@@ -49,7 +49,7 @@ const HEADER_NAV = [
 
 function Icon({ d, className }: { d: string; className?: string }) {
   return (
-    <svg className={className} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={1.5} strokeLinecap="round" strokeLinejoin="round">
+    <svg className={className} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={1.5} strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
       <path d={d} />
     </svg>
   );
@@ -61,8 +61,22 @@ function isNavItemActive(pathname: string, href: string) {
 
 export default function AppShell({ children }: { children: ReactNode }) {
   const pathname = usePathname();
+  const reduceMotion = useReducedMotion();
   const [mobileMorePath, setMobileMorePath] = useState<string | null>(null);
   const mobileMoreOpen = mobileMorePath === pathname;
+  const mobileMoreButtonRef = useRef<HTMLButtonElement | null>(null);
+
+  useEffect(() => {
+    if (!mobileMoreOpen) return;
+    const handleKeyDown = (event: KeyboardEvent) => {
+      if (event.key !== 'Escape') return;
+      event.preventDefault();
+      setMobileMorePath(null);
+      requestAnimationFrame(() => mobileMoreButtonRef.current?.focus());
+    };
+    document.addEventListener('keydown', handleKeyDown);
+    return () => document.removeEventListener('keydown', handleKeyDown);
+  }, [mobileMoreOpen]);
 
   const forceDocumentNavigationOffline = (event: MouseEvent<HTMLAnchorElement>, href: string) => {
     if (navigator.onLine !== false) return;
@@ -71,9 +85,17 @@ export default function AppShell({ children }: { children: ReactNode }) {
   };
 
   const mobileMoreActive = MOBILE_MORE_NAV_ITEMS.some((item) => isNavItemActive(pathname, item.href));
+  const pillTransition = reduceMotion ? { duration: 0 } : { type: 'spring' as const, stiffness: 500, damping: 35 };
 
   return (
-    <div className="min-h-screen bg-background text-primary" style={{ paddingBottom: 'env(safe-area-inset-bottom, 0px)' }}>
+    <div className="min-h-dvh bg-background text-primary" style={{ paddingBottom: 'env(safe-area-inset-bottom, 0px)' }}>
+      <a
+        href="#main-content"
+        className="sr-only focus:not-sr-only focus:fixed focus:left-4 focus:top-4 focus:z-[100] focus:rounded-lg focus:bg-surface focus:px-4 focus:py-3 focus:text-sm focus:font-semibold focus:text-primary focus:shadow-[var(--shadow-overlay)]"
+      >
+        Skip to main content
+      </a>
+
       <MonthlyReconciliationPrompt />
 
       <header className="sticky top-0 z-30 hidden border-b border-subtle bg-surface md:block">
@@ -95,7 +117,7 @@ export default function AppShell({ children }: { children: ReactNode }) {
               prefetch={false}
               onClick={(event) => forceDocumentNavigationOffline(event, '/app/add')}
               className={cn(
-                'inline-flex min-h-11 items-center gap-1.5 rounded-lg bg-accent px-3 py-2 text-sm font-semibold text-white transition-opacity hover:opacity-90',
+                'inline-flex min-h-11 items-center gap-1.5 rounded-lg bg-action-primary px-3 py-2 text-sm font-semibold text-white transition-colors hover:bg-action-primary-hover',
                 focusVisibleRing
               )}
             >
@@ -111,11 +133,12 @@ export default function AppShell({ children }: { children: ReactNode }) {
                     href={item.href}
                     prefetch={false}
                     onClick={(event) => forceDocumentNavigationOffline(event, item.href)}
+                    aria-current={active ? 'page' : undefined}
                     className={cn(
                       'relative inline-flex min-h-11 items-center whitespace-nowrap rounded-lg px-3 py-2 text-sm font-medium transition-colors',
                       focusVisibleRing,
                       active
-                        ? 'bg-accent text-white'
+                        ? 'bg-action-primary text-white'
                         : 'text-secondary hover:bg-surface-muted hover:text-primary'
                     )}
                   >
@@ -128,7 +151,11 @@ export default function AppShell({ children }: { children: ReactNode }) {
         </div>
       </header>
 
-      <main className={cn('mx-auto px-4 pt-5 pb-28 md:py-7', resolveMainMaxWidth(pathname))}>
+      <main
+        id="main-content"
+        tabIndex={-1}
+        className={cn('mx-auto px-4 pt-5 pb-28 outline-none md:py-7', resolveMainMaxWidth(pathname))}
+      >
         {children}
       </main>
 
@@ -147,7 +174,7 @@ export default function AppShell({ children }: { children: ReactNode }) {
         onClick={(event) => forceDocumentNavigationOffline(event, '/app/add')}
         aria-label="Add transaction"
         className={cn(
-          'fixed right-4 bottom-[calc(5.25rem+env(safe-area-inset-bottom,0px))] z-50 flex h-14 w-14 items-center justify-center rounded-full bg-accent text-3xl font-light leading-none text-white shadow-lg transition-all hover:scale-105 md:hidden',
+          'fixed right-4 bottom-[calc(5.25rem+env(safe-area-inset-bottom,0px))] z-50 flex h-14 w-14 items-center justify-center rounded-full bg-action-primary text-3xl font-light leading-none text-white shadow-lg transition-transform hover:scale-105 md:hidden',
           mobileMoreOpen && 'pointer-events-none opacity-0',
           focusVisibleRing
         )}
@@ -165,8 +192,9 @@ export default function AppShell({ children }: { children: ReactNode }) {
                 href={item.href}
                 prefetch={false}
                 onClick={(event) => forceDocumentNavigationOffline(event, item.href)}
+                aria-current={active ? 'page' : undefined}
                 className={cn(
-                  'relative flex min-h-12 min-w-0 flex-col items-center justify-center gap-0.5 rounded-xl px-0.5 py-1.5 text-[10px] leading-none transition-all sm:text-xs',
+                  'relative flex min-h-12 min-w-0 flex-col items-center justify-center gap-0.5 rounded-xl px-0.5 py-1.5 text-[11px] leading-none transition-colors sm:text-xs',
                   focusVisibleRing,
                   active ? 'text-white' : 'text-muted hover:text-secondary'
                 )}
@@ -174,8 +202,8 @@ export default function AppShell({ children }: { children: ReactNode }) {
                 {active ? (
                   <motion.span
                     layoutId="mobile-pill"
-                    className="absolute inset-0 rounded-xl bg-accent"
-                    transition={{ type: 'spring', stiffness: 500, damping: 35 }}
+                    className="absolute inset-0 rounded-xl bg-action-primary"
+                    transition={pillTransition}
                   />
                 ) : null}
                 <Icon d={item.icon} className={`relative z-10 h-5 w-5 ${active ? 'stroke-[2]' : 'stroke-[1.5]'}`} />
@@ -185,12 +213,14 @@ export default function AppShell({ children }: { children: ReactNode }) {
           })}
 
           <button
+            ref={mobileMoreButtonRef}
             type="button"
             aria-haspopup="menu"
             aria-expanded={mobileMoreOpen}
+            aria-controls="mobile-more-menu"
             onClick={() => setMobileMorePath((current) => (current === pathname ? null : pathname))}
             className={cn(
-              'relative flex min-h-12 min-w-0 flex-col items-center justify-center gap-0.5 rounded-xl px-0.5 py-1.5 text-[10px] leading-none transition-all sm:text-xs',
+              'relative flex min-h-12 min-w-0 flex-col items-center justify-center gap-0.5 rounded-xl px-0.5 py-1.5 text-[11px] leading-none transition-colors sm:text-xs',
               focusVisibleRing,
               mobileMoreActive ? 'text-white' : 'text-muted hover:text-secondary'
             )}
@@ -198,8 +228,8 @@ export default function AppShell({ children }: { children: ReactNode }) {
             {mobileMoreActive ? (
               <motion.span
                 layoutId="mobile-pill"
-                className="absolute inset-0 rounded-xl bg-accent"
-                transition={{ type: 'spring', stiffness: 500, damping: 35 }}
+                className="absolute inset-0 rounded-xl bg-action-primary"
+                transition={pillTransition}
               />
             ) : null}
             <Icon d={MORE_ICON} className={`relative z-10 h-5 w-5 ${mobileMoreActive ? 'stroke-[2]' : 'stroke-[1.5]'}`} />
@@ -208,6 +238,7 @@ export default function AppShell({ children }: { children: ReactNode }) {
 
           {mobileMoreOpen ? (
             <div
+              id="mobile-more-menu"
               role="menu"
               className="absolute right-0 bottom-[calc(100%+0.5rem)] w-52 overflow-hidden rounded-2xl border border-subtle bg-surface p-1.5 shadow-lg"
             >
@@ -223,10 +254,11 @@ export default function AppShell({ children }: { children: ReactNode }) {
                       setMobileMorePath(null);
                       forceDocumentNavigationOffline(event, item.href);
                     }}
+                    aria-current={active ? 'page' : undefined}
                     className={cn(
                       'flex min-h-11 items-center gap-3 rounded-xl px-3 py-2 text-sm font-medium transition-colors',
                       focusVisibleRing,
-                      active ? 'bg-accent text-white' : 'text-secondary hover:bg-surface-muted hover:text-primary'
+                      active ? 'bg-action-primary text-white' : 'text-secondary hover:bg-surface-muted hover:text-primary'
                     )}
                   >
                     <Icon d={item.icon} className="h-5 w-5 shrink-0" />
