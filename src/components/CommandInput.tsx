@@ -3,10 +3,15 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { AnimatePresence, motion } from 'framer-motion';
 import { useLiveQuery } from 'dexie-react-hooks';
+import {
+  resolveHistoricalOccurrenceAroundCheckpoint,
+  type HistoricalOrderingRelation,
+} from '@/balances/reconciliationService';
 import { db } from '@/database';
 import { DEFAULT_SETTINGS_ID } from '@/defaultData';
 import { parseCommands } from '@/parser/parseCommand';
 import { InsufficientBalanceError, createTransactions } from '@/transactions/createTransaction';
+import { findHistoricalTransactionOrderingRequirements } from '@/transactions/historicalOrdering';
 import type { Category, TransactionDraft } from '@/types';
 import { Button } from '@/components/ui/Button';
 import { cn, focusVisibleRing } from '@/lib/cn';
@@ -16,6 +21,13 @@ import { toast } from 'sonner';
 
 /** Tracks which preview index has an in-flight AI suggestion. */
 type AISuggestions = Record<number, { categoryId: string; label: string } | null>;
+
+type OrderingChoice = {
+  checkpointId: string;
+  relation?: HistoricalOrderingRelation;
+};
+
+type OrderingChoices = Record<number, OrderingChoice>;
 
 async function fetchAISuggestion(
   title: string,
@@ -46,6 +58,7 @@ export default function CommandInput() {
   const [previews, setPreviews] = useState<TransactionDraft[]>([]);
   const [aiOverrides, setAiOverrides] = useState<AISuggestions>({});
   const [aiLoading, setAiLoading] = useState<Set<number>>(new Set());
+  const [orderingChoices, setOrderingChoices] = useState<OrderingChoices>({});
   const [errors, setErrors] = useState<string[]>([]);
   const [saving, setSaving] = useState(false);
   const [accountSignedIn, setAccountSignedIn] = useState(false);
@@ -83,6 +96,7 @@ export default function CommandInput() {
       setPreviews([]);
       setAiOverrides({});
       setAiLoading(new Set());
+      setOrderingChoices({});
       setErrors(failureMessages);
       return;
     }
@@ -91,6 +105,7 @@ export default function CommandInput() {
     setPreviews(drafts);
     setAiOverrides({});
     setAiLoading(new Set());
+    setOrderingChoices({});
     setErrors([]);
 
     if (settings.aiCategorizationEnabled && accountSignedIn) {
@@ -117,26 +132,63 @@ export default function CommandInput() {
     setPreviews([]);
     setAiOverrides({});
     setAiLoading(new Set());
+    setOrderingChoices({});
     setErrors([]);
   };
 
   const handleSave = async () => {
     if (previews.length === 0) return;
 
-    // Apply AI overrides before saving
-    const finalDrafts = previews.map((draft, i) => {
+    const draftsWithAI = previews.map((draft, i) => {
       const override = aiOverrides[i];
       return override ? { ...draft, categoryId: override.categoryId } : draft;
     });
 
     setSaving(true);
     try {
+      const requirements = await findHistoricalTransactionOrderingRequirements(draftsWithAI, db);
+      const requirementByIndex = new Map(requirements.map((requirement) => [requirement.index, requirement]));
+      const nextChoices: OrderingChoices = {};
+      let missingChoice = false;
+
+      for (const requirement of requirements) {
+        const existingChoice = orderingChoices[requirement.index];
+        nextChoices[requirement.index] =
+          existingChoice?.checkpointId === requirement.checkpoint.id
+            ? existingChoice
+            : { checkpointId: requirement.checkpoint.id };
+        if (!nextChoices[requirement.index]?.relation) missingChoice = true;
+      }
+
+      setOrderingChoices(nextChoices);
+      if (missingChoice) {
+        setErrors([
+          'One or more historical transactions share a date with balance reconciliation. Choose whether each happened before or after reconciliation.',
+        ]);
+        return;
+      }
+
+      const finalDrafts = draftsWithAI.map((draft, index) => {
+        const requirement = requirementByIndex.get(index);
+        const relation = nextChoices[index]?.relation;
+        return requirement && relation
+          ? {
+              ...draft,
+              occurredAt: resolveHistoricalOccurrenceAroundCheckpoint(
+                requirement.checkpoint,
+                relation
+              ),
+            }
+          : draft;
+      });
+
       await createTransactions(finalDrafts);
       const count = finalDrafts.length;
       toast.success(`Saved ${count} transaction${count === 1 ? '' : 's'}.`);
       setPreviews([]);
       setAiOverrides({});
       setAiLoading(new Set());
+      setOrderingChoices({});
       setInput('');
       setErrors([]);
       inputRef.current?.focus();
@@ -149,6 +201,17 @@ export default function CommandInput() {
     } finally {
       setSaving(false);
     }
+  };
+
+  const setOrderingRelation = (
+    index: number,
+    checkpointId: string,
+    relation: HistoricalOrderingRelation
+  ) => {
+    setOrderingChoices((current) => ({
+      ...current,
+      [index]: { checkpointId, relation },
+    }));
   };
 
   const isMulti = previews.length > 1;
@@ -259,6 +322,7 @@ export default function CommandInput() {
                 const isAiLoading = aiLoading.has(index);
                 const displayCategoryId = aiOverride?.categoryId ?? preview.categoryId;
                 const displayCategoryName = categoriesById.get(displayCategoryId)?.name ?? displayCategoryId;
+                const orderingChoice = orderingChoices[index];
 
                 return (
                   <div
@@ -311,6 +375,40 @@ export default function CommandInput() {
                       <PreviewItem label="Method" value={preview.method} />
                       <PreviewItem label="Date" value={preview.date} />
                     </div>
+
+                    {orderingChoice ? (
+                      <div className="mt-3 rounded-lg border border-accent bg-accent-muted/40 p-3">
+                        <p className="text-xs font-semibold text-secondary">
+                          This date has a balance reconciliation. Did this transaction happen before or after it?
+                        </p>
+                        <div className="mt-2 flex flex-wrap gap-2">
+                          <Button
+                            type="button"
+                            size="sm"
+                            variant={orderingChoice.relation === 'before' ? 'primary' : 'secondary'}
+                            aria-pressed={orderingChoice.relation === 'before'}
+                            onClick={() =>
+                              setOrderingRelation(index, orderingChoice.checkpointId, 'before')
+                            }
+                            disabled={saving}
+                          >
+                            Before reconciliation
+                          </Button>
+                          <Button
+                            type="button"
+                            size="sm"
+                            variant={orderingChoice.relation === 'after' ? 'primary' : 'secondary'}
+                            aria-pressed={orderingChoice.relation === 'after'}
+                            onClick={() =>
+                              setOrderingRelation(index, orderingChoice.checkpointId, 'after')
+                            }
+                            disabled={saving}
+                          >
+                            After reconciliation
+                          </Button>
+                        </div>
+                      </div>
+                    ) : null}
                   </div>
                 );
               })}
@@ -329,6 +427,7 @@ export default function CommandInput() {
                   setPreviews([]);
                   setAiOverrides({});
                   setAiLoading(new Set());
+                  setOrderingChoices({});
                 }}
                 disabled={saving}
               >
