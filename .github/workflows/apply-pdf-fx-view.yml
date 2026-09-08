@@ -12,23 +12,30 @@ permissions:
 
 jobs:
   patch:
-    if: github.actor != 'github-actions[bot]'
     runs-on: ubuntu-latest
     steps:
       - name: Check out remediation branch
-        uses: actions/checkout@v7
+        uses: actions/checkout@v4
         with:
           ref: remediation/taptrack-correctness-b002
           fetch-depth: 0
 
-      - name: Apply PDF FX view patch
-        shell: python
+      - name: Patch Reports export options
+        shell: bash
         run: |
+          python - <<'PY'
           from pathlib import Path
-
           path = Path('src/components/ReportsWorkspace.tsx')
           text = path.read_text()
           old = """    const options: ReportExportOptions =
+            reportMode === 'month'
+              ? { mode: 'month', month }
+              : reportMode === 'year'
+                ? { mode: 'year', year }
+                : { mode: 'range', startDate: rangeStart, endDate: rangeEnd };
+          """
+          if old not in text:
+              old = """    const options: ReportExportOptions =
       reportMode === 'month'
         ? { mode: 'month', month }
         : reportMode === 'year'
@@ -46,10 +53,12 @@ jobs:
           : { mode: 'range', startDate: rangeStart, endDate: rangeEnd, ...fxExportOptions };
 """
           if text.count(old) != 1:
-              raise SystemExit(f'Expected one export options block, found {text.count(old)}')
+              raise SystemExit(f'Expected exactly one export options block, found {text.count(old)}')
           path.write_text(text.replace(old, new))
+          PY
 
-      - name: Commit PDF FX view patch
+      - name: Commit patch
+        shell: bash
         run: |
           git config user.name "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
