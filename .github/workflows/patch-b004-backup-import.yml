@@ -1,0 +1,38 @@
+name: Patch B004 backup type import
+
+on:
+  push:
+    branches:
+      - feature/taptrack-b004-personalization-dashboard
+    paths:
+      - .github/workflows/patch-b004-backup-import.yml
+
+permissions:
+  contents: write
+
+jobs:
+  patch:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          ref: feature/taptrack-b004-personalization-dashboard
+      - name: Add Currency type import
+        run: |
+          python - <<'PY'
+          from pathlib import Path
+          path = Path('src/exports/backupService.ts')
+          text = path.read_text()
+          old = "  type Conversion,\n  type MonthlyBudget,"
+          new = "  type Conversion,\n  type Currency,\n  type MonthlyBudget,"
+          if text.count(old) != 1:
+              raise SystemExit(f'expected one import anchor, found {text.count(old)}')
+          path.write_text(text.replace(old, new, 1))
+          PY
+      - name: Commit import fix
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add src/exports/backupService.ts
+          git commit -m "Import Currency in backup validator"
+          git push
