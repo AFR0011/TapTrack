@@ -1,8 +1,9 @@
 import AppShell from "@/components/AppShell";
 import SetupGate from "@/components/SetupGate";
+import { ServiceWorkerRegister } from "@/components/ServiceWorkerRegister";
+import { ToastProvider } from "@/components/ToastProvider";
 import { DatabaseProvider } from "../providers/DatabaseProvider";
 import { ReactQueryProvider } from "../providers/ReactQueryProvider";
-import { ToastProvider } from "@/components/ToastProvider";
 
 export default function AuthenticatedLayout({
   children,
@@ -13,6 +14,7 @@ export default function AuthenticatedLayout({
     <ReactQueryProvider>
       <ToastProvider>
         <DatabaseProvider>
+          <ServiceWorkerRegister />
           <SetupGate>
             <AppShell>{children}</AppShell>
           </SetupGate>
