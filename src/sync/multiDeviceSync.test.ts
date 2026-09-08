@@ -57,7 +57,6 @@ function createSharedRemoteClient() {
     return table;
   };
 
-  const getKey = (row: RemoteRow) => `${String(row.user_id)}:${String(row.id)}`;
   const matches = (row: RemoteRow, filters: Filters) =>
     Object.entries(filters).every(([field, value]) => row[field] === value);
 
@@ -161,7 +160,8 @@ function createSharedRemoteClient() {
 }
 
 function authorize(client: ReturnType<typeof createSharedRemoteClient>['client']) {
-  vi.mocked(requireLinkedSyncAccess).mockImplementation(async (database: TapTrackDatabase) => {
+  vi.mocked(requireLinkedSyncAccess).mockImplementation(async (database?: TapTrackDatabase) => {
+    if (!database) return null;
     const binding = await database.deviceMetadata.get('ledger-binding');
     if (!binding) return null;
     return {
