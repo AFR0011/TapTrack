@@ -85,6 +85,12 @@ function createWriteClient(result: Record<string, unknown>) {
   return { from, rpc };
 }
 
+function createTelegramFetchMock() {
+  const telegramFetch = vi.fn<typeof fetch>();
+  telegramFetch.mockResolvedValue(new Response(JSON.stringify({ ok: true }), { status: 200 }));
+  return telegramFetch;
+}
+
 beforeEach(() => {
   process.env.TELEGRAM_WEBHOOK_SECRET = 'secret';
   process.env.TELEGRAM_BOT_TOKEN = 'bot-token';
@@ -125,9 +131,7 @@ describe('Telegram webhook', () => {
       ],
     });
     vi.mocked(createSupabaseAdminClient).mockReturnValue(client as never);
-    const telegramFetch = vi.fn(async () =>
-      new Response(JSON.stringify({ ok: true }), { status: 200 })
-    );
+    const telegramFetch = createTelegramFetchMock();
     vi.stubGlobal('fetch', telegramFetch);
 
     const response = await POST(webhookRequest('+10 <b>bonus</b> card'));
@@ -161,9 +165,7 @@ describe('Telegram webhook', () => {
   it('does not send another confirmation for a duplicate Telegram update', async () => {
     const client = createWriteClient({ applied: true, duplicate: true, transactions: [] });
     vi.mocked(createSupabaseAdminClient).mockReturnValue(client as never);
-    const telegramFetch = vi.fn(async () =>
-      new Response(JSON.stringify({ ok: true }), { status: 200 })
-    );
+    const telegramFetch = createTelegramFetchMock();
     vi.stubGlobal('fetch', telegramFetch);
 
     const response = await POST(webhookRequest('+10 bonus card'));
