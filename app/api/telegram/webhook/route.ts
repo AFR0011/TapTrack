@@ -2,11 +2,8 @@ import { type NextRequest, NextResponse } from 'next/server';
 import { createSupabaseAdminClient } from '@/lib/supabase-admin';
 import { parseCommands } from '@/parser/parseCommand';
 import { createDefaultCategories } from '@/defaultData';
-import type { Category } from '@/types';
+import { SUPPORTED_CURRENCIES, SUPPORTED_METHODS, type Category, type Currency, type Method } from '@/types';
 
-// ---------------------------------------------------------------------------
-// Telegram update types (subset)
-// ---------------------------------------------------------------------------
 interface TelegramUser {
   id: number;
   username?: string;
@@ -16,7 +13,7 @@ interface TelegramUser {
 interface TelegramMessage {
   message_id: number;
   from?: TelegramUser;
-  chat: { id: number };
+  chat: { id: number; type?: string };
   text?: string;
 }
 
@@ -25,47 +22,106 @@ interface TelegramUpdate {
   message?: TelegramMessage;
 }
 
-// ---------------------------------------------------------------------------
-// Telegram API helper
-// ---------------------------------------------------------------------------
+type TelegramWriteResult = {
+  applied?: unknown;
+  duplicate?: unknown;
+  errorCode?: unknown;
+  currency?: unknown;
+  method?: unknown;
+  availableAmount?: unknown;
+  transactions?: unknown;
+};
+
+type TelegramSavedTransaction = {
+  id: string;
+  type: 'income' | 'expense';
+  amount: number;
+  currency: Currency;
+  title: string;
+  method: Method;
+};
+
 async function sendMessage(chatId: number, text: string): Promise<void> {
   const token = process.env.TELEGRAM_BOT_TOKEN;
   if (!token) return;
 
-  await fetch(`https://api.telegram.org/bot${token}/sendMessage`, {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ chat_id: chatId, text, parse_mode: 'HTML' }),
-  }).catch(() => undefined);
+  try {
+    await fetch(`https://api.telegram.org/bot${token}/sendMessage`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ chat_id: chatId, text, parse_mode: 'HTML' }),
+    });
+  } catch {
+    // Ledger correctness must not depend on Telegram accepting the confirmation.
+  }
+}
+
+export function escapeTelegramHtml(value: string): string {
+  return value
+    .replaceAll('&', '&amp;')
+    .replaceAll('<', '&lt;')
+    .replaceAll('>', '&gt;')
+    .replaceAll('"', '&quot;');
+}
+
+export function getDateInTimeZone(date: Date, timeZone: string): string {
+  const parts = new Intl.DateTimeFormat('en-US', {
+    timeZone,
+    year: 'numeric',
+    month: '2-digit',
+    day: '2-digit',
+  }).formatToParts(date);
+  const values = new Map(parts.map((part) => [part.type, part.value]));
+  const year = values.get('year');
+  const month = values.get('month');
+  const day = values.get('day');
+  if (!year || !month || !day) throw new Error('Could not determine Telegram ledger date.');
+  return `${year}-${month}-${day}`;
 }
 
 function formatAmount(amount: number, currency: string): string {
   const symbol = currency === 'TRY' ? '₺' : currency === 'USD' ? '$' : '€';
-  return `${symbol}${Number(amount).toLocaleString('en-US', { minimumFractionDigits: 0, maximumFractionDigits: 2 })}`;
+  return `${symbol}${Number(amount).toLocaleString('en-US', {
+    minimumFractionDigits: 0,
+    maximumFractionDigits: 2,
+  })}`;
 }
 
-function getBalanceId(currency: string, method: string): string {
-  return `${currency}-${method}`;
+function matchesCommand(text: string, command: string): boolean {
+  const token = text.split(/\s+/, 1)[0]?.toLowerCase() ?? '';
+  return token === command || token.startsWith(`${command}@`);
 }
 
-// ---------------------------------------------------------------------------
-// POST handler — receives Telegram webhook updates
-// ---------------------------------------------------------------------------
+function isSavedTransaction(value: unknown): value is TelegramSavedTransaction {
+  if (!value || typeof value !== 'object' || Array.isArray(value)) return false;
+  const row = value as Record<string, unknown>;
+  return (
+    typeof row.id === 'string' &&
+    (row.type === 'income' || row.type === 'expense') &&
+    typeof row.amount === 'number' &&
+    Number.isFinite(row.amount) &&
+    row.amount > 0 &&
+    (row.currency === 'TRY' || row.currency === 'USD' || row.currency === 'EUR') &&
+    typeof row.title === 'string' &&
+    (row.method === 'cash' || row.method === 'card')
+  );
+}
+
 export async function POST(request: NextRequest): Promise<NextResponse> {
   const webhookSecret = process.env.TELEGRAM_WEBHOOK_SECRET;
   const botToken = process.env.TELEGRAM_BOT_TOKEN;
   const ownerChatId = process.env.TAPTRACK_OWNER_TELEGRAM_CHAT_ID;
   const ownerId = process.env.TAPTRACK_OWNER_USER_ID;
-  const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL;
-  const serviceRoleKey = process.env.SUPABASE_SERVICE_ROLE_KEY;
+  const timeZone = process.env.TAPTRACK_TIME_ZONE;
 
   if (
     !webhookSecret ||
     !botToken ||
     !ownerChatId ||
     !ownerId ||
-    !supabaseUrl ||
-    !serviceRoleKey
+    !timeZone ||
+    !process.env.NEXT_PUBLIC_SUPABASE_URL ||
+    !process.env.SUPABASE_SERVICE_ROLE_KEY
   ) {
     return NextResponse.json(
       { error: 'Telegram integration is not fully configured' },
@@ -73,17 +129,31 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
     );
   }
 
-  // Verify webhook secret
+  let ledgerDate: string;
+  try {
+    ledgerDate = getDateInTimeZone(new Date(), timeZone);
+  } catch {
+    return NextResponse.json({ error: 'Telegram timezone is invalid' }, { status: 503 });
+  }
+
   const secretToken = request.headers.get('x-telegram-bot-api-secret-token');
   if (secretToken !== webhookSecret) {
     return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
   }
 
-  const update = (await request.json()) as TelegramUpdate;
-  const message = update.message;
-  if (!message?.text) {
-    return NextResponse.json({ ok: true });
+  let update: TelegramUpdate;
+  try {
+    update = (await request.json()) as TelegramUpdate;
+  } catch {
+    return NextResponse.json({ error: 'Invalid Telegram update' }, { status: 400 });
   }
+
+  if (!Number.isInteger(update.update_id) || update.update_id < 0) {
+    return NextResponse.json({ error: 'Invalid Telegram update' }, { status: 400 });
+  }
+
+  const message = update.message;
+  if (!message?.text) return NextResponse.json({ ok: true });
 
   const chatId = message.chat.id;
   const text = message.text.trim();
@@ -92,71 +162,90 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
     return NextResponse.json({ error: 'Forbidden' }, { status: 403 });
   }
 
+  // Group authorization is intentionally fail-closed until its product policy is
+  // selected. A configured private owner chat continues to work normally.
+  if (message.chat.type && message.chat.type !== 'private') {
+    return NextResponse.json({ error: 'Telegram group access is not configured' }, { status: 403 });
+  }
+
   const supabase = createSupabaseAdminClient();
 
-  // -------------------------------------------------------------------------
-  // /balance command
-  // -------------------------------------------------------------------------
-  if (text === '/balance' || text === '/balance@taptrackbot') {
-    const { data: balances } = await supabase
-      .from('balances')
-      .select('currency, method, amount')
-      .eq('user_id', ownerId)
-      .order('currency')
-      .order('method');
-
-    if (!balances?.length) {
-      await sendMessage(chatId, 'No balances found.');
-      return NextResponse.json({ ok: true });
+  if (matchesCommand(text, '/balance')) {
+    const balances: Array<{ currency: Currency; method: Method; amount: number }> = [];
+    for (const currency of SUPPORTED_CURRENCIES) {
+      for (const method of SUPPORTED_METHODS) {
+        const { data, error } = await supabase.rpc('taptrack_calculated_balance', {
+          target_user_id: ownerId,
+          target_currency: currency,
+          target_method: method,
+        });
+        if (error) {
+          await sendMessage(chatId, '❌ Balance summary is temporarily unavailable.');
+          return NextResponse.json({ ok: true });
+        }
+        const amount = Number(data);
+        if (!Number.isFinite(amount)) {
+          await sendMessage(chatId, '❌ Balance summary is temporarily unavailable.');
+          return NextResponse.json({ ok: true });
+        }
+        balances.push({ currency, method, amount });
+      }
     }
 
     const lines = ['💰 <b>Balances</b>'];
-    for (const b of balances) {
-      lines.push(`${b.currency} ${b.method}: ${formatAmount(b.amount, b.currency)}`);
+    for (const balance of balances) {
+      lines.push(
+        `${balance.currency} ${balance.method}: ${formatAmount(balance.amount, balance.currency)}`
+      );
     }
     await sendMessage(chatId, lines.join('\n'));
     return NextResponse.json({ ok: true });
   }
 
-  // -------------------------------------------------------------------------
-  // /today command
-  // -------------------------------------------------------------------------
-  if (text === '/today' || text === '/today@taptrackbot') {
-    const today = new Date().toISOString().slice(0, 10);
-    const { data: txs } = await supabase
+  if (matchesCommand(text, '/today')) {
+    const { data: txs, error } = await supabase
       .from('transactions')
       .select('type, amount, currency, method, title')
       .eq('user_id', ownerId)
-      .eq('date', today);
+      .eq('date', ledgerDate)
+      .is('deleted_at', null)
+      .order('occurred_at', { ascending: true });
 
-    const expenses = txs?.filter((t) => t.type === 'expense') ?? [];
-    const income = txs?.filter((t) => t.type === 'income') ?? [];
+    if (error) {
+      await sendMessage(chatId, '❌ Today’s transactions are temporarily unavailable.');
+      return NextResponse.json({ ok: true });
+    }
 
-    const lines = [`📊 <b>Today (${today})</b>`];
+    const expenses = txs?.filter((transaction) => transaction.type === 'expense') ?? [];
+    const income = txs?.filter((transaction) => transaction.type === 'income') ?? [];
+    const lines = [`📊 <b>Today (${ledgerDate})</b>`];
+
     if (expenses.length === 0 && income.length === 0) {
       lines.push('No transactions today.');
     } else {
       if (expenses.length > 0) {
         lines.push('\n<b>Expenses:</b>');
-        for (const t of expenses) {
-          lines.push(`  -${formatAmount(t.amount, t.currency)} ${t.method} · ${t.title}`);
+        for (const transaction of expenses) {
+          lines.push(
+            `  -${formatAmount(Number(transaction.amount), transaction.currency)} ${escapeTelegramHtml(String(transaction.method))} · ${escapeTelegramHtml(String(transaction.title))}`
+          );
         }
       }
       if (income.length > 0) {
         lines.push('\n<b>Income:</b>');
-        for (const t of income) {
-          lines.push(`  +${formatAmount(t.amount, t.currency)} ${t.method} · ${t.title}`);
+        for (const transaction of income) {
+          lines.push(
+            `  +${formatAmount(Number(transaction.amount), transaction.currency)} ${escapeTelegramHtml(String(transaction.method))} · ${escapeTelegramHtml(String(transaction.title))}`
+          );
         }
       }
     }
+
     await sendMessage(chatId, lines.join('\n'));
     return NextResponse.json({ ok: true });
   }
 
-  // -------------------------------------------------------------------------
-  // /help command
-  // -------------------------------------------------------------------------
-  if (text === '/help' || text === '/start') {
+  if (matchesCommand(text, '/help') || matchesCommand(text, '/start')) {
     await sendMessage(
       chatId,
       '📒 <b>TapTrack Bot</b>\n\n' +
@@ -172,165 +261,130 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
     return NextResponse.json({ ok: true });
   }
 
-  // -------------------------------------------------------------------------
-  // Transaction command(s)
-  // -------------------------------------------------------------------------
   if (!text.startsWith('/')) {
-    // Load categories for this user (fall back to defaults if none found)
-    const { data: rawCategories } = await supabase
-      .from('categories')
-      .select('*')
-      .eq('user_id', ownerId);
+    const [{ data: rawCategories, error: categoryError }, { data: settings, error: settingsError }] =
+      await Promise.all([
+        supabase
+          .from('categories')
+          .select('*')
+          .eq('user_id', ownerId)
+          .is('deleted_at', null),
+        supabase
+          .from('settings')
+          .select('last_used_method')
+          .eq('user_id', ownerId)
+          .is('deleted_at', null)
+          .maybeSingle(),
+      ]);
+
+    if (categoryError || settingsError) {
+      await sendMessage(chatId, '❌ TapTrack could not load your ledger settings.');
+      return NextResponse.json({ ok: true });
+    }
 
     const categories: Category[] = (rawCategories?.length
-      ? rawCategories.map((c) => ({
-          id: c.id as string,
-          name: c.name as string,
-          icon: c.icon as string | undefined,
-          color: c.color as string | undefined,
-          isDefault: c.is_default as boolean,
-          type: c.type as 'income' | 'expense',
-          createdAt: c.created_at as string,
-          updatedAt: c.updated_at as string,
+      ? rawCategories.map((category) => ({
+          id: category.id as string,
+          name: category.name as string,
+          icon: (category.icon as string | null) ?? undefined,
+          color: (category.color as string | null) ?? undefined,
+          isDefault: category.is_default as boolean,
+          type: category.type as 'income' | 'expense',
+          createdAt: category.created_at as string,
+          updatedAt: category.updated_at as string,
         }))
       : createDefaultCategories()) as Category[];
 
-    const results = parseCommands(text, { categories });
-    const failures = results.filter((r) => !r.ok);
+    const defaultMethod: Method = settings?.last_used_method === 'cash' ? 'cash' : 'card';
+    const results = parseCommands(text, { categories, defaultMethod });
+    const failures = results.filter((result) => !result.ok);
 
     if (failures.length > 0) {
-      const msgs = results.map((r, i) =>
-        r.ok ? null : results.length === 1 ? r.message : `Entry ${i + 1}: ${r.message}`
-      ).filter(Boolean);
-      await sendMessage(chatId, `❌ ${msgs.join('\n')}`);
+      const messages = results
+        .map((result, index) =>
+          result.ok
+            ? null
+            : results.length === 1
+              ? result.message
+              : `Entry ${index + 1}: ${result.message}`
+        )
+        .filter((message): message is string => message !== null);
+      await sendMessage(chatId, `❌ ${escapeTelegramHtml(messages.join('\n'))}`);
       return NextResponse.json({ ok: true });
     }
 
-    const now = new Date().toISOString();
-    const today = now.slice(0, 10);
-    const savedLines: string[] = [];
-    const drafts = results.filter((result) => result.ok).map((result) => result.transaction);
-    const { data: existingBalances, error: balancesReadError } = await supabase
-      .from('balances')
-      .select('id, amount')
-      .eq('user_id', ownerId);
-    if (balancesReadError) {
-      await sendMessage(chatId, `❌ Failed to load balances: ${balancesReadError.message}`);
-      return NextResponse.json({ ok: true });
-    }
-
-    const originalBalances = new Map(
-      (existingBalances ?? []).map((balance) => [balance.id as string, Number(balance.amount) || 0])
+    const drafts = results.flatMap((result) =>
+      result.ok
+        ? [
+            {
+              type: result.transaction.type,
+              amount: result.transaction.amount,
+              currency: result.transaction.currency,
+              title: result.transaction.title,
+              category_id: result.transaction.categoryId,
+              method: result.transaction.method,
+              note: result.transaction.note ?? null,
+            },
+          ]
+        : []
     );
-    const nextBalances = new Map(originalBalances);
-    const touchedBalanceIds = new Set<string>();
 
-    for (const draft of drafts) {
-      const balanceId = getBalanceId(draft.currency, draft.method);
-      const currentAmount = nextBalances.get(balanceId) ?? 0;
-      const delta = draft.type === 'expense' ? -draft.amount : draft.amount;
-      const nextAmount = currentAmount + delta;
-      if (nextAmount < 0) {
-        await sendMessage(
-          chatId,
-          `❌ ${draft.type === 'expense' ? 'Expense' : 'Income'} blocked: not enough ${draft.currency} ${draft.method} balance (${formatAmount(currentAmount, draft.currency)} available).`
-        );
-        return NextResponse.json({ ok: true });
-      }
-      nextBalances.set(balanceId, nextAmount);
-      touchedBalanceIds.add(balanceId);
-    }
-
-    const insertedTransactionIds: string[] = [];
-    for (const draft of drafts) {
-      const id = crypto.randomUUID();
-      const row = {
-        id,
-        user_id: ownerId,
-        type: draft.type,
-        amount: draft.amount,
-        currency: draft.currency,
-        title: draft.title,
-        category_id: draft.categoryId,
-        method: draft.method,
-        date: draft.date ?? today,
-        note: draft.note ?? null,
-        recurring_source_id: null,
-        created_at: now,
-        updated_at: now,
-      };
-
-      const { error: insertError } = await supabase.from('transactions').insert(row);
-      if (insertError) {
-        if (insertedTransactionIds.length > 0) {
-          await supabase.from('transactions').delete().in('id', insertedTransactionIds);
-        }
-        await sendMessage(chatId, `❌ Failed to save "${draft.title}": ${insertError.message}`);
-        return NextResponse.json({ ok: true });
-      }
-
-      insertedTransactionIds.push(id);
-      const sign = draft.type === 'income' ? '+' : '-';
-      savedLines.push(`${sign}${formatAmount(draft.amount, draft.currency)} · ${draft.title} · ${draft.method}`);
-    }
-
-    const balanceRows = [...touchedBalanceIds].map((balanceId) => {
-      const [currency, method] = balanceId.split('-');
-      return {
-        id: balanceId,
-        user_id: ownerId,
-        currency,
-        method,
-        amount: nextBalances.get(balanceId) ?? 0,
-        updated_at: now,
-      };
+    const { data, error } = await supabase.rpc('apply_taptrack_telegram_update', {
+      target_user_id: ownerId,
+      telegram_update_id: update.update_id,
+      ledger_date: ledgerDate,
+      drafts,
     });
 
-    if (balanceRows.length > 0) {
-      const { error: upsertBalanceError } = await supabase
-        .from('balances')
-        .upsert(balanceRows, { onConflict: 'user_id,id' });
-
-      if (upsertBalanceError) {
-        if (insertedTransactionIds.length > 0) {
-          await supabase.from('transactions').delete().in('id', insertedTransactionIds);
-        }
-
-        const rollbackUpserts = [...touchedBalanceIds]
-          .filter((balanceId) => originalBalances.has(balanceId))
-          .map((balanceId) => {
-            const [currency, method] = balanceId.split('-');
-            return {
-              id: balanceId,
-              user_id: ownerId,
-              currency,
-              method,
-              amount: originalBalances.get(balanceId) ?? 0,
-              updated_at: now,
-            };
-          });
-        const rollbackDeletes = [...touchedBalanceIds].filter(
-          (balanceId) => !originalBalances.has(balanceId)
-        );
-
-        if (rollbackUpserts.length > 0) {
-          await supabase.from('balances').upsert(rollbackUpserts, { onConflict: 'user_id,id' });
-        }
-        if (rollbackDeletes.length > 0) {
-          await supabase.from('balances').delete().in('id', rollbackDeletes).eq('user_id', ownerId);
-        }
-
-        await sendMessage(chatId, `❌ Failed to update balances: ${upsertBalanceError.message}`);
-        return NextResponse.json({ ok: true });
-      }
+    if (error) {
+      await sendMessage(chatId, '❌ Transaction could not be saved.');
+      return NextResponse.json({ ok: true });
     }
 
-    const header = savedLines.length === 1 ? '✅ Saved' : `✅ Saved ${savedLines.length} transactions`;
+    const result = data as TelegramWriteResult | null;
+    if (!result || typeof result !== 'object') {
+      await sendMessage(chatId, '❌ Transaction could not be saved.');
+      return NextResponse.json({ ok: true });
+    }
+
+    if (result.duplicate === true) {
+      return NextResponse.json({ ok: true, duplicate: true });
+    }
+
+    if (result.applied !== true) {
+      if (
+        result.errorCode === 'insufficient-balance' &&
+        typeof result.currency === 'string' &&
+        typeof result.method === 'string' &&
+        Number.isFinite(Number(result.availableAmount))
+      ) {
+        await sendMessage(
+          chatId,
+          `❌ Not enough ${escapeTelegramHtml(result.currency)} ${escapeTelegramHtml(result.method)} balance (${formatAmount(Number(result.availableAmount), result.currency)} available).`
+        );
+      } else {
+        await sendMessage(chatId, '❌ Transaction was not saved.');
+      }
+      return NextResponse.json({ ok: true });
+    }
+
+    const saved = Array.isArray(result.transactions)
+      ? result.transactions.filter(isSavedTransaction)
+      : [];
+    if (saved.length !== drafts.length) {
+      await sendMessage(chatId, '✅ Transaction saved, but the confirmation could not be formatted.');
+      return NextResponse.json({ ok: true });
+    }
+
+    const savedLines = saved.map((transaction) => {
+      const sign = transaction.type === 'income' ? '+' : '-';
+      return `${sign}${formatAmount(transaction.amount, transaction.currency)} · ${escapeTelegramHtml(transaction.title)} · ${transaction.method}`;
+    });
+    const header = saved.length === 1 ? '✅ Saved' : `✅ Saved ${saved.length} transactions`;
     await sendMessage(chatId, `${header}\n${savedLines.join('\n')}`);
     return NextResponse.json({ ok: true });
   }
 
-  // Unknown command
   await sendMessage(chatId, 'Unknown command. Type /help for usage.');
   return NextResponse.json({ ok: true });
 }
