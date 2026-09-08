@@ -1,6 +1,5 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { TapTrackDatabase, ensureDatabaseSeeded } from '@/database';
-import { getBalanceId } from '@/defaultData';
 
 vi.mock('@/lib/supabase', () => ({
   createSupabaseBrowserClient: vi.fn(),
@@ -70,6 +69,16 @@ function createClient(options?: {
   };
 }
 
+async function addUserBalance(database: TapTrackDatabase, currency: string, method: 'card' | 'cash', amount: number) {
+  await database.balances.put({
+    id: `${currency}-${method}`,
+    currency,
+    method,
+    amount,
+    updatedAt: '2026-09-08T12:00:00.000Z',
+  });
+}
+
 describe('device ledger sync binding', () => {
   let database: TapTrackDatabase;
 
@@ -96,7 +105,7 @@ describe('device ledger sync binding', () => {
     await ensureDatabaseSeeded(database);
     await expect(hasMeaningfulLocalLedgerData(database)).resolves.toBe(false);
 
-    await database.balances.update(getBalanceId('TRY', 'card'), { amount: 100 });
+    await addUserBalance(database, 'GBP', 'card', 100);
     await expect(hasMeaningfulLocalLedgerData(database)).resolves.toBe(true);
   });
 
@@ -119,7 +128,7 @@ describe('device ledger sync binding', () => {
       remoteHasData: true,
     });
 
-    await database.balances.update(getBalanceId('TRY', 'cash'), { amount: 250 });
+    await addUserBalance(database, 'GBP', 'cash', 250);
     await expect(inspectDeviceLedgerLinkToCurrentUser(database)).resolves.toMatchObject({
       state: 'merge-choice',
       localHasUserData: true,
