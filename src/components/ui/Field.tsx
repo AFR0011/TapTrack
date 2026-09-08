@@ -13,13 +13,13 @@ export const Field = forwardRef<HTMLInputElement, FieldProps>(
     const fieldId = id ?? label.toLowerCase().replace(/\s+/g, '-');
 
     return (
-      <label htmlFor={fieldId} className="grid gap-1.5">
+      <label htmlFor={fieldId} className="grid min-w-0 gap-1.5">
         <span className="text-sm font-medium text-secondary">{label}</span>
         <input
           ref={ref}
           id={fieldId}
           className={cn(
-            'min-h-11 w-full rounded-lg border border-subtle bg-surface px-3 py-2 text-sm font-medium text-primary outline-none transition-colors placeholder:text-muted focus-visible:border-accent disabled:cursor-not-allowed disabled:opacity-60',
+            'min-h-11 min-w-0 w-full rounded-lg border border-subtle bg-surface px-3 py-2 text-sm font-medium text-primary outline-none transition-colors placeholder:text-muted focus-visible:border-accent disabled:cursor-not-allowed disabled:opacity-60',
             focusVisibleRing,
             error && 'border-danger focus-visible:border-danger focus-visible:outline-danger',
             className
