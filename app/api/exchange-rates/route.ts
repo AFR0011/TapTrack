@@ -3,10 +3,10 @@ import {
   EXCHANGE_RATE_SOURCE,
   type HistoricalExchangeRateResponse,
 } from '@/exchangeRates';
+import { normalizeCurrencyCode } from '@/currencies/currencyCatalog';
 import type { Currency } from '@/types';
 
-const SUPPORTED = new Set<Currency>(['TRY', 'USD', 'EUR']);
-const TCMB_COVERAGE_START = '1996-01-01';
+const COVERAGE_START = '1948-01-01';
 const INITIAL_LOOKBACK_DAYS = 31;
 const RANGE_WINDOW_YEARS = 4;
 
@@ -19,14 +19,14 @@ type FrankfurterRateRecord = {
 
 export async function GET(request: NextRequest): Promise<NextResponse> {
   const dateRequested = request.nextUrl.searchParams.get('date') ?? '';
-  const base = request.nextUrl.searchParams.get('base') as Currency | null;
-  const quote = request.nextUrl.searchParams.get('quote') as Currency | null;
+  const base = normalizeCurrencyCode(request.nextUrl.searchParams.get('base'));
+  const quote = normalizeCurrencyCode(request.nextUrl.searchParams.get('quote'));
 
   if (!isValidIsoDate(dateRequested)) {
     return NextResponse.json({ error: 'A valid date in YYYY-MM-DD format is required.' }, { status: 400 });
   }
-  if (!base || !quote || !SUPPORTED.has(base) || !SUPPORTED.has(quote)) {
-    return NextResponse.json({ error: 'Supported base and quote currencies are required.' }, { status: 400 });
+  if (!base || !quote) {
+    return NextResponse.json({ error: 'Valid base and quote currencies are required.' }, { status: 400 });
   }
 
   if (base === quote) {
@@ -47,18 +47,16 @@ export async function GET(request: NextRequest): Promise<NextResponse> {
   try {
     const exact = await fetchExactRate(base, quote, dateRequested);
     if (exact) {
-      return NextResponse.json(
-        toResponse(base, quote, dateRequested, exact),
-        { headers: cacheHeaders(dateRequested) }
-      );
+      return NextResponse.json(toResponse(base, quote, dateRequested, exact), {
+        headers: cacheHeaders(dateRequested),
+      });
     }
 
     const prior = await fetchMostRecentPriorRate(base, quote, dateRequested);
     if (prior) {
-      return NextResponse.json(
-        toResponse(base, quote, dateRequested, prior),
-        { headers: cacheHeaders(dateRequested) }
-      );
+      return NextResponse.json(toResponse(base, quote, dateRequested, prior), {
+        headers: cacheHeaders(dateRequested),
+      });
     }
 
     return NextResponse.json(
@@ -79,7 +77,7 @@ async function fetchExactRate(
   date: string
 ): Promise<FrankfurterRateRecord | null> {
   const upstream = await fetch(
-    `https://api.frankfurter.dev/v2/rate/${base}/${quote}?date=${date}&providers=TCMB`,
+    `https://api.frankfurter.dev/v2/rate/${encodeURIComponent(base)}/${encodeURIComponent(quote)}?date=${date}`,
     { cache: 'no-store' }
   );
 
@@ -95,21 +93,18 @@ async function fetchMostRecentPriorRate(
   quote: Currency,
   dateRequested: string
 ): Promise<FrankfurterRateRecord | null> {
-  if (dateRequested <= TCMB_COVERAGE_START) return null;
+  if (dateRequested <= COVERAGE_START) return null;
 
   let rangeEnd = subtractUtcDays(dateRequested, 1);
-  let rangeStart = maxIsoDate(
-    TCMB_COVERAGE_START,
-    subtractUtcDays(rangeEnd, INITIAL_LOOKBACK_DAYS - 1)
-  );
+  let rangeStart = maxIsoDate(COVERAGE_START, subtractUtcDays(rangeEnd, INITIAL_LOOKBACK_DAYS - 1));
 
-  while (rangeEnd >= TCMB_COVERAGE_START) {
+  while (rangeEnd >= COVERAGE_START) {
     const record = await fetchLatestRateInRange(base, quote, rangeStart, rangeEnd, dateRequested);
     if (record) return record;
-    if (rangeStart === TCMB_COVERAGE_START) break;
+    if (rangeStart === COVERAGE_START) break;
 
     rangeEnd = subtractUtcDays(rangeStart, 1);
-    rangeStart = maxIsoDate(TCMB_COVERAGE_START, subtractUtcYears(rangeEnd, RANGE_WINDOW_YEARS));
+    rangeStart = maxIsoDate(COVERAGE_START, subtractUtcYears(rangeEnd, RANGE_WINDOW_YEARS));
   }
 
   return null;
@@ -123,7 +118,7 @@ async function fetchLatestRateInRange(
   dateRequested: string
 ): Promise<FrankfurterRateRecord | null> {
   const upstream = await fetch(
-    `https://api.frankfurter.dev/v2/rates?from=${from}&to=${to}&base=${base}&quotes=${quote}&providers=TCMB`,
+    `https://api.frankfurter.dev/v2/rates?from=${from}&to=${to}&base=${encodeURIComponent(base)}&quotes=${encodeURIComponent(quote)}`,
     { cache: 'no-store' }
   );
 
@@ -177,11 +172,7 @@ function isValidIsoDate(value: string): boolean {
   if (!/^\d{4}-\d{2}-\d{2}$/.test(value)) return false;
   const [year, month, day] = value.split('-').map(Number);
   const date = new Date(Date.UTC(year, month - 1, day));
-  return (
-    date.getUTCFullYear() === year &&
-    date.getUTCMonth() === month - 1 &&
-    date.getUTCDate() === day
-  );
+  return date.getUTCFullYear() === year && date.getUTCMonth() === month - 1 && date.getUTCDate() === day;
 }
 
 function subtractUtcDays(value: string, days: number): string {
@@ -205,9 +196,8 @@ function maxIsoDate(left: string, right: string): string {
 function cacheHeaders(dateRequested: string): Record<string, string> {
   const todayUtc = new Date().toISOString().slice(0, 10);
   return {
-    'Cache-Control':
-      dateRequested < todayUtc
-        ? 'public, s-maxage=86400, stale-while-revalidate=604800'
-        : 'public, s-maxage=3600, stale-while-revalidate=3600',
+    'Cache-Control': dateRequested < todayUtc
+      ? 'public, s-maxage=86400, stale-while-revalidate=604800'
+      : 'public, s-maxage=3600, stale-while-revalidate=3600',
   };
 }
