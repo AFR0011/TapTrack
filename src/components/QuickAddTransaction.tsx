@@ -78,6 +78,8 @@ export function QuickAddTransaction({
   const selectedCategoryId = typedCategories.some((category) => category.id === categoryId)
     ? categoryId
     : inferredCategory?.id ?? typedCategories[0]?.id ?? (type === 'income' ? 'cat-income' : 'cat-other');
+  const today = formatLocalDate(new Date());
+  const collapsedDateLabel = date === today ? 'Today' : date;
 
   const resetAfterSave = () => {
     setAmount('');
@@ -246,10 +248,10 @@ export function QuickAddTransaction({
       <button
         type="button"
         onClick={() => setShowDetails((current) => !current)}
-        className="mt-4 min-h-11 text-sm font-semibold text-accent hover:underline"
+        className="mt-4 flex min-h-11 w-full items-center text-left text-sm font-semibold text-accent hover:underline"
         aria-expanded={showDetails}
       >
-        {showDetails ? 'Hide details' : `Today · ${currency} · Add details`}
+        {showDetails ? 'Hide details' : `${collapsedDateLabel} · ${currency} · Add details`}
       </button>
 
       {showDetails ? (
@@ -308,16 +310,17 @@ export function QuickAddTransaction({
         </div>
       ) : null}
 
-      <Button
-        type="button"
-        variant="success"
-        className="mt-5 w-full sm:w-auto"
-        onClick={() => void handleSave()}
-        loading={saving}
-        disabled={saving}
-      >
-        Save {type}
-      </Button>
+      <div className="mt-5 flex justify-end border-t border-subtle pt-4">
+        <Button
+          type="button"
+          className="w-full sm:w-auto sm:min-w-36"
+          onClick={() => void handleSave()}
+          loading={saving}
+          disabled={saving}
+        >
+          Save {type}
+        </Button>
+      </div>
     </section>
   );
 }
