@@ -27,6 +27,7 @@ import {
 } from '@/types';
 import { ConfirmDialog } from './ConfirmDialog';
 import { CloudLedgerLink } from './CloudLedgerLink';
+import { CloudDeviceDisconnect } from './CloudDeviceDisconnect';
 import { RestoreScopeDialog } from './RestoreScopeDialog';
 import { ResetScopeDialog } from './ResetScopeDialog';
 import { toast } from 'sonner';
@@ -688,6 +689,7 @@ export default function SettingsWorkspace() {
         {syncStatus?.bindingState === 'unlinked' ? (
           <CloudLedgerLink onLinked={refreshSyncStatus} />
         ) : null}
+        <CloudDeviceDisconnect onDisconnected={refreshSyncStatus} />
         {syncStatus?.bindingState === 'account-mismatch' ? (
           <p
             role="alert"
