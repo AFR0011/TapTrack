@@ -89,6 +89,42 @@ describe('rebuildDerivedBalances', () => {
     expect((await database.balances.get(getBalanceId('USD', 'card')))?.amount).toBe(6);
   });
 
+  it('rebuilds a non-default GBP bucket from authoritative ledger data after cache loss', async () => {
+    await database.balanceCheckpoints.clear();
+    await database.transactions.clear();
+    await database.conversions.clear();
+    await database.balances.clear();
+
+    await database.balanceCheckpoints.put(
+      checkpoint({
+        id: 'opening-GBP-cash',
+        balanceId: getBalanceId('GBP', 'cash'),
+        currency: 'GBP',
+        observedAmount: 500,
+        deltaAmount: 500,
+      })
+    );
+    await database.transactions.put(
+      transaction({
+        id: 'gbp-expense',
+        amount: 120,
+        currency: 'GBP',
+        title: 'GBP expense',
+      })
+    );
+
+    const balances = await rebuildDerivedBalances(database, '2026-05-01T12:00:00.000Z');
+
+    expect(balances).toHaveLength(1);
+    expect(balances[0]).toMatchObject({
+      id: getBalanceId('GBP', 'cash'),
+      currency: 'GBP',
+      method: 'cash',
+      amount: 380,
+    });
+    expect((await database.balances.get(getBalanceId('GBP', 'cash')))?.amount).toBe(380);
+  });
+
   it('does not replay historical records that fall before an absolute checkpoint', async () => {
     await database.balanceCheckpoints.put(checkpoint());
     await database.transactions.put(
