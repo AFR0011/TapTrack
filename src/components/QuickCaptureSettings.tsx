@@ -1,9 +1,13 @@
 'use client';
 
 import { useEffect, useMemo, useState } from 'react';
+import { useLiveQuery } from 'dexie-react-hooks';
 import { toast } from 'sonner';
 import { Button } from '@/components/ui/Button';
 import { Field } from '@/components/ui/Field';
+import { db } from '@/database';
+import { DEVICE_LEDGER_BINDING_ID } from '@/sync/syncBinding';
+import { getSyncStatus } from '@/sync/syncService';
 
 type CaptureTokenMetadata = {
   id: string;
@@ -15,13 +19,10 @@ type CaptureTokenMetadata = {
 
 type ShortcutType = 'expense' | 'income';
 
-export function QuickCaptureSettings({
-  signedIn,
-  linked,
-}: {
-  signedIn: boolean;
-  linked: boolean;
-}) {
+export function QuickCaptureSettings({ signedIn }: { signedIn: boolean }) {
+  const binding = useLiveQuery(() => db.deviceMetadata.get(DEVICE_LEDGER_BINDING_ID));
+  const [linked, setLinked] = useState(false);
+  const [linkChecked, setLinkChecked] = useState(false);
   const [tokens, setTokens] = useState<CaptureTokenMetadata[]>([]);
   const [loading, setLoading] = useState(false);
   const [creating, setCreating] = useState(false);
@@ -29,6 +30,30 @@ export function QuickCaptureSettings({
   const [setupToken, setSetupToken] = useState<string | null>(null);
   const [setupOpen, setSetupOpen] = useState(false);
   const activeTokens = useMemo(() => tokens.filter((token) => !token.revoked_at), [tokens]);
+
+  useEffect(() => {
+    if (binding === undefined) return;
+    let cancelled = false;
+
+    queueMicrotask(() => {
+      if (cancelled) return;
+      if (!signedIn) {
+        setLinked(false);
+        setLinkChecked(true);
+        return;
+      }
+
+      void getSyncStatus().then((status) => {
+        if (cancelled) return;
+        setLinked(status.bindingState === 'linked');
+        setLinkChecked(true);
+      });
+    });
+
+    return () => {
+      cancelled = true;
+    };
+  }, [binding, signedIn]);
 
   const refresh = async () => {
     if (!signedIn || !linked) return;
@@ -46,13 +71,14 @@ export function QuickCaptureSettings({
   };
 
   useEffect(() => {
-    if (!signedIn || !linked) return;
+    if (!signedIn || !linked || !linkChecked) return;
     queueMicrotask(() => {
       void refresh();
     });
-    // Account identity and ledger binding are managed by the parent Settings screen.
+    // Device binding changes are observed through Dexie above; token refresh only
+    // needs the resulting linked state and account sign-in state.
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [signedIn, linked]);
+  }, [signedIn, linked, linkChecked]);
 
   const createDevice = async () => {
     setCreating(true);
@@ -111,7 +137,9 @@ export function QuickCaptureSettings({
             <p className="mt-0.5 text-sm text-muted">
               {!signedIn
                 ? 'Sign in to add transactions from iPhone Shortcuts.'
-                : 'Link cloud sync on this device before setting up iPhone Shortcuts.'}
+                : !linkChecked
+                  ? 'Checking cloud sync…'
+                  : 'Link cloud sync on this device before setting up iPhone Shortcuts.'}
             </p>
           </div>
         </div>
