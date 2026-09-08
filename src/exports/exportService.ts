@@ -9,12 +9,16 @@ import {
 import { db, ensureDatabaseSeeded, type TapTrackDatabase } from '@/database';
 import { formatDisplayMonth } from '@/dates';
 import {
-  getTransactionAmountInTRY,
+  getTransactionAmountInCurrency,
   loadHistoricalReportRates,
   type HistoricalReportRateMap,
 } from '@/reports/historicalReportRates';
-import { getBudgetPerformanceReport, getDateRangeTransactionList, getFullTransactionList } from '@/reports/reportService';
-import type { Transaction } from '@/types';
+import {
+  getBudgetPerformanceReport,
+  getDateRangeTransactionList,
+  getFullTransactionList,
+} from '@/reports/reportService';
+import type { Currency, Transaction } from '@/types';
 
 export type TapTrackBackup = TapTrackBackupV2;
 
@@ -24,9 +28,12 @@ type ReportPeriodOptions =
   | { mode: 'year'; year: string };
 
 export type ReportExportOptions = ReportPeriodOptions & {
-  /** Mirrors the Reports "Convert all to TRY" view. */
+  /** Preferred B004 reporting mode. */
+  convertToReportCurrency?: boolean;
+  reportCurrency?: Currency;
+  /** Legacy B003 compatibility. */
   convertToTRY?: boolean;
-  /** Pass the already-loaded screen rates so PDF values exactly match the visible report. */
+  /** Pass screen-loaded rates so exported values exactly match the visible report. */
   historicalRates?: HistoricalReportRateMap;
 };
 
@@ -48,12 +55,9 @@ const CSV_COLUMNS: Array<keyof Transaction> = [
 export async function exportCSV(database: TapTrackDatabase = db): Promise<string> {
   await ensureDatabaseSeeded(database);
   const transactions = await database.transactions.toArray();
-
   return Papa.unparse({
     fields: CSV_COLUMNS,
-    data: transactions.map((transaction) =>
-      CSV_COLUMNS.map((column) => transaction[column] ?? '')
-    ),
+    data: transactions.map((transaction) => CSV_COLUMNS.map((column) => transaction[column] ?? '')),
   });
 }
 
@@ -77,9 +81,12 @@ export async function exportPDF(
 
   const normalizedOptions: ReportExportOptions =
     typeof options === 'string' ? { mode: 'month', month: options } : options;
+  const settings = await database.settings.get('default');
+  const reportCurrency = normalizedOptions.reportCurrency ?? settings?.defaultCurrency ?? 'TRY';
+  const convertAll =
+    normalizedOptions.convertToReportCurrency ?? normalizedOptions.convertToTRY ?? false;
   const categories = await database.categories.toArray();
   const categoryById = new Map(categories.map((category) => [category.id, category.name]));
-  const convertToTRY = normalizedOptions.convertToTRY ?? false;
 
   if (normalizedOptions.mode === 'year') {
     const transactions = await database.transactions
@@ -88,23 +95,25 @@ export async function exportPDF(
       .toArray();
     const rates = await resolveReportRates(
       transactions,
-      convertToTRY,
+      convertAll,
+      reportCurrency,
       normalizedOptions.historicalRates
     );
     const months = Array.from({ length: 12 }, (_, index) => {
       const month = `${normalizedOptions.year}-${String(index + 1).padStart(2, '0')}`;
       const totals = calculatePdfTotals(
         transactions.filter((transaction) => transaction.date.startsWith(month)),
-        convertToTRY,
+        convertAll,
+        reportCurrency,
         rates
       );
       return { month, ...totals };
     });
     const totalIncome = months.reduce((sum, item) => sum + item.income, 0);
     const totalExpense = months.reduce((sum, item) => sum + item.expense, 0);
-    const fxLines = getFxBasisLines(convertToTRY, rates);
+    const fxLines = getFxBasisLines(convertAll, reportCurrency, rates);
 
-    const lines = [
+    return createSimplePdf([
       `TapTrack Yearly Report - ${normalizedOptions.year}`,
       '================================================================================',
       `Generated: ${new Date().toISOString()}`,
@@ -112,22 +121,20 @@ export async function exportPDF(
       ...fxLines,
       'FINANCIAL SUMMARY',
       '--------------------------------------------------------------------------------',
-      `Total income:    ${totalIncome} TRY`,
-      `Total expenses:  ${totalExpense} TRY`,
-      `Net:             ${totalIncome - totalExpense} TRY`,
+      `Total income:    ${totalIncome} ${reportCurrency}`,
+      `Total expenses:  ${totalExpense} ${reportCurrency}`,
+      `Net:             ${totalIncome - totalExpense} ${reportCurrency}`,
       '',
       'MONTHLY SUMMARY',
       '--------------------------------------------------------------------------------',
       ...months.map(
         (item) =>
-          `${item.month} | income ${item.income} TRY | expenses ${item.expense} TRY | net ${item.net} TRY`
+          `${item.month} | income ${item.income} ${reportCurrency} | expenses ${item.expense} ${reportCurrency} | net ${item.net} ${reportCurrency}`
       ),
       '',
       '================================================================================',
       'End of report - Page 1 of 1',
-    ];
-
-    return createSimplePdf(lines);
+    ]);
   }
 
   const reportLabel =
@@ -139,7 +146,7 @@ export async function exportPDF(
     normalizedOptions.mode === 'month'
       ? await Promise.all([
           getFullTransactionList(normalizedOptions.month, database),
-          getBudgetPerformanceReport(normalizedOptions.month, database),
+          getBudgetPerformanceReport(normalizedOptions.month, database, reportCurrency),
         ])
       : await Promise.all([
           getDateRangeTransactionList(normalizedOptions.startDate, normalizedOptions.endDate, database),
@@ -148,12 +155,18 @@ export async function exportPDF(
 
   const rates = await resolveReportRates(
     transactions,
-    convertToTRY,
+    convertAll,
+    reportCurrency,
     normalizedOptions.historicalRates
   );
-  const incomeVsExpense = calculatePdfTotals(transactions, convertToTRY, rates);
-  const categorySpending = calculatePdfCategorySpending(transactions, convertToTRY, rates);
-  const fxLines = getFxBasisLines(convertToTRY, rates);
+  const incomeVsExpense = calculatePdfTotals(transactions, convertAll, reportCurrency, rates);
+  const categorySpending = calculatePdfCategorySpending(
+    transactions,
+    convertAll,
+    reportCurrency,
+    rates
+  );
+  const fxLines = getFxBasisLines(convertAll, reportCurrency, rates);
 
   const lines = [
     `TapTrack ${reportLabel}`,
@@ -163,17 +176,17 @@ export async function exportPDF(
     ...fxLines,
     'FINANCIAL SUMMARY',
     '--------------------------------------------------------------------------------',
-    `Total income:    ${incomeVsExpense.income} TRY`,
-    `Total expenses:  ${incomeVsExpense.expense} TRY`,
-    `Net:             ${incomeVsExpense.net} TRY`,
+    `Total income:    ${incomeVsExpense.income} ${reportCurrency}`,
+    `Total expenses:  ${incomeVsExpense.expense} ${reportCurrency}`,
+    `Net:             ${incomeVsExpense.net} ${reportCurrency}`,
     '',
     'BUDGET SUMMARY',
     '--------------------------------------------------------------------------------',
     ...(budgetPerformance
       ? [
-          `Budget available:   ${budgetPerformance.available} TRY`,
-          `Budget spent:       ${budgetPerformance.totalSpent} TRY`,
-          `Budget remaining:   ${budgetPerformance.remaining} TRY`,
+          `Budget available:   ${budgetPerformance.available} ${budgetPerformance.currency}`,
+          `Budget spent:       ${budgetPerformance.totalSpent} ${budgetPerformance.currency}`,
+          `Budget remaining:   ${budgetPerformance.remaining} ${budgetPerformance.currency}`,
         ]
       : ['Budget summary is shown for monthly reports only.']),
     '',
@@ -181,20 +194,24 @@ export async function exportPDF(
     '--------------------------------------------------------------------------------',
     ...(categorySpending.length
       ? categorySpending.map(
-          (item) => `${categoryById.get(item.categoryId) ?? item.categoryId}: ${item.amount} TRY`
+          (item) => `${categoryById.get(item.categoryId) ?? item.categoryId}: ${item.amount} ${reportCurrency}`
         )
-      : [convertToTRY ? 'No expense categories in this report period.' : 'No TRY expense categories in this report period.']),
+      : [
+          convertAll
+            ? 'No expense categories in this report period.'
+            : `No ${reportCurrency} expense categories in this report period.`,
+        ]),
     '',
     'TRANSACTIONS',
     '================================================================================',
     ...(transactions.length
       ? transactions.map((transaction) =>
-          formatPdfTransaction(transaction, categoryById, convertToTRY, rates)
+          formatPdfTransaction(transaction, categoryById, convertAll, reportCurrency, rates)
         )
       : ['No transactions for this report period.']),
     '',
     '================================================================================',
-    `End of report - Page 1 of 1`,
+    'End of report - Page 1 of 1',
   ];
 
   return createSimplePdf(lines);
@@ -202,17 +219,19 @@ export async function exportPDF(
 
 async function resolveReportRates(
   transactions: Transaction[],
-  convertToTRY: boolean,
+  convertAll: boolean,
+  reportCurrency: Currency,
   suppliedRates?: HistoricalReportRateMap
 ): Promise<HistoricalReportRateMap> {
-  if (!convertToTRY) return {};
+  if (!convertAll) return {};
 
-  const rates = suppliedRates ?? (await loadHistoricalReportRates(transactions));
+  const rates =
+    suppliedRates ?? (await loadHistoricalReportRates(transactions, undefined, reportCurrency));
   for (const transaction of transactions) {
-    if (transaction.currency === 'TRY') continue;
-    if (getTransactionAmountInTRY(transaction, rates) === null) {
+    if (transaction.currency === reportCurrency) continue;
+    if (getTransactionAmountInCurrency(transaction, rates, reportCurrency) === null) {
       throw new Error(
-        `Historical ${transaction.currency}/TRY rate is missing for ${transaction.date}; PDF export was not generated.`
+        `Historical ${transaction.currency}/${reportCurrency} rate is missing for ${transaction.date}; PDF export was not generated.`
       );
     }
   }
@@ -221,36 +240,34 @@ async function resolveReportRates(
 
 function calculatePdfTotals(
   transactions: Transaction[],
-  convertToTRY: boolean,
+  convertAll: boolean,
+  reportCurrency: Currency,
   rates: HistoricalReportRateMap
 ) {
   let income = 0;
   let expense = 0;
-
   for (const transaction of transactions) {
-    const amount = getPdfTransactionAmount(transaction, convertToTRY, rates);
+    const amount = getPdfTransactionAmount(transaction, convertAll, reportCurrency, rates);
     if (amount === null) continue;
     if (transaction.type === 'income') income += amount;
     else expense += amount;
   }
-
   return { income, expense, net: income - expense };
 }
 
 function calculatePdfCategorySpending(
   transactions: Transaction[],
-  convertToTRY: boolean,
+  convertAll: boolean,
+  reportCurrency: Currency,
   rates: HistoricalReportRateMap
 ) {
   const spending = new Map<string, number>();
-
   for (const transaction of transactions) {
     if (transaction.type !== 'expense') continue;
-    const amount = getPdfTransactionAmount(transaction, convertToTRY, rates);
+    const amount = getPdfTransactionAmount(transaction, convertAll, reportCurrency, rates);
     if (amount === null) continue;
     spending.set(transaction.categoryId, (spending.get(transaction.categoryId) ?? 0) + amount);
   }
-
   return [...spending.entries()]
     .map(([categoryId, amount]) => ({ categoryId, amount }))
     .sort((a, b) => b.amount - a.amount);
@@ -258,45 +275,56 @@ function calculatePdfCategorySpending(
 
 function getPdfTransactionAmount(
   transaction: Transaction,
-  convertToTRY: boolean,
+  convertAll: boolean,
+  reportCurrency: Currency,
   rates: HistoricalReportRateMap
 ): number | null {
-  if (!convertToTRY) return transaction.currency === 'TRY' ? transaction.amount : null;
-  return getTransactionAmountInTRY(transaction, rates);
+  if (!convertAll) {
+    return transaction.currency === reportCurrency ? transaction.amount : null;
+  }
+  return getTransactionAmountInCurrency(transaction, rates, reportCurrency);
 }
 
 function formatPdfTransaction(
   transaction: Transaction,
   categoryById: Map<string, string>,
-  convertToTRY: boolean,
+  convertAll: boolean,
+  reportCurrency: Currency,
   rates: HistoricalReportRateMap
 ): string {
   const sign = transaction.type === 'income' ? '+' : '-';
   const base = `${transaction.date} | ${sign}${transaction.amount} ${transaction.currency}`;
   let valuation = '';
 
-  if (convertToTRY && transaction.currency !== 'TRY') {
-    const amountInTRY = getTransactionAmountInTRY(transaction, rates);
-    if (amountInTRY === null) {
+  if (convertAll && transaction.currency !== reportCurrency) {
+    const amountInReportCurrency = getTransactionAmountInCurrency(
+      transaction,
+      rates,
+      reportCurrency
+    );
+    if (amountInReportCurrency === null) {
       throw new Error(
-        `Historical ${transaction.currency}/TRY rate is missing for ${transaction.date}; PDF export was not generated.`
+        `Historical ${transaction.currency}/${reportCurrency} rate is missing for ${transaction.date}; PDF export was not generated.`
       );
     }
-    valuation = ` (= ${amountInTRY} TRY)`;
+    valuation = ` (= ${amountInReportCurrency} ${reportCurrency})`;
   }
 
   return `${base}${valuation} | ${transaction.method} | ${transaction.title} | ${categoryById.get(transaction.categoryId) ?? transaction.categoryId}`;
 }
 
-function getFxBasisLines(convertToTRY: boolean, rates: HistoricalReportRateMap): string[] {
-  if (!convertToTRY) return [];
-
+function getFxBasisLines(
+  convertAll: boolean,
+  reportCurrency: Currency,
+  rates: HistoricalReportRateMap
+): string[] {
+  if (!convertAll) return [];
   const entries = Object.values(rates);
   const priorAvailable = entries.filter((rate) => rate.status === 'prior-available').length;
   return [
     'FX BASIS',
     '--------------------------------------------------------------------------------',
-    'USD/EUR values use TCMB rates via Frankfurter for each transaction date.',
+    `Foreign-currency values use Frankfurter historical rates into ${reportCurrency} for each transaction date.`,
     priorAvailable > 0
       ? `${priorAvailable} historical rate${priorAvailable === 1 ? '' : 's'} used the most recent prior published date.`
       : 'All required historical rates were published on their transaction dates.',
