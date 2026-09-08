@@ -31,10 +31,10 @@ function request(body = {
 
 describe('POST /api/categorize', () => {
   beforeEach(() => {
-    vi.stubEnv('NEXT_PUBLIC_SUPABASE_URL', 'https://example.supabase.co');
-    vi.stubEnv('NEXT_PUBLIC_SUPABASE_ANON_KEY', 'anon');
-    vi.stubEnv('SUPABASE_SERVICE_ROLE_KEY', 'service-role');
-    vi.stubEnv('GROQ_API_KEY', 'groq-secret');
+    vi.stubEnv('NEXT_PUBLIC_SUPABASE_URL', 'https://example.invalid');
+    vi.stubEnv('NEXT_PUBLIC_SUPABASE_ANON_KEY', 'test-public-key');
+    vi.stubEnv('SUPABASE_SERVICE_ROLE_KEY', 'test-server-key');
+    vi.stubEnv('GROQ_API_KEY', 'test-ai-key');
     getUser.mockResolvedValue({ data: { user: { id: 'user-1' } }, error: null });
     adminRpc.mockResolvedValue({ data: true, error: null });
   });
@@ -93,10 +93,20 @@ describe('POST /api/categorize', () => {
     const body = await response.json();
 
     expect(response.status).toBe(200);
-    expect(body).toEqual({ categoryId: 'cat-subscriptions' });
+    expect(body).toEqual({ categoryId: 'cat-subscriptions', unavailable: false });
     expect(adminRpc).toHaveBeenCalledWith('consume_ai_categorization_quota', {
       target_user_id: 'user-1',
     });
+  });
+
+  it('returns a non-blocking unavailable result when Groq fails', async () => {
+    vi.stubGlobal('fetch', vi.fn(async () => new Response('provider-error', { status: 500 })));
+
+    const response = await POST(request());
+    const body = await response.json();
+
+    expect(response.status).toBe(200);
+    expect(body).toEqual({ categoryId: null, unavailable: true });
   });
 
   it('rejects oversized titles without calling Groq or consuming quota', async () => {

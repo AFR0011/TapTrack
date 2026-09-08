@@ -24,6 +24,13 @@ async function expectMobileTargetSize(target: ReturnType<Page['getByRole']>) {
   expect(box?.height ?? 0).toBeGreaterThanOrEqual(44);
 }
 
+async function assertNoHorizontalOverflow(page: Page) {
+  const hasHorizontalOverflow = await page.evaluate(
+    () => document.documentElement.scrollWidth > document.documentElement.clientWidth
+  );
+  expect(hasHorizontalOverflow).toBe(false);
+}
+
 async function assertMobileLayout(page: Page) {
   const mobileNav = page.getByRole('navigation', { name: 'Mobile' });
   await expect(mobileNav).toBeVisible();
@@ -46,11 +53,29 @@ async function assertMobileLayout(page: Page) {
 
   await moreButton.click();
   await expect(mobileNav.getByRole('link')).toHaveCount(primaryRoutes.length);
+  await assertNoHorizontalOverflow(page);
+}
 
-  const hasHorizontalOverflow = await page.evaluate(
-    () => document.documentElement.scrollWidth > document.documentElement.clientWidth
-  );
-  expect(hasHorizontalOverflow).toBe(false);
+async function completeFreshOnboarding(page: Page) {
+  await expect(page.getByRole('heading', { name: 'Track money without slowing down.' })).toBeVisible();
+  await assertNoHorizontalOverflow(page);
+  await expectMobileTargetSize(page.getByRole('button', { name: 'Get started' }));
+  await page.getByRole('button', { name: 'Get started' }).click();
+
+  await expect(page.getByRole('heading', { name: 'What do you use?' })).toBeVisible();
+  await assertNoHorizontalOverflow(page);
+  await page.getByLabel('Cash', { exact: true }).fill('1000');
+  await expectMobileTargetSize(page.getByRole('button', { name: 'Continue' }));
+  await page.getByRole('button', { name: 'Continue' }).click();
+
+  await expect(page.getByRole('heading', { name: 'Make daily logging faster.' })).toBeVisible();
+  await assertNoHorizontalOverflow(page);
+  await page.getByRole('button', { name: 'Continue' }).click();
+
+  await expect(page.getByRole('heading', { name: 'You’re ready.' })).toBeVisible();
+  await assertNoHorizontalOverflow(page);
+  await expectMobileTargetSize(page.getByRole('button', { name: 'Open TapTrack' }));
+  await page.getByRole('button', { name: 'Open TapTrack' }).click();
 }
 
 async function getRouteDiagnostics(page: Page) {
@@ -132,16 +157,22 @@ test('device-local ledger works across warmed offline mobile routes', async ({ p
   });
 
   await page.goto('/app');
-  await expect(page.getByRole('heading', { name: 'Welcome to TapTrack' })).toBeVisible();
-  await page.getByLabel('TRY cash').fill('1000');
-  await page.getByRole('button', { name: 'Start tracking' }).click();
+  await completeFreshOnboarding(page);
   await expectHeadingWithDiagnostics(page, 'Dashboard', 'Post-setup app state', diagnostics);
+
+  const quickAddCoachmark = page.getByRole('dialog', { name: 'Amount + title is enough.' });
+  await expect(quickAddCoachmark).toBeVisible();
+  await assertNoHorizontalOverflow(page);
+  await expectMobileTargetSize(quickAddCoachmark.getByRole('button', { name: 'Got it' }));
+  await quickAddCoachmark.getByRole('button', { name: 'Got it' }).click();
+  await expect(quickAddCoachmark).toBeHidden();
 
   await page.evaluate(async () => {
     await navigator.serviceWorker.ready;
   });
   await page.reload();
   await expectHeadingWithDiagnostics(page, 'Dashboard', 'Service-worker-controlled reload', diagnostics);
+  await expect(quickAddCoachmark).toBeHidden();
   await expect.poll(() => page.evaluate(() => Boolean(navigator.serviceWorker.controller))).toBe(true);
 
   for (const route of CORE_ROUTES) {
@@ -156,7 +187,7 @@ test('device-local ledger works across warmed offline mobile routes', async ({ p
     const urls = (
       await Promise.all(
         tapTrackKeys.map(async (key) =>
-          (await caches.open(key)).keys().then((requests) => requests.map((r) => r.url))
+          (await caches.open(key)).keys().then((requests) => requests.map((request) => request.url))
         )
       )
     ).flat();

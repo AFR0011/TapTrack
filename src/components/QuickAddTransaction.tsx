@@ -1,6 +1,6 @@
 'use client';
 
-import { useMemo, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import { useLiveQuery } from 'dexie-react-hooks';
 import { toast } from 'sonner';
 import { AmbiguousLedgerOrderingError } from '@/balances/ledgerService';
@@ -8,16 +8,15 @@ import {
   resolveHistoricalOccurrenceAroundCheckpoint,
   type HistoricalOrderingRelation,
 } from '@/balances/reconciliationService';
+import { useAICategorySuggestion } from '@/categories/useAICategorySuggestion';
 import { Button } from '@/components/ui/Button';
 import { Field } from '@/components/ui/Field';
 import { SelectField } from '@/components/ui/SelectField';
 import { db } from '@/database';
-import {
-  DEFAULT_SETTINGS_ID,
-  findCategoryForTransaction,
-} from '@/defaultData';
+import { DEFAULT_SETTINGS_ID, findCategoryForTransaction } from '@/defaultData';
 import { formatLocalDate } from '@/dates';
 import { parseAmountInput } from '@/format';
+import { getSignedInEmail } from '@/lib/auth';
 import {
   createTransaction,
   InsufficientBalanceError,
@@ -61,10 +60,22 @@ export function QuickAddTransaction({
   const [date, setDate] = useState(() => prefill?.date ?? formatLocalDate(new Date()));
   const [note, setNote] = useState('');
   const [categoryId, setCategoryId] = useState('');
+  const [categoryManuallyChosen, setCategoryManuallyChosen] = useState(false);
+  const [accountSignedIn, setAccountSignedIn] = useState(false);
   const [showDetails, setShowDetails] = useState(false);
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState('');
   const [pendingOrdering, setPendingOrdering] = useState<PendingOrdering | null>(null);
+
+  useEffect(() => {
+    let active = true;
+    void getSignedInEmail().then((email) => {
+      if (active) setAccountSignedIn(Boolean(email));
+    });
+    return () => {
+      active = false;
+    };
+  }, []);
 
   const method = methodOverride ?? settings?.lastUsedMethod ?? 'card';
   const typedCategories = useMemo(
@@ -75,9 +86,25 @@ export function QuickAddTransaction({
     () => findCategoryForTransaction(categories ?? [], type, title),
     [categories, title, type]
   );
-  const selectedCategoryId = typedCategories.some((category) => category.id === categoryId)
+  const aiActive = Boolean(settings?.aiCategorizationEnabled && accountSignedIn);
+  const aiSuggestion = useAICategorySuggestion({
+    title,
+    type,
+    categories: categories ?? [],
+    enabled: aiActive,
+    blocked: categoryManuallyChosen,
+  });
+  const manualCategoryValid = typedCategories.some((category) => category.id === categoryId);
+  const aiCategoryValid = typedCategories.some(
+    (category) => category.id === aiSuggestion.categoryId
+  );
+  const selectedCategoryId = manualCategoryValid
     ? categoryId
-    : inferredCategory?.id ?? typedCategories[0]?.id ?? (type === 'income' ? 'cat-income' : 'cat-other');
+    : aiCategoryValid && aiSuggestion.categoryId
+      ? aiSuggestion.categoryId
+      : inferredCategory?.id ??
+        typedCategories[0]?.id ??
+        (type === 'income' ? 'cat-income' : 'cat-other');
   const today = formatLocalDate(new Date());
   const collapsedDateLabel = date === today ? 'Today' : date;
 
@@ -86,6 +113,7 @@ export function QuickAddTransaction({
     setTitle('');
     setNote('');
     setCategoryId('');
+    setCategoryManuallyChosen(false);
     setDate(formatLocalDate(new Date()));
     setError('');
     setPendingOrdering(null);
@@ -174,6 +202,7 @@ export function QuickAddTransaction({
             onClick={() => {
               setType(option);
               setCategoryId('');
+              setCategoryManuallyChosen(false);
               setPendingOrdering(null);
             }}
             aria-pressed={type === option}
@@ -217,12 +246,24 @@ export function QuickAddTransaction({
       </div>
 
       <div className="mt-4 grid gap-3 sm:grid-cols-2">
-        <SelectField
-          label="Category"
-          value={selectedCategoryId}
-          onChange={(event) => setCategoryId(event.target.value)}
-          options={typedCategories.map((category) => ({ value: category.id, label: category.name }))}
-        />
+        <div>
+          <SelectField
+            label="Category"
+            value={selectedCategoryId}
+            onChange={(event) => {
+              setCategoryId(event.target.value);
+              setCategoryManuallyChosen(true);
+            }}
+            options={typedCategories.map((category) => ({ value: category.id, label: category.name }))}
+          />
+          {!categoryManuallyChosen && aiSuggestion.status === 'loading' ? (
+            <p className="mt-1.5 text-xs font-medium text-ai-text">✦ Finding a smart category…</p>
+          ) : !categoryManuallyChosen && aiSuggestion.status === 'suggested' && aiCategoryValid ? (
+            <p className="mt-1.5 text-xs font-semibold text-ai-text">✦ AI suggestion</p>
+          ) : !categoryManuallyChosen && aiSuggestion.status === 'unavailable' ? (
+            <p className="mt-1.5 text-xs font-medium text-muted">Using the local suggestion for now.</p>
+          ) : null}
+        </div>
         <div>
           <p className="text-sm font-medium text-secondary">Paid with</p>
           <div className="mt-1 grid grid-cols-2 gap-2">

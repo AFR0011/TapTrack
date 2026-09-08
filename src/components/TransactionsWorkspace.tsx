@@ -29,6 +29,7 @@ import {
   type TransactionType,
 } from '@/types';
 import { ConfirmDialog } from './ConfirmDialog';
+import { SmartCategorySelect } from './SmartCategorySelect';
 import { Button } from '@/components/ui/Button';
 import { cn, focusVisibleRing } from '@/lib/cn';
 import { Field } from '@/components/ui/Field';
@@ -174,7 +175,7 @@ export default function TransactionsWorkspace() {
                 setError('');
               }}
             >
-              {showForm ? 'Close form' : 'Add transaction'}
+              {showForm ? 'Close form' : 'Full editor'}
             </Button>
           </div>
         }
@@ -246,7 +247,7 @@ export default function TransactionsWorkspace() {
         ) : null}
       </section>
 
-      <section className="overflow-hidden rounded-2xl border border-subtle bg-surface ">
+      <section className="overflow-hidden rounded-2xl border border-subtle bg-surface">
         {filteredTransactions.length === 0 ? (
           <div className="p-8 text-center">
             <p className="text-sm font-semibold text-secondary">No transactions match these filters.</p>
@@ -260,7 +261,7 @@ export default function TransactionsWorkspace() {
                 setError('');
               }}
             >
-              Add transaction
+              Open full editor
             </Button>
           </div>
         ) : (
@@ -460,7 +461,7 @@ function TransactionForm({
   return (
     <section className="rounded-2xl border border-subtle bg-surface p-5">
       <h2 id="transaction-form-title" className="text-base font-semibold text-primary">
-        {transaction ? 'Edit transaction' : 'Add transaction'}
+        {transaction ? 'Edit transaction' : 'Full editor'}
       </h2>
       <form onSubmit={handleSubmit} aria-labelledby="transaction-form-title" className="mt-4 space-y-4" noValidate>
         <div className="grid gap-3 md:grid-cols-4">
@@ -503,11 +504,13 @@ function TransactionForm({
             autoComplete="off"
             required
           />
-          <SelectField
-            label="Category"
+          <SmartCategorySelect
+            categories={typedCategories}
+            type={form.type}
+            title={form.title}
             value={selectedCategoryId}
-            onChange={(event) => setField('categoryId', event.target.value)}
-            options={typedCategories.map((category) => ({ value: category.id, label: category.name }))}
+            onChange={(categoryId) => setField('categoryId', categoryId)}
+            autoApply={!transaction}
           />
           <Field
             label="Date"

@@ -2,6 +2,7 @@
 
 import { useEffect, useState } from 'react';
 import DashboardSummary from '@/components/DashboardSummary';
+import { FeatureCoachmark } from '@/components/FeatureCoachmark';
 import RecentTransactions from '@/components/RecentTransactions';
 import { TransactionEntry } from '@/components/TransactionEntry';
 import { PageHeader } from '@/components/ui/PageHeader';
@@ -29,6 +30,13 @@ export default function Home() {
       <TransactionEntry />
       <DashboardSummary />
       <RecentTransactions />
+
+      <FeatureCoachmark
+        tipKey="quick-add"
+        eyebrow="Quick Add"
+        title="Amount + title is enough."
+        description="TapTrack fills the usual payment method and suggests a category. Open details only when you need them."
+      />
     </div>
   );
 }

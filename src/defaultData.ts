@@ -22,10 +22,32 @@ const DEFAULT_CATEGORY_TEMPLATES: CategoryTemplate[] = [
 ];
 
 const CATEGORY_KEYWORDS: Record<string, string[]> = {
-  Food: ['coffee', 'lunch', 'dinner', 'market', 'grocery'],
-  Rent: ['rent'],
-  Subscriptions: ['spotify', 'netflix', 'youtube'],
-  Fun: ['game', 'cinema', 'movie'],
+  Food: [
+    'coffee',
+    'cafe',
+    'café',
+    'breakfast',
+    'lunch',
+    'dinner',
+    'meal',
+    'food',
+    'restaurant',
+    'market',
+    'grocery',
+    'groceries',
+  ],
+  Rent: ['rent', 'landlord'],
+  Subscriptions: [
+    'subscription',
+    'spotify',
+    'netflix',
+    'youtube',
+    'chatgpt',
+    'icloud',
+    'adobe',
+    'github',
+  ],
+  Fun: ['game', 'gaming', 'cinema', 'movie', 'concert', 'ticket'],
 };
 
 export function createDefaultCategories(now = new Date().toISOString()): Category[] {

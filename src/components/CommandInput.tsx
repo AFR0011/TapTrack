@@ -7,19 +7,20 @@ import {
   resolveHistoricalOccurrenceAroundCheckpoint,
   type HistoricalOrderingRelation,
 } from '@/balances/reconciliationService';
+import { fetchAICategorySuggestion } from '@/categories/categorySuggestion';
 import { db } from '@/database';
 import { DEFAULT_SETTINGS_ID } from '@/defaultData';
 import { parseCommands } from '@/parser/parseCommand';
 import { InsufficientBalanceError, createTransactions } from '@/transactions/createTransaction';
 import { findHistoricalTransactionOrderingRequirements } from '@/transactions/historicalOrdering';
-import type { Category, TransactionDraft } from '@/types';
+import type { TransactionDraft } from '@/types';
 import { Button } from '@/components/ui/Button';
 import { cn, focusVisibleRing } from '@/lib/cn';
 import { Skeleton } from '@/components/ui/Skeleton';
 import { getSignedInEmail } from '@/lib/auth';
 import { toast } from 'sonner';
 
-/** Tracks which preview index has an in-flight AI suggestion. */
+/** Tracks which preview index has an AI category override. */
 type AISuggestions = Record<number, { categoryId: string; label: string } | null>;
 
 type OrderingChoice = {
@@ -29,35 +30,13 @@ type OrderingChoice = {
 
 type OrderingChoices = Record<number, OrderingChoice>;
 
-async function fetchAISuggestion(
-  title: string,
-  transactionType: 'income' | 'expense',
-  categories: Category[]
-): Promise<{ categoryId: string } | null> {
-  try {
-    const res = await fetch('/api/categorize', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({
-        title,
-        transactionType,
-        categories: categories.map((c) => ({ id: c.id, name: c.name, type: c.type })),
-      }),
-    });
-    if (!res.ok) return null;
-    const data = (await res.json()) as { categoryId: string | null };
-    return data.categoryId ? { categoryId: data.categoryId } : null;
-  } catch {
-    return null;
-  }
-}
-
 export default function CommandInput() {
   const inputRef = useRef<HTMLInputElement>(null);
   const [input, setInput] = useState('');
   const [previews, setPreviews] = useState<TransactionDraft[]>([]);
   const [aiOverrides, setAiOverrides] = useState<AISuggestions>({});
   const [aiLoading, setAiLoading] = useState<Set<number>>(new Set());
+  const [aiUnavailable, setAiUnavailable] = useState<Set<number>>(new Set());
   const [orderingChoices, setOrderingChoices] = useState<OrderingChoices>({});
   const [errors, setErrors] = useState<string[]>([]);
   const [saving, setSaving] = useState(false);
@@ -80,6 +59,14 @@ export default function CommandInput() {
     void getSignedInEmail().then((email) => setAccountSignedIn(Boolean(email)));
   }, []);
 
+  const clearPreviewState = () => {
+    setPreviews([]);
+    setAiOverrides({});
+    setAiLoading(new Set());
+    setAiUnavailable(new Set());
+    setOrderingChoices({});
+  };
+
   const handleSubmit = () => {
     if (!categories || !settings) return;
 
@@ -89,37 +76,46 @@ export default function CommandInput() {
     });
 
     const failureMessages = results
-      .map((r, i) => (!r.ok ? (results.length === 1 ? r.message : `Entry ${i + 1}: ${r.message}`) : null))
+      .map((result, index) =>
+        !result.ok
+          ? results.length === 1
+            ? result.message
+            : `Entry ${index + 1}: ${result.message}`
+          : null
+      )
       .filter((message): message is string => message !== null);
 
     if (failureMessages.length > 0) {
-      setPreviews([]);
-      setAiOverrides({});
-      setAiLoading(new Set());
-      setOrderingChoices({});
+      clearPreviewState();
       setErrors(failureMessages);
       return;
     }
 
-    const drafts = results.flatMap((r) => (r.ok ? [r.transaction] : []));
+    const drafts = results.flatMap((result) => (result.ok ? [result.transaction] : []));
     setPreviews(drafts);
     setAiOverrides({});
     setAiLoading(new Set());
+    setAiUnavailable(new Set());
     setOrderingChoices({});
     setErrors([]);
 
     if (settings.aiCategorizationEnabled && accountSignedIn) {
-      const loadingSet = new Set(drafts.map((_, i) => i));
+      const loadingSet = new Set(drafts.map((_, index) => index));
       setAiLoading(loadingSet);
 
       drafts.forEach((draft, index) => {
-        void fetchAISuggestion(draft.title, draft.type, categories).then((result) => {
-          if (result) {
+        void fetchAICategorySuggestion(draft.title, draft.type, categories).then((result) => {
+          if (result.status === 'suggested' && result.categoryId) {
             const label = categoriesById.get(result.categoryId)?.name ?? result.categoryId;
-            setAiOverrides((prev) => ({ ...prev, [index]: { categoryId: result.categoryId, label } }));
+            setAiOverrides((current) => ({
+              ...current,
+              [index]: { categoryId: result.categoryId!, label },
+            }));
+          } else if (result.status === 'unavailable') {
+            setAiUnavailable((current) => new Set(current).add(index));
           }
-          setAiLoading((prev) => {
-            const next = new Set(prev);
+          setAiLoading((current) => {
+            const next = new Set(current);
             next.delete(index);
             return next;
           });
@@ -129,25 +125,24 @@ export default function CommandInput() {
   };
 
   const handleEditPreview = () => {
-    setPreviews([]);
-    setAiOverrides({});
-    setAiLoading(new Set());
-    setOrderingChoices({});
+    clearPreviewState();
     setErrors([]);
   };
 
   const handleSave = async () => {
     if (previews.length === 0) return;
 
-    const draftsWithAI = previews.map((draft, i) => {
-      const override = aiOverrides[i];
+    const draftsWithAI = previews.map((draft, index) => {
+      const override = aiOverrides[index];
       return override ? { ...draft, categoryId: override.categoryId } : draft;
     });
 
     setSaving(true);
     try {
       const requirements = await findHistoricalTransactionOrderingRequirements(draftsWithAI, db);
-      const requirementByIndex = new Map(requirements.map((requirement) => [requirement.index, requirement]));
+      const requirementByIndex = new Map(
+        requirements.map((requirement) => [requirement.index, requirement])
+      );
       const nextChoices: OrderingChoices = {};
       let missingChoice = false;
 
@@ -185,10 +180,7 @@ export default function CommandInput() {
       await createTransactions(finalDrafts);
       const count = finalDrafts.length;
       toast.success(`Saved ${count} transaction${count === 1 ? '' : 's'}.`);
-      setPreviews([]);
-      setAiOverrides({});
-      setAiLoading(new Set());
-      setOrderingChoices({});
+      clearPreviewState();
       setInput('');
       setErrors([]);
       inputRef.current?.focus();
@@ -235,8 +227,8 @@ export default function CommandInput() {
             ref={inputRef}
             type="text"
             value={input}
-            onChange={(e) => setInput(e.target.value)}
-            onKeyDown={(e) => e.key === 'Enter' && handleSubmit()}
+            onChange={(event) => setInput(event.target.value)}
+            onKeyDown={(event) => event.key === 'Enter' && handleSubmit()}
             placeholder="-120 coffee cash"
             disabled={saving}
             aria-label="Quick transaction command"
@@ -320,8 +312,10 @@ export default function CommandInput() {
               {previews.map((preview, index) => {
                 const aiOverride = aiOverrides[index];
                 const isAiLoading = aiLoading.has(index);
+                const isAiUnavailable = aiUnavailable.has(index);
                 const displayCategoryId = aiOverride?.categoryId ?? preview.categoryId;
-                const displayCategoryName = categoriesById.get(displayCategoryId)?.name ?? displayCategoryId;
+                const displayCategoryName =
+                  categoriesById.get(displayCategoryId)?.name ?? displayCategoryId;
                 const orderingChoice = orderingChoices[index];
 
                 return (
@@ -342,12 +336,12 @@ export default function CommandInput() {
                         <p className="text-xs font-medium text-muted">Category</p>
                         <div className="mt-1 flex flex-wrap items-center gap-1.5">
                           <span className="font-semibold text-primary">{displayCategoryName}</span>
-                          {isAiLoading && (
-                            <span className="animate-pulse rounded-full bg-ai-muted px-1.5 py-0.5 text-xs font-semibold text-ai">
+                          {isAiLoading ? (
+                            <span className="animate-pulse rounded-full bg-ai-muted px-1.5 py-0.5 text-xs font-semibold text-ai-text">
                               AI…
                             </span>
-                          )}
-                          {aiOverride && !isAiLoading && (
+                          ) : null}
+                          {aiOverride && !isAiLoading ? (
                             <>
                               <span className="rounded-full bg-ai-muted px-1.5 py-0.5 text-xs font-semibold text-ai-text">
                                 AI
@@ -359,8 +353,8 @@ export default function CommandInput() {
                                 className="min-w-11 shrink-0"
                                 aria-label={`Revert AI category for line ${index + 1}`}
                                 onClick={() =>
-                                  setAiOverrides((prev) => {
-                                    const next = { ...prev };
+                                  setAiOverrides((current) => {
+                                    const next = { ...current };
                                     delete next[index];
                                     return next;
                                   })
@@ -369,7 +363,10 @@ export default function CommandInput() {
                                 Revert
                               </Button>
                             </>
-                          )}
+                          ) : null}
+                          {isAiUnavailable && !aiOverride && !isAiLoading ? (
+                            <span className="text-xs font-medium text-muted">AI unavailable · local</span>
+                          ) : null}
                         </div>
                       </div>
                       <PreviewItem label="Method" value={preview.method} />
@@ -423,12 +420,7 @@ export default function CommandInput() {
               </Button>
               <Button
                 variant="ghost"
-                onClick={() => {
-                  setPreviews([]);
-                  setAiOverrides({});
-                  setAiLoading(new Set());
-                  setOrderingChoices({});
-                }}
+                onClick={clearPreviewState}
                 disabled={saving}
               >
                 Cancel

@@ -28,6 +28,7 @@ import {
 import { ConfirmDialog } from './ConfirmDialog';
 import { CloudLedgerLink } from './CloudLedgerLink';
 import { CloudDeviceDisconnect } from './CloudDeviceDisconnect';
+import { QuickCaptureSettings } from './QuickCaptureSettings';
 import { RestoreScopeDialog } from './RestoreScopeDialog';
 import { ResetScopeDialog } from './ResetScopeDialog';
 import { toast } from 'sonner';
@@ -199,20 +200,12 @@ export default function SettingsWorkspace() {
 
   const persistPreRestoreSafetyBackup = useCallback((safetyBackup: string) => {
     const timestamp = new Date().toISOString().replace(/[:.]/g, '-');
-    downloadText(
-      `taptrack-pre-restore-${timestamp}.json`,
-      safetyBackup,
-      'application/json'
-    );
+    downloadText(`taptrack-pre-restore-${timestamp}.json`, safetyBackup, 'application/json');
   }, []);
 
   const persistPreResetSafetyBackup = useCallback((safetyBackup: string) => {
     const timestamp = new Date().toISOString().replace(/[:.]/g, '-');
-    downloadText(
-      `taptrack-pre-reset-${timestamp}.json`,
-      safetyBackup,
-      'application/json'
-    );
+    downloadText(`taptrack-pre-reset-${timestamp}.json`, safetyBackup, 'application/json');
   }, []);
 
   const clearPendingRestore = useCallback(() => {
@@ -228,7 +221,6 @@ export default function SettingsWorkspace() {
 
     try {
       const jsonData = await file.text();
-      // Validate before asking a destructive-scope question.
       normalizeBackupJSON(jsonData);
 
       if (syncStatus?.bindingState === 'linked') {
@@ -244,8 +236,8 @@ export default function SettingsWorkspace() {
       await refreshSyncStatus();
       toast.success(
         result.legacyMigrated
-          ? 'Legacy backup restored locally and upgraded to the checkpoint ledger.'
-          : 'Backup restored locally. A pre-restore safety backup was downloaded.'
+          ? 'Legacy backup restored locally and upgraded.'
+          : 'Backup restored locally. Safety backup downloaded.'
       );
     } catch (err) {
       toast.error(err instanceof Error ? err.message : 'Backup could not be restored.');
@@ -266,8 +258,8 @@ export default function SettingsWorkspace() {
       await refreshSyncStatus();
       toast.success(
         result.legacyMigrated
-          ? 'Legacy backup restored on this device. Cloud sync was disconnected and the account was left unchanged.'
-          : 'Backup restored on this device. Cloud sync was disconnected and the account was left unchanged.'
+          ? 'Legacy backup restored on this device. Cloud account unchanged.'
+          : 'Backup restored on this device. Cloud account unchanged.'
       );
       clearPendingRestore();
     } catch (err) {
@@ -290,8 +282,8 @@ export default function SettingsWorkspace() {
       await refreshSyncStatus();
       toast.success(
         result.legacyMigrated
-          ? 'Legacy backup restored to the synced account. Other linked devices will adopt the restored ledger.'
-          : 'Synced account restored. Other linked devices will adopt the restored ledger.'
+          ? 'Legacy backup restored to the synced account.'
+          : 'Synced account restored.'
       );
       clearPendingRestore();
     } catch (err) {
@@ -301,7 +293,6 @@ export default function SettingsWorkspace() {
       setRestoreBusy(false);
     }
   };
-
 
   const executeDeviceOnlyReset = async () => {
     if (resetBusy) return;
@@ -313,8 +304,8 @@ export default function SettingsWorkspace() {
       setShowResetScope(false);
       toast.success(
         syncStatus?.bindingState === 'linked'
-          ? 'This device was reset and disconnected from cloud sync. The synced account was left unchanged.'
-          : 'Local app data reset. A pre-reset safety backup was downloaded and setup will show again.'
+          ? 'This device was reset. Synced account unchanged.'
+          : 'Local data reset. Safety backup downloaded.'
       );
     } catch (err) {
       toast.error(err instanceof Error ? err.message : 'This device could not be reset.');
@@ -331,7 +322,7 @@ export default function SettingsWorkspace() {
       await refreshSyncStatus();
       setShowAccountResetConfirm(false);
       setShowResetScope(false);
-      toast.success('Synced account reset. Other linked devices will adopt the fresh ledger.');
+      toast.success('Synced account reset.');
     } catch (err) {
       toast.error(err instanceof Error ? err.message : 'Synced account could not be reset.');
       setShowResetScope(true);
@@ -351,13 +342,13 @@ export default function SettingsWorkspace() {
     const next = !settings.aiCategorizationEnabled;
 
     if (next && !accountEmail) {
-      toast.info('Sign in to enable AI categorization.');
+      toast.info('Sign in to use Smart Categories.');
       router.push('/login');
       return;
     }
 
     await updateSettingsPreferences({ aiCategorizationEnabled: next });
-    toast.success(next ? 'AI categorization enabled.' : 'AI categorization disabled.');
+    toast.success(next ? 'Smart Categories on.' : 'Smart Categories off.');
   };
 
   const handleToggleDarkMode = async () => {
@@ -368,7 +359,7 @@ export default function SettingsWorkspace() {
     const theme: ThemeMode = next ? 'dark' : 'light';
     setStoredTheme(theme);
     applyTheme(theme);
-    toast.success(next ? 'Dark mode enabled.' : 'Dark mode disabled.');
+    toast.success(next ? 'Dark mode on.' : 'Dark mode off.');
   };
 
   const handleSyncNow = async () => {
@@ -387,7 +378,7 @@ export default function SettingsWorkspace() {
   if (isLoading) {
     return (
       <div className="space-y-5" aria-busy="true" aria-label="Loading settings">
-        <PageHeader title="Settings" description="Account, preferences, and data." />
+        <PageHeader title="Settings" description="Make TapTrack yours." />
         <SkeletonCard />
         <SkeletonCard />
         <SkeletonCard />
@@ -401,39 +392,26 @@ export default function SettingsWorkspace() {
 
   return (
     <div className="space-y-5">
-      <PageHeader title="Settings" description="Account, preferences, and data." />
+      <PageHeader title="Settings" description="Make TapTrack yours." />
 
       <section className="rounded-2xl border border-subtle bg-surface p-5">
-        <h2 className="text-base font-semibold text-primary">Account</h2>
-        <p className="mt-1 text-sm text-muted">
-          {!accountChecked
-            ? 'Checking account…'
-            : accountEmail
-              ? `Signed in as ${accountEmail}`
-              : 'No cloud account signed in'}
-        </p>
-        {accountEmail ? (
-          <Button
-            type="button"
-            variant="secondary"
-            className="mt-4"
-            onClick={handleSignOut}
-            loading={signingOut}
-            disabled={signingOut}
-          >
-            Sign out
-          </Button>
-        ) : (
-          <Button
-            type="button"
-            variant="secondary"
-            className="mt-4"
-            onClick={() => router.push('/login')}
-            disabled={!accountChecked}
-          >
-            Optional account sign in
-          </Button>
-        )}
+        <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
+          <div>
+            <h2 className="text-base font-semibold text-primary">Account</h2>
+            <p className="mt-1 text-sm text-muted">
+              {!accountChecked ? 'Checking…' : accountEmail ? accountEmail : 'Not signed in'}
+            </p>
+          </div>
+          {accountEmail ? (
+            <Button type="button" variant="secondary" onClick={handleSignOut} loading={signingOut} disabled={signingOut}>
+              Sign out
+            </Button>
+          ) : (
+            <Button type="button" variant="secondary" onClick={() => router.push('/login')} disabled={!accountChecked}>
+              Sign in
+            </Button>
+          )}
+        </div>
       </section>
 
       <section className="rounded-2xl border border-subtle bg-surface p-5">
@@ -451,83 +429,56 @@ export default function SettingsWorkspace() {
         </div>
         <ToggleRow
           className="mt-5"
-          label={`Dark mode ${darkModeEnabled ? 'on' : 'off'}`}
+          label="Dark mode"
           checked={darkModeEnabled}
           onChange={handleToggleDarkMode}
         />
         <div className="mt-5 border-t border-subtle pt-5">
-          <p className="text-sm text-muted">
-            AI categorization sends the transaction title and available category names to the TapTrack
-            server, which asks Groq for a category suggestion. A signed-in account is required.
-          </p>
           <ToggleRow
-            className="mt-4"
-            label={
-              aiEnabled
-                ? aiActive
-                  ? 'AI categorization enabled'
-                  : 'AI categorization paused until sign-in'
-                : 'AI categorization disabled'
-            }
-            description={
-              accountEmail
-                ? 'Hosted Groq suggestions are used only while you are signed in.'
-                : 'Sign in before enabling hosted AI categorization.'
-            }
+            label="Smart Categories"
+            description={accountEmail ? 'Suggest categories while you type.' : 'Sign in to use smart suggestions.'}
             checked={aiEnabled}
             onChange={handleToggleAI}
             disabled={!accountChecked}
             variant="ai"
           />
           {aiActive ? (
-            <p className="mt-3 rounded-md border border-ai-border bg-ai-muted px-3 py-2 text-xs font-medium text-ai-text">
-              Hosted Groq categorization is active for this signed-in account.
-            </p>
-          ) : aiEnabled && accountChecked ? (
-            <p className="mt-3 rounded-md border border-ai-border bg-ai-muted px-3 py-2 text-xs font-medium text-ai-text">
-              Sign in to resume AI categorization. Local transaction tracking continues normally.
-            </p>
+            <span className="mt-3 inline-flex rounded-full border border-ai-border bg-ai-muted px-2.5 py-1 text-xs font-semibold text-ai-text">✦ On</span>
           ) : null}
         </div>
       </section>
 
+      <QuickCaptureSettings signedIn={Boolean(accountEmail)} />
+
       <section className="rounded-2xl border border-subtle bg-surface p-5">
-        <h2 className="text-base font-semibold text-primary">Money</h2>
-        <p className="mt-1 text-sm text-muted">
-          Starting balances are set once during setup. After that, balances change only through
-          recorded activity and monthly reconciliation.
-        </p>
+        <div className="flex items-center justify-between gap-3">
+          <h2 className="text-base font-semibold text-primary">Balances</h2>
+          <details className="relative">
+            <summary className={cn('cursor-pointer list-none rounded-lg px-2 py-1 text-xs font-semibold text-accent [&::-webkit-details-marker]:hidden', focusVisibleRing)}>
+              How it works
+            </summary>
+            <div className="absolute right-0 z-20 mt-2 w-72 rounded-xl border border-subtle bg-surface p-3 text-xs leading-5 text-muted shadow-lg">
+              Your opening amounts stay fixed. Reconciliation records a new real-world balance without rewriting transaction history.
+            </div>
+          </details>
+        </div>
         <div className="mt-4 grid gap-2 sm:grid-cols-2">
           {balances.map((balance) => (
-            <div
-              key={balance.id}
-              className="flex items-center justify-between gap-3 rounded-lg border border-subtle bg-surface-muted px-3 py-3"
-            >
-              <span className="text-sm font-semibold capitalize text-secondary">
-                {balance.currency} {balance.method}
-              </span>
-              <span className="text-sm font-semibold tabular-nums text-primary">
-                {formatMoney(balance.amount, balance.currency)}
-              </span>
+            <div key={balance.id} className="flex items-center justify-between gap-3 rounded-lg border border-subtle bg-surface-muted px-3 py-3">
+              <span className="text-sm font-semibold capitalize text-secondary">{balance.currency} {balance.method}</span>
+              <span className="text-sm font-semibold tabular-nums text-primary">{formatMoney(balance.amount, balance.currency)}</span>
             </div>
           ))}
         </div>
       </section>
 
       <section className="rounded-2xl border border-subtle bg-surface p-5">
-        <h2 className="text-base font-semibold text-primary">Adjustment history</h2>
-        <p className="mt-1 text-sm text-muted">
-          Monthly reconciliation corrections are kept separate from income and spending reports.
-        </p>
+        <h2 className="text-base font-semibold text-primary">Reconciliation history</h2>
         {adjustments.length === 0 ? (
-          <p className="mt-4 rounded-lg border border-subtle bg-surface-muted p-3 text-sm text-muted">
-            No monthly reconciliations recorded yet.
-          </p>
+          <p className="mt-4 rounded-lg border border-subtle bg-surface-muted p-3 text-sm text-muted">Nothing here yet.</p>
         ) : (
           <div className="mt-4 divide-y divide-subtle overflow-hidden rounded-lg border border-subtle">
-            {adjustments.map((checkpoint) => (
-              <AdjustmentRow key={checkpoint.id} checkpoint={checkpoint} />
-            ))}
+            {adjustments.map((checkpoint) => <AdjustmentRow key={checkpoint.id} checkpoint={checkpoint} />)}
           </div>
         )}
       </section>
@@ -549,12 +500,7 @@ export default function SettingsWorkspace() {
             onChange={(event) => setCategoryType(event.target.value as TransactionType)}
             options={CATEGORY_TYPE_OPTIONS}
           />
-          <SelectField
-            label="Icon"
-            value={categoryIcon}
-            onChange={(event) => setCategoryIcon(event.target.value)}
-            options={CATEGORY_ICON_OPTIONS}
-          />
+          <SelectField label="Icon" value={categoryIcon} onChange={(event) => setCategoryIcon(event.target.value)} options={CATEGORY_ICON_OPTIONS} />
           <label htmlFor="category-color" className="grid gap-1.5 md:col-span-2">
             <span className="text-sm font-medium text-secondary">Color</span>
             <input
@@ -562,69 +508,32 @@ export default function SettingsWorkspace() {
               type="color"
               value={categoryColor}
               onChange={(event) => setCategoryColor(event.target.value)}
-              className={cn(
-                'min-h-11 w-full cursor-pointer rounded-lg border border-subtle bg-surface px-2 py-1 outline-none focus-visible:border-accent',
-                focusVisibleRing
-              )}
+              className={cn('min-h-11 w-full cursor-pointer rounded-lg border border-subtle bg-surface px-2 py-1 outline-none focus-visible:border-accent', focusVisibleRing)}
               aria-label="Category color"
             />
           </label>
           <div className="flex flex-col gap-2 sm:flex-row md:col-span-2">
-            <Button
-              type="button"
-              className="w-full sm:w-auto"
-              onClick={editingCategory ? saveCategoryEdit : addCategory}
-            >
+            <Button type="button" className="w-full sm:w-auto" onClick={editingCategory ? saveCategoryEdit : addCategory}>
               {editingCategory ? 'Save' : 'Add'}
             </Button>
             {editingCategory ? (
-              <Button
-                type="button"
-                variant="secondary"
-                className="w-full sm:w-auto"
-                onClick={cancelCategoryEdit}
-              >
-                Cancel
-              </Button>
+              <Button type="button" variant="secondary" className="w-full sm:w-auto" onClick={cancelCategoryEdit}>Cancel</Button>
             ) : null}
           </div>
         </div>
         <div className="mt-4 grid gap-2">
           {categories.map((category) => (
-            <div
-              key={category.id}
-              className="rounded-lg border border-subtle bg-surface-muted p-3"
-            >
+            <div key={category.id} className="rounded-lg border border-subtle bg-surface-muted p-3">
               <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
                 <div className="flex min-w-0 items-center gap-2">
-                  <span
-                    className="h-3 w-3 shrink-0 rounded-full"
-                    style={{ background: category.color ?? '#64748b' }}
-                    aria-hidden
-                  />
-                  <span className="min-w-0 truncate text-sm font-semibold text-primary">
-                    {category.name}
-                  </span>
+                  <span className="h-3 w-3 shrink-0 rounded-full" style={{ background: category.color ?? '#64748b' }} aria-hidden />
+                  <span className="min-w-0 truncate text-sm font-semibold text-primary">{category.name}</span>
                   <CategoryTypeBadge type={category.type} />
                 </div>
                 <div className="flex shrink-0 items-center gap-2 self-stretch sm:self-auto">
-                  <Button
-                    type="button"
-                    variant="secondary"
-                    className="min-h-11 min-w-11 flex-1 px-4 sm:flex-none"
-                    onClick={() => startCategoryEdit(category)}
-                  >
-                    Edit
-                  </Button>
+                  <Button type="button" variant="secondary" className="min-h-11 min-w-11 flex-1 px-4 sm:flex-none" onClick={() => startCategoryEdit(category)}>Edit</Button>
                   {category.isDefault ? null : (
-                    <Button
-                      type="button"
-                      variant="dangerGhost"
-                      className="min-h-11 min-w-11 flex-1 px-4 sm:flex-none"
-                      onClick={() => setCategoryDeleteConfirm(category)}
-                    >
-                      Delete
-                    </Button>
+                    <Button type="button" variant="dangerGhost" className="min-h-11 min-w-11 flex-1 px-4 sm:flex-none" onClick={() => setCategoryDeleteConfirm(category)}>Delete</Button>
                   )}
                 </div>
               </div>
@@ -637,115 +546,48 @@ export default function SettingsWorkspace() {
         <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
           <div>
             <h2 className="text-base font-semibold text-primary">Sync</h2>
-            <p className="mt-1 text-sm text-muted">
-              Cloud sync is optional. Your data stays on this device even if sync is off.
-            </p>
+            <p className="mt-1 text-sm font-medium text-secondary">{buildSyncSummary(syncStatus)}</p>
           </div>
-          <Button
-            type="button"
-            onClick={handleSyncNow}
-            loading={syncing}
-            disabled={syncing || !syncStatus?.syncAllowed}
-          >
-            Sync now
-          </Button>
+          <Button type="button" onClick={handleSyncNow} loading={syncing} disabled={syncing || !syncStatus?.syncAllowed}>Sync now</Button>
         </div>
-        <p className="mt-4 text-sm font-medium text-secondary">{buildSyncSummary(syncStatus)}</p>
         <details className="mt-3 rounded-lg border border-subtle bg-surface-muted">
-          <summary
-            className={cn(
-              'flex min-h-11 cursor-pointer list-none items-center rounded-lg px-3 py-2 text-sm font-medium text-secondary select-none [&::-webkit-details-marker]:hidden',
-              focusVisibleRing
-            )}
-          >
-            Sync details
+          <summary className={cn('flex min-h-11 cursor-pointer list-none items-center rounded-lg px-3 py-2 text-sm font-medium text-secondary select-none [&::-webkit-details-marker]:hidden', focusVisibleRing)}>
+            Details
           </summary>
           <dl className="divide-y divide-subtle border-t border-subtle px-3 text-sm">
-            <SyncDetailRow
-              label="Account"
-              value={syncStatus?.authenticated ? 'Signed in' : 'Not signed in'}
-            />
+            <SyncDetailRow label="Account" value={syncStatus?.authenticated ? 'Signed in' : 'Not signed in'} />
             <SyncDetailRow label="Network" value={syncStatus?.online ? 'Online' : 'Offline'} />
-            <SyncDetailRow
-              label="Last download"
-              value={formatSyncTimestamp(syncStatus?.lastSyncAt)}
-            />
-            <SyncDetailRow
-              label="Last upload"
-              value={formatSyncTimestamp(syncStatus?.lastPushAt)}
-            />
-            {(syncStatus?.pendingRetryCount ?? 0) > 0 ? (
-              <SyncDetailRow
-                label="Waiting to sync"
-                value={String(syncStatus?.pendingRetryCount ?? 0)}
-              />
-            ) : null}
+            <SyncDetailRow label="Last download" value={formatSyncTimestamp(syncStatus?.lastSyncAt)} />
+            <SyncDetailRow label="Last upload" value={formatSyncTimestamp(syncStatus?.lastPushAt)} />
+            {(syncStatus?.pendingRetryCount ?? 0) > 0 ? <SyncDetailRow label="Waiting" value={String(syncStatus?.pendingRetryCount ?? 0)} /> : null}
           </dl>
-          <p className="border-t border-subtle px-3 py-2 text-xs font-medium text-muted">
-            This ledger belongs to the browser profile. Cloud sync is optional and must be linked
-            explicitly to one account.
-          </p>
         </details>
-        {syncStatus?.bindingState === 'unlinked' ? (
-          <CloudLedgerLink onLinked={refreshSyncStatus} />
-        ) : null}
+        {syncStatus?.bindingState === 'unlinked' ? <CloudLedgerLink onLinked={refreshSyncStatus} /> : null}
         <CloudDeviceDisconnect onDisconnected={refreshSyncStatus} />
         {syncStatus?.bindingState === 'account-mismatch' ? (
-          <p
-            role="alert"
-            className="mt-4 rounded-lg border border-danger bg-danger-muted p-3 text-sm text-danger"
-          >
-            This browser ledger is linked to a different account. Local tracking remains available,
-            but every cloud read and write is blocked.
+          <p role="alert" className="mt-4 rounded-lg border border-danger bg-danger-muted p-3 text-sm text-danger">
+            This device is linked to a different account. Cloud reads and writes are blocked.
           </p>
         ) : null}
       </section>
 
       <section className="rounded-2xl border border-subtle bg-surface p-5">
-        <h2 className="text-base font-semibold text-primary">Data &amp; export</h2>
-        <p className="mt-1 text-sm text-muted">Export a canonical backup or restore/replace from JSON. Linked browsers choose explicitly between replacing the synced account or detaching and restoring only this device. A safety backup is downloaded before replacement.</p>
+        <h2 className="text-base font-semibold text-primary">Data</h2>
         <div className="mt-4 max-w-xs">
-          <Field
-            label="Report month"
-            type="month"
-            value={month}
-            onChange={(event) => setMonth(event.target.value)}
-          />
+          <Field label="Report month" type="month" value={month} onChange={(event) => setMonth(event.target.value)} />
         </div>
         <div className="mt-4 flex flex-wrap gap-2">
-          <Button type="button" variant="secondary" size="sm" onClick={handleExportCSV}>
-            Export CSV
-          </Button>
-          <Button type="button" variant="secondary" size="sm" onClick={handleExportJSON}>
-            Export JSON
-          </Button>
-          <Button
-            type="button"
-            variant="secondary"
-            size="sm"
-            onClick={() => importInputRef.current?.click()}
-          >
-            Restore JSON
-          </Button>
-          <Button type="button" variant="secondary" size="sm" onClick={handleExportPDF}>
-            Export PDF
-          </Button>
+          <Button type="button" variant="secondary" size="sm" onClick={handleExportCSV}>Export CSV</Button>
+          <Button type="button" variant="secondary" size="sm" onClick={handleExportJSON}>Backup JSON</Button>
+          <Button type="button" variant="secondary" size="sm" onClick={() => importInputRef.current?.click()}>Restore JSON</Button>
+          <Button type="button" variant="secondary" size="sm" onClick={handleExportPDF}>Export PDF</Button>
         </div>
-        <input
-          ref={importInputRef}
-          type="file"
-          accept="application/json"
-          className="hidden"
-          onChange={(event) => void handleImportFile(event.target.files?.[0])}
-        />
+        <input ref={importInputRef} type="file" accept="application/json" className="hidden" onChange={(event) => void handleImportFile(event.target.files?.[0])} />
       </section>
 
       <section className="rounded-2xl border border-danger/30 bg-danger-muted p-5">
         <h2 className="text-base font-semibold text-danger">Danger zone</h2>
-        <p className="mt-1 text-sm text-muted">
-          Reset to a fresh ledger. Linked browsers can reset only this device or the synced
-          account everywhere. A safety backup is downloaded before anything is replaced.
-        </p>
+        <p className="mt-1 text-sm text-muted">Reset creates a safety backup first. Linked devices choose whether the reset affects this device or the whole account.</p>
         <Button
           type="button"
           variant="danger"
@@ -784,7 +626,7 @@ export default function SettingsWorkspace() {
       <ConfirmDialog
         open={showAccountRestoreConfirm}
         title="Replace synced account ledger"
-        message="This will replace the signed-in account’s canonical finance ledger with the selected backup. Other linked devices will adopt the restored ledger, and stale pre-restore pending changes on those devices will be discarded."
+        message="This replaces the signed-in account with the selected backup. Other linked devices will adopt it, and stale pending changes from before the restore will be discarded."
         confirmLabel="Replace synced account"
         confirmVariant="danger"
         onConfirm={() => {
@@ -800,7 +642,7 @@ export default function SettingsWorkspace() {
       <ConfirmDialog
         open={showAccountResetConfirm}
         title="Reset synced account everywhere"
-        message="This will replace the signed-in account with a fresh empty ledger. Every linked device will adopt the reset state, and stale pending changes from before the reset will be discarded. A safety backup is downloaded first."
+        message="This replaces the signed-in account with a fresh empty ledger. Every linked device will adopt the reset state. A safety backup is downloaded first."
         confirmLabel="Reset synced account"
         confirmVariant="danger"
         onConfirm={() => {
@@ -816,7 +658,7 @@ export default function SettingsWorkspace() {
       <ConfirmDialog
         open={showResetConfirm}
         title="Reset local app data"
-        message="This will replace this browser’s ledger with a fresh empty ledger. A safety backup is downloaded first."
+        message="This replaces this browser's ledger with a fresh empty ledger. A safety backup is downloaded first."
         confirmLabel="Reset local data"
         confirmVariant="danger"
         onConfirm={() => void executeDeviceOnlyReset()}
@@ -846,30 +688,20 @@ function AdjustmentRow({ checkpoint }: { checkpoint: BalanceCheckpoint }) {
   const deltaLabel =
     checkpoint.deltaAmount === 0
       ? 'No change'
-      : `${checkpoint.deltaAmount > 0 ? '+' : ''}${formatMoney(
-          checkpoint.deltaAmount,
-          checkpoint.currency
-        )}`;
+      : `${checkpoint.deltaAmount > 0 ? '+' : ''}${formatMoney(checkpoint.deltaAmount, checkpoint.currency)}`;
 
   return (
     <div className="flex items-center justify-between gap-3 bg-surface px-3 py-3">
       <div className="min-w-0">
-        <p className="text-sm font-semibold capitalize text-primary">
-          {checkpoint.currency} {checkpoint.method}
-        </p>
+        <p className="text-sm font-semibold capitalize text-primary">{checkpoint.currency} {checkpoint.method}</p>
         <p className="mt-0.5 text-xs font-medium text-muted">
-          {checkpoint.month ?? checkpoint.date ?? 'Reconciliation'} · observed{' '}
-          {formatMoney(checkpoint.observedAmount, checkpoint.currency)}
+          {checkpoint.month ?? checkpoint.date ?? 'Reconciliation'} · observed {formatMoney(checkpoint.observedAmount, checkpoint.currency)}
         </p>
       </div>
       <span
         className={cn(
           'shrink-0 text-sm font-semibold tabular-nums',
-          checkpoint.deltaAmount > 0
-            ? 'text-success'
-            : checkpoint.deltaAmount < 0
-              ? 'text-danger'
-              : 'text-muted'
+          checkpoint.deltaAmount > 0 ? 'text-success' : checkpoint.deltaAmount < 0 ? 'text-danger' : 'text-muted'
         )}
       >
         {deltaLabel}
@@ -880,46 +712,35 @@ function AdjustmentRow({ checkpoint }: { checkpoint: BalanceCheckpoint }) {
 
 function CategoryTypeBadge({ type }: { type: TransactionType }) {
   return (
-    <span
-      className={cn(
-        'shrink-0 rounded-full px-2 py-0.5 text-xs font-semibold capitalize',
-        type === 'income' ? 'bg-success-muted text-success' : 'bg-danger-muted text-danger'
-      )}
-    >
+    <span className={cn('shrink-0 rounded-full px-2 py-0.5 text-xs font-semibold capitalize', type === 'income' ? 'bg-success-muted text-success' : 'bg-danger-muted text-danger')}>
       {type}
     </span>
   );
 }
 
 function buildSyncSummary(status: SyncStatusSnapshot | null): string {
-  if (!status) return 'Checking sync status…';
+  if (!status) return 'Checking…';
 
   const stateLabel = {
-    'provider-unconfigured': 'Cloud sync not configured',
+    'provider-unconfigured': 'Cloud sync unavailable',
     'signed-out': 'Not signed in',
-    unlinked: 'Account signed in; ledger not linked',
+    unlinked: 'Ready to link',
     linked: formatRelativeSyncTime(status.lastSyncAt),
-    'account-mismatch': 'Account mismatch; sync blocked',
-    'provider-unavailable': 'Cloud provider unavailable',
+    'account-mismatch': 'Account mismatch',
+    'provider-unavailable': 'Cloud unavailable',
   }[status.bindingState];
-  const networkPart = status.online ? 'Online' : 'Offline';
-  const pendingPart = `${status.pendingRetryCount} pending`;
-
-  return `${stateLabel} · ${networkPart} · ${pendingPart}`;
+  const pendingPart = status.pendingRetryCount > 0 ? ` · ${status.pendingRetryCount} pending` : '';
+  return `${stateLabel}${status.online ? '' : ' · Offline'}${pendingPart}`;
 }
 
 function formatRelativeSyncTime(value: string | null | undefined): string {
   if (!value) return 'Never synced';
-
   const diffMs = Date.now() - new Date(value).getTime();
   const diffMin = Math.floor(diffMs / 60_000);
-
   if (diffMin < 1) return 'Synced just now';
   if (diffMin < 60) return `Synced ${diffMin} min ago`;
-
   const diffHours = Math.floor(diffMin / 60);
   if (diffHours < 24) return `Synced ${diffHours} hr ago`;
-
   const diffDays = Math.floor(diffHours / 24);
   return `Synced ${diffDays} day${diffDays === 1 ? '' : 's'} ago`;
 }
