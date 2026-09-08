@@ -12,6 +12,7 @@ import {
   type Category,
   type CategoryBudget,
   type Conversion,
+  type Currency,
   type MonthlyBudget,
   type RecurringTransaction,
   type Settings,
