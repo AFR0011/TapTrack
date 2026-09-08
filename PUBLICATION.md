@@ -15,6 +15,8 @@ TapTrack is being prepared as a public engineering portfolio repository. The pub
 - [x] Replace hard-coded FX fallbacks with historical TCMB rates via Frankfurter.
 - [x] Make TRY-unified reports and PDF export use each transaction's historical date.
 - [x] Replace Ollama with authenticated server-side Groq categorization.
+- [x] Restrict the live Groq quota RPC to service-role execution and verify browser roles cannot execute it.
+- [x] Re-run live Supabase security advisors after quota hardening; only the Auth leaked-password-protection warning remains.
 - [x] Add production CSP/security headers and smoke assertions.
 - [x] Repair Supabase auth callback handling for PKCE/email confirmation flows.
 - [x] Pass lint, typecheck, **24 Vitest files / 137 tests**, production build, route smoke, and offline mobile Playwright verification on the remediation branch.
@@ -22,8 +24,6 @@ TapTrack is being prepared as a public engineering portfolio repository. The pub
 - [x] Update primary architecture/security/project-state documentation to match the remediation branch.
 - [ ] Decide and implement JSON import semantics for the checkpoint-based canonical ledger.
 - [ ] Decide and implement device-local vs account-wide reset semantics.
-- [ ] Coordinate the staged server-only Groq quota migration with the matching application route.
-- [ ] Re-run live Supabase security advisors after coordinated migration deployment.
 - [ ] Enable Supabase leaked-password protection if available/appropriate for the project plan.
 - [ ] Complete the historical Git review for old environment files, credentials, real finance data, screenshots, or provider identifiers.
 - [ ] Use only synthetic/demo financial values and transaction descriptions in public screenshots.
@@ -48,6 +48,7 @@ Implemented engineering features include:
 - historical TCMB FX conversion with prior-published-date fallback only;
 - Month/Range/Year reporting and matching historical-FX PDF export;
 - authenticated Groq categorization with server-only credentials and per-account quota;
+- server-only Supabase quota RPC privileges verified on the live project;
 - PKCE/token-hash auth callback handling;
 - CSP and related production security headers;
 - PWA/offline mobile verification;
@@ -82,6 +83,7 @@ The remediation branch can accurately claim that:
 - historical FX values are fetched from TCMB via Frankfurter and do not use estimated hard-coded fallbacks;
 - TRY-unified report screen and PDF export use transaction-date valuation;
 - hosted AI categorization is authenticated and server-side;
+- the live AI quota function is not executable by `anon` or `authenticated` roles;
 - current automated Chromium coverage verifies offline mobile navigation and persistence of an offline Quick Add transaction.
 
 Do **not** claim native Safari/iOS offline verification, production Telegram correctness, or release-ready synced import/reset behavior yet.
@@ -96,11 +98,10 @@ Never publish screenshots containing real Supabase service-role credentials, Gro
 
 1. Resolve import/reset/account-unlink product semantics.
 2. Implement and test those decisions.
-3. Coordinate remaining Supabase migrations with matching branch code.
-4. Re-run Supabase advisors and automated CI.
-5. Perform disposable-account authenticated manual testing.
-6. Review the final Vercel preview and repository diff/history.
-7. Merge/promote only after explicit owner approval.
+3. Verify remaining deployment environment variables/live migrations.
+4. Perform disposable-account authenticated manual testing.
+5. Review the final Vercel preview and repository diff/history.
+6. Merge/promote only after explicit owner approval.
 
 ## License
 
