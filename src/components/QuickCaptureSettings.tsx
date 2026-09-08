@@ -20,7 +20,11 @@ type CaptureTokenMetadata = {
 type ShortcutType = 'expense' | 'income';
 
 export function QuickCaptureSettings({ signedIn }: { signedIn: boolean }) {
-  const binding = useLiveQuery(() => db.deviceMetadata.get(DEVICE_LEDGER_BINDING_ID));
+  const binding = useLiveQuery(
+    () => db.deviceMetadata.get(DEVICE_LEDGER_BINDING_ID),
+    [],
+    null
+  );
   const [linked, setLinked] = useState(false);
   const [linkChecked, setLinkChecked] = useState(false);
   const [tokens, setTokens] = useState<CaptureTokenMetadata[]>([]);
@@ -32,7 +36,7 @@ export function QuickCaptureSettings({ signedIn }: { signedIn: boolean }) {
   const activeTokens = useMemo(() => tokens.filter((token) => !token.revoked_at), [tokens]);
 
   useEffect(() => {
-    if (binding === undefined) return;
+    if (binding === null) return;
     let cancelled = false;
 
     queueMicrotask(() => {
