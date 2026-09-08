@@ -17,14 +17,22 @@ jobs:
       - uses: actions/checkout@v7
         with:
           ref: feature/taptrack-b004-personalization-dashboard
-      - name: Apply backup currency patch
+      - name: Fix dynamic backup budget assertion
         run: |
-          sed -i 's/if text.count(old) != 1:/if text.count(old) < 1:/' scripts/patch_b004_backup_currency.py
-          python scripts/patch_b004_backup_currency.py
-      - name: Commit patch
+          python - <<'PY'
+          from pathlib import Path
+          path = Path('src/exports/backupService.test.ts')
+          text = path.read_text()
+          old = "expect((await database.monthlyBudgets.get('2026-05'))?.currency).toBe('GBP');"
+          new = "expect((await database.monthlyBudgets.where('month').equals('2026-05').first())?.currency).toBe('GBP');"
+          if text.count(old) != 1:
+              raise SystemExit(f'expected one monthly budget assertion, found {text.count(old)}')
+          path.write_text(text.replace(old, new, 1))
+          PY
+      - name: Commit assertion fix
         run: |
           git config user.name "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
-          git add src/exports/backupService.ts src/exports/backupService.test.ts
-          git commit -m "Generalize backup restore currency validation"
+          git add src/exports/backupService.test.ts
+          git commit -m "Fix dynamic backup budget assertion"
           git push
