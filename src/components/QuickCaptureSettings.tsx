@@ -39,7 +39,9 @@ export function QuickCaptureSettings({ signedIn }: { signedIn: boolean }) {
 
   useEffect(() => {
     if (!signedIn) return;
-    void refresh();
+    queueMicrotask(() => {
+      void refresh();
+    });
     // Account identity is managed by the parent Settings screen. A sign-in/out
     // transition remounts this fetch contract through the boolean prop.
     // eslint-disable-next-line react-hooks/exhaustive-deps
