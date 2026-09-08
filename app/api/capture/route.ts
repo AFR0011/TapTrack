@@ -4,7 +4,7 @@ import { hashCaptureToken, isCaptureToken } from '@/server/capture/captureTokens
 import { suggestServerCategory } from '@/server/categories/suggestServerCategory';
 import type { Category, Currency, Method, TransactionType } from '@/types';
 
-const UUID_PATTERN = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{12}$/i;
+const UUID_PATTERN = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
 const DATE_PATTERN = /^\d{4}-\d{2}-\d{2}$/;
 const MAX_TITLE_LENGTH = 160;
 const MAX_NOTE_LENGTH = 500;
