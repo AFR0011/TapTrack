@@ -87,4 +87,64 @@ Initialized: 2026-09-05
   application origin. Local rerun: `mobile-320` PASS, `mobile-390` PASS, 2/2 in 51.4 seconds.
 - Published repair head `fad68f42859c6e0eb3231b76f32bdd6166d85e0f`; push run
   `33980471775` and pull-request run `33980469736` both passed the complete CI workflow. Vercel
-  preview checks also passed. PR #4 remains open and unmerged.
+  preview checks also passed. PR #4 remained open at that point and was subsequently merged into
+  `main` as `cc43524c99e7944a17df13d76578bf83a79fcb15`.
+
+## 2026-09-07 to 2026-09-08 - TT-B002 correctness remediation
+
+- Continued on `remediation/taptrack-correctness-b002` from the TT-B001 production baseline.
+- Rebuilt balance semantics around immutable opening/reconciliation checkpoints plus transaction
+  and conversion replay. `balances` is derived cache, not synchronized canonical truth.
+- Added durable local finance + outbox atomicity across canonical mutation paths and expanded
+  two-device convergence coverage.
+- Added explicit cloud adoption: use-cloud, merge-local, and fail-closed empty-cloud linking.
+- Added ledger revision/generation support so account-wide replacement rotates the account generation
+  and stale devices adopt the new snapshot instead of replaying pre-replacement pending writes.
+- Added versioned JSON backup validation, safety backups, legacy checkpoint migration, and linked
+  restore scope: restore only this device vs restore the synced account.
+- Anchored recurring schedules and deterministic occurrence IDs; online startup now pulls cloud
+  recurring state before due-occurrence generation.
+- Replaced estimated/hard-coded FX fallback behavior with historical TCMB rates via Frankfurter and
+  added transaction-date TRY report/PDF conversion.
+- Replaced the old local Ollama assumption with authenticated server-side Groq categorization and
+  live server-only Supabase quota hardening.
+- Rebuilt Telegram against canonical ledger state. `/balance` uses calculated ledger balance,
+  `/today` is timezone-aware, dynamic HTML is escaped, non-owner/non-private chats fail closed, and
+  transaction batches use a server-only atomic/idempotent RPC keyed by Telegram `update_id`.
+- Moved service-worker registration into the authenticated app layout so unauthenticated installs
+  cannot cache login redirects under app-route cache keys.
+- Fixed the stale Telegram integration fixtures by adding `TAPTRACK_TIME_ZONE=Europe/Istanbul` to
+  the complete test environment and `.env.example`; cleaned webhook test warnings.
+- Implemented reset by reusing restore/replacement invariants: device-only reset detaches and replaces
+  only local canonical state; account-wide reset rotates generation and replaces the synced account
+  with a fresh ledger. Both produce pre-reset safety backups.
+- Added explicit device cloud disconnect: binding + pending outbox are removed atomically while local
+  canonical finance data and the cloud account remain unchanged. Disconnect is idempotent when the
+  device is already unlinked.
+
+### TT-B002 implementation evidence
+
+- Implementation head: `2e01cda7e69e80a4b75fa2bcea20f253fb4ebbc5`.
+- GitHub Actions run `34206762454`: PASS.
+- Publication guard: PASS.
+- Full dependency audit: 0 vulnerabilities.
+- Production dependency audit: 0 vulnerabilities.
+- ESLint: 0 errors, 3 non-blocking internal-navigation warnings.
+- TypeScript: PASS.
+- Vitest: 32/32 files, 172/172 tests PASS.
+- Next.js production build: PASS.
+- Route smoke: 9/9 PASS.
+- Playwright: `mobile-320` PASS, `mobile-390` PASS.
+
+### TT-B002 release-preparation state
+
+- Production `main` remains at `cc43524c99e7944a17df13d76578bf83a79fcb15`.
+- The latest READY preview observed before documentation reconciliation was `df77b3370ca4f71edd8b72a8bf68aba444540e38`, not the final Settings/documentation head.
+- README, SECURITY, project state, QA, risk, and publication records were therefore reconciled after
+  implementation closure.
+- Final release still requires: CI on the documentation-frozen head; matching READY Vercel preview;
+  disposable-account provider-backed walkthrough; historical/public-artifact review; explicit owner
+  approval; deployment of compatible B002 code; then application of
+  `20260908_enforce_protected_sync_writes.sql` followed by a second production smoke test.
+- Native installed Safari/iOS PWA behavior, JavaScript-number money precision, IndexedDB-at-rest
+  exposure, and the narrow empty-cloud claim/seed TOCTOU remain documented residuals.
