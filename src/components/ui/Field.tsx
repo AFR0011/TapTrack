@@ -19,7 +19,7 @@ export const Field = forwardRef<HTMLInputElement, FieldProps>(
           ref={ref}
           id={fieldId}
           className={cn(
-            'min-h-11 min-w-0 w-full rounded-lg border border-subtle bg-surface px-3 py-2 text-sm font-medium text-primary outline-none transition-colors placeholder:text-muted focus-visible:border-accent disabled:cursor-not-allowed disabled:opacity-60',
+            'min-h-11 min-w-0 w-full rounded-lg border border-subtle bg-surface px-3 py-2 text-base font-medium text-primary outline-none transition-colors placeholder:text-muted focus-visible:border-accent disabled:cursor-not-allowed disabled:opacity-60 md:text-sm',
             focusVisibleRing,
             error && 'border-danger focus-visible:border-danger focus-visible:outline-danger',
             className
