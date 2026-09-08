@@ -13,6 +13,8 @@ type CaptureTokenMetadata = {
   revoked_at: string | null;
 };
 
+type ShortcutType = 'expense' | 'income';
+
 export function QuickCaptureSettings({ signedIn }: { signedIn: boolean }) {
   const [tokens, setTokens] = useState<CaptureTokenMetadata[]>([]);
   const [loading, setLoading] = useState(false);
@@ -173,7 +175,9 @@ export function QuickCaptureSettings({ signedIn }: { signedIn: boolean }) {
 
 function ShortcutSetupSheet({ token, onClose }: { token: string; onClose: () => void }) {
   const [copied, setCopied] = useState(false);
+  const [shortcutType, setShortcutType] = useState<ShortcutType>('expense');
   const endpoint = typeof window === 'undefined' ? '/api/capture' : `${window.location.origin}/api/capture`;
+  const shortcutName = shortcutType === 'expense' ? 'TapTrack Expense' : 'TapTrack Income';
 
   const copyToken = async () => {
     await navigator.clipboard.writeText(token);
@@ -192,21 +196,37 @@ function ShortcutSetupSheet({ token, onClose }: { token: string; onClose: () => 
         <div className="mx-auto mb-4 h-1.5 w-12 rounded-full bg-surface-raised sm:hidden" />
         <div className="flex items-start justify-between gap-4">
           <div>
-            <p className="text-sm font-semibold text-accent">iPhone Shortcut</p>
+            <p className="text-sm font-semibold text-accent">iPhone Shortcuts</p>
             <h2 id="shortcut-setup-title" className="mt-1 text-2xl font-semibold tracking-tight text-primary">Add TapTrack in a few taps.</h2>
           </div>
           <button type="button" aria-label="Close" onClick={onClose} className="grid h-11 w-11 shrink-0 place-items-center rounded-full bg-surface-muted text-xl text-secondary">×</button>
         </div>
 
+        <div className="mt-5 grid grid-cols-2 rounded-xl bg-surface-muted p-1" aria-label="Shortcut type">
+          {(['expense', 'income'] as ShortcutType[]).map((type) => (
+            <button
+              key={type}
+              type="button"
+              aria-pressed={shortcutType === type}
+              onClick={() => setShortcutType(type)}
+              className={`min-h-11 rounded-lg px-3 text-sm font-semibold capitalize transition-colors ${
+                shortcutType === type ? 'bg-surface text-primary shadow-sm' : 'text-muted hover:text-primary'
+              }`}
+            >
+              {type}
+            </button>
+          ))}
+        </div>
+
         <div className="mt-6 space-y-4">
           <SetupStep number="1" title="Copy your private key">
-            <p className="text-sm text-muted">It is shown only during this setup.</p>
+            <p className="text-sm text-muted">It is shown only during this setup. The same key can power both shortcuts on this device.</p>
             <Button type="button" variant="secondary" className="mt-3" onClick={() => void copyToken()}>
               {copied ? 'Copied ✓' : 'Copy key'}
             </Button>
           </SetupStep>
 
-          <SetupStep number="2" title="Create “TapTrack Expense” in Shortcuts">
+          <SetupStep number="2" title={`Create “${shortcutName}” in Shortcuts`}>
             <ol className="list-decimal space-y-1.5 pl-5 text-sm text-muted">
               <li>Add <strong className="text-secondary">Ask for Input</strong> → Number → “Amount”.</li>
               <li>Add <strong className="text-secondary">Ask for Input</strong> → Text → “What was it?”.</li>
@@ -226,7 +246,7 @@ function ShortcutSetupSheet({ token, onClose }: { token: string; onClose: () => 
             <p className="mt-3 text-sm text-muted">Use a JSON request body with the generated UUID, Amount, and title:</p>
             <pre className="mt-2 overflow-x-auto rounded-xl bg-surface-muted p-3 text-xs text-secondary">{`{
   "requestId": "[UUID]",
-  "type": "expense",
+  "type": "${shortcutType}",
   "amount": [Amount],
   "title": "[What was it?]",
   "date": "[Current Date as yyyy-MM-dd]"
@@ -234,7 +254,7 @@ function ShortcutSetupSheet({ token, onClose }: { token: string; onClose: () => 
           </SetupStep>
 
           <SetupStep number="4" title="Put it where you need it">
-            <p className="text-sm text-muted">Add the Shortcut to Siri, your Home Screen, or assign it to the Action Button.</p>
+            <p className="text-sm text-muted">Add the Shortcut to Siri, your Home Screen, or assign your most-used one to the Action Button. Then switch the tab above and create the other transaction type.</p>
           </SetupStep>
         </div>
 
