@@ -1,0 +1,29 @@
+name: Apply linked restore UI
+
+on:
+  push:
+    branches:
+      - remediation/taptrack-correctness-b002
+    paths:
+      - .github/workflows/apply-linked-restore-ui.yml
+
+permissions:
+  contents: write
+
+jobs:
+  patch:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: remediation/taptrack-correctness-b002
+          fetch-depth: 0
+      - name: Apply linked restore UI
+        run: python scripts/apply_linked_restore_ui.py
+      - name: Commit linked restore UI
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add src/components/SettingsWorkspace.tsx
+          git commit -m "Wire explicit linked restore choices"
+          git push origin HEAD:remediation/taptrack-correctness-b002
