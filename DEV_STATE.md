@@ -5,22 +5,22 @@ Project: TapTrack
 Repository profile: software
 Initialized: 2026-09-05
 
-- Phase: RELEASE_PREP
-- Cycle status: IMPLEMENTATION_COMPLETE_WITH_RESIDUAL_RISKS
-- Active task: TT-B002 exact-head preview and provider-backed release walkthrough
+- Phase: RELEASED_WITH_RESIDUAL_RISKS
+- Cycle status: TT-B002_PRODUCTION
+- Active task: post-release residual hardening only
 - Active batch: TT-B002 — Canonical ledger/sync correctness, restore/reset/disconnect, integrations, and release hardening
 - Owner: root
-- Implementation head verified: `2e01cda7e69e80a4b75fa2bcea20f253fb4ebbc5`
-- Implementation verification: GitHub Actions `34206762454` — PASS
-- Documentation-frozen candidate verified: `9cec09324c27f78093edbcac580da74afdea1b3b`
-- Documentation-candidate verification: GitHub Actions `34211017713` — PASS
+- B002 implementation verification: GitHub Actions `34206762454` — PASS
 - Automated evidence: 32/32 Vitest files, 172/172 tests, production build, 9/9 route smoke, and 2/2 offline-mobile Playwright projects PASS; dependency audits report 0 vulnerabilities at the configured threshold
-- Production baseline: `main@cc43524c99e7944a17df13d76578bf83a79fcb15` remains unchanged
+- Production application: B002 promoted to `main` and deployed on 2026-09-08
+- Production rollback anchor: `backup/main-pre-b002-20260908` at `cc43524c99e7944a17df13d76578bf83a79fcb15`
+- Server configuration: production `SUPABASE_SERVICE_ROLE_KEY` configured; protected sync/restore/AI/Telegram server paths available
+- Protected-write enforcement: `enforce_protected_sync_writes` migration applied after application smoke test; authenticated browser mutation policies removed from canonical finance tables
+- Post-release DB cleanup: `optimize_rls_and_indexes` migration applied and tracked at commit `c64b3cc500420c16568895ca038a99f1a04ec989`
+- Post-enforcement verification: owner finance-table policies are SELECT-only; protected RPCs remain service-role-only; no fresh runtime errors observed on sync, restore, AI, or Telegram routes in the checked post-migration window
+- Supabase advisors: RLS initplan and duplicate-index warnings cleared; leaked-password protection remains disabled at the Auth project level; four unused-index notices remain informational
+- User production smoke: core application and sync confirmed working after production server configuration was corrected
 - Current risks: See `RISK_REGISTER.md`
-- Tester verdict: PASS_WITH_RISKS
-- Preview state before this governance update: latest observed READY B002 preview was `72b76ebf5d7192a0b0614b0a4dc31cba0e794fcb`; later documentation commits had not produced a matching Vercel deployment
-- Release blockers: current final governance head must receive a matching green CI run and READY Vercel preview; disposable-account authenticated multi-device/integration walkthrough; historical public-artifact/history review; explicit owner release approval
-- Coordinated post-deploy control: apply `20260908_enforce_protected_sync_writes.sql` only after the compatible B002 application is deployed and smoke-tested
-- Residual not implied by release: native installed Safari/iOS PWA behavior and the empty-cloud claim/seed TOCTOU are not proven away by Chromium CI
-- Next action: verify CI + Vercel on this final governance head, then execute the provider-backed disposable-account release walkthrough before merge/promotion
+- Residual not implied by release: native installed Safari/iOS PWA behavior, empty-cloud claim/seed TOCTOU, JavaScript-number monetary precision, IndexedDB at-rest exposure, exhaustive historical-object secret scan, and full provider walkthrough scenarios not explicitly exercised by the owner
+- Next action: address residual hardening opportunistically; do not reopen TT-B002 unless production evidence shows a correctness regression
 - Last updated: 2026-09-08
