@@ -120,7 +120,7 @@ AI categorization is optional and requires a signed-in TapTrack account.
 - Per-account quota enforcement is stored in Supabase rather than process memory.
 - Signed-out users retain local deterministic category suggestions without calling Groq.
 
-The remediation branch contains a migration that restricts the quota RPC to server-role execution. Apply that migration together with the matching server route during release; do not deploy only one half of that change.
+The live TapTrack Supabase project has applied the server-only quota hardening migration: browser roles cannot execute the `SECURITY DEFINER` quota RPC, while the authenticated application route verifies the user and consumes quota through the service-role client.
 
 ## Authentication and security
 
