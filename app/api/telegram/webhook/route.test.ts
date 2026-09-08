@@ -67,7 +67,23 @@ function createWriteClient(result: Record<string, unknown>) {
         select: vi.fn(() => chain),
         eq: vi.fn(() => chain),
         is: vi.fn(() => chain),
-        maybeSingle: vi.fn(async () => ({ data: { last_used_method: 'card' }, error: null })),
+        maybeSingle: vi.fn(async () => ({
+          data: {
+            last_used_method: 'card',
+            default_currency: 'TRY',
+            ai_categorization_enabled: false,
+          },
+          error: null,
+        })),
+      };
+      return chain;
+    }
+
+    if (tableName === 'balance_checkpoints') {
+      const chain = {
+        select: vi.fn(() => chain),
+        eq: vi.fn(() => chain),
+        is: vi.fn(async () => ({ data: [{ currency: 'TRY' }], error: null })),
       };
       return chain;
     }
