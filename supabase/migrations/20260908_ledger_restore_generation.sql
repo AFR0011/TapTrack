@@ -256,7 +256,7 @@ begin
         (record->>'date')::date,
         record->>'note',
         (record->>'created_at')::timestamptz,
-        nullif(record->>'updated_at', '')::timestamptz,
+        coalesce(nullif(record->>'updated_at', '')::timestamptz, (record->>'created_at')::timestamptz),
         nullif(record->>'occurred_at', '')::timestamptz,
         null
       )

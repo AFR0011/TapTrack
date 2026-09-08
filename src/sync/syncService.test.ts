@@ -72,6 +72,13 @@ function authorize(client = createClientMock()) {
   vi.mocked(requireLinkedSyncAccess).mockResolvedValue({
     client: client as never,
     userId: 'user-1',
+    binding: {
+      id: 'ledger-binding',
+      syncOwnerUserId: 'user-1',
+      linkedAt: '2026-05-18T00:00:00.000Z',
+      cloudRevision: 1,
+      cloudGeneration: '123e4567-e89b-42d3-a456-426614174000',
+    },
   });
   return client;
 }

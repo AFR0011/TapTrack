@@ -1,6 +1,5 @@
 'use client';
 
-import type { SupabaseClient } from '@supabase/supabase-js';
 import type { Table } from 'dexie';
 import { db, type TapTrackDatabase } from '@/database';
 import { rebuildDerivedBalances } from '@/balances/ledgerService';
