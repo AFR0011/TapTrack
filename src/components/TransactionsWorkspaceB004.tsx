@@ -120,6 +120,20 @@ export default function TransactionsWorkspaceB004() {
     return groups;
   }, [filteredTransactions]);
 
+  const activeSecondaryFilterCount = [
+    typeFilter !== 'all',
+    methodFilter !== 'all',
+    categoryFilter !== 'all',
+  ].filter(Boolean).length;
+  const hasFilters = activeSecondaryFilterCount > 0 || Boolean(searchQuery.trim());
+
+  const clearFilters = () => {
+    setTypeFilter('all');
+    setMethodFilter('all');
+    setCategoryFilter('all');
+    setSearchQuery('');
+  };
+
   const handleCreate = async (draft: TransactionDraft) => {
     await createTransaction(draft);
     setShowForm(false);
@@ -141,7 +155,7 @@ export default function TransactionsWorkspaceB004() {
       toast.success('Transaction deleted.');
     } catch (err) {
       const message =
-        err instanceof InsufficientBalanceError ? err.message : 'Could not delete transaction.';
+        err instanceof InsufficientBalanceError ? err.message : 'Could not delete this transaction. Try again.';
       setError(message);
       toast.error(message);
     }
@@ -179,7 +193,7 @@ export default function TransactionsWorkspaceB004() {
                 setError('');
               }}
             >
-              {showForm ? 'Close form' : 'Full editor'}
+              {showForm ? 'Close editor' : 'New transaction'}
             </Button>
           </div>
         }
@@ -205,10 +219,10 @@ export default function TransactionsWorkspaceB004() {
         <div className="grid gap-3 sm:grid-cols-2 md:grid-cols-5">
           <Field
             label="Search"
-            type="text"
+            type="search"
             value={searchQuery}
             onChange={(event) => setSearchQuery(event.target.value)}
-            placeholder="Title, note, or category"
+            placeholder="Description, note, or category"
           />
           <Field
             label="Month"
@@ -227,14 +241,15 @@ export default function TransactionsWorkspaceB004() {
             onCategoryFilterChange={setCategoryFilter}
           />
         </div>
-        <details className="mt-3 rounded-lg border border-subtle bg-surface-muted md:hidden">
+        <details className="group mt-3 rounded-lg border border-subtle bg-surface-muted md:hidden">
           <summary
             className={cn(
               'flex min-h-11 cursor-pointer list-none items-center rounded-lg px-3 py-2.5 text-sm font-medium text-secondary select-none [&::-webkit-details-marker]:hidden',
               focusVisibleRing
             )}
           >
-            Filters
+            <span>Filters{activeSecondaryFilterCount > 0 ? ` (${activeSecondaryFilterCount})` : ''}</span>
+            <span aria-hidden="true" className="ml-auto text-muted transition-transform group-open:rotate-180">⌄</span>
           </summary>
           <SecondaryTransactionFilters
             className="grid gap-3 border-t border-subtle p-3"
@@ -247,6 +262,16 @@ export default function TransactionsWorkspaceB004() {
             onCategoryFilterChange={setCategoryFilter}
           />
         </details>
+        <div className="mt-3 flex flex-wrap items-center justify-between gap-2">
+          <p className="text-xs font-medium text-muted" aria-live="polite">
+            {filteredTransactions.length} transaction{filteredTransactions.length === 1 ? '' : 's'}
+          </p>
+          {hasFilters ? (
+            <Button type="button" variant="ghost" size="sm" onClick={clearFilters}>
+              Clear filters
+            </Button>
+          ) : null}
+        </div>
         {error ? (
           <p
             role="alert"
@@ -261,10 +286,14 @@ export default function TransactionsWorkspaceB004() {
       <section className="overflow-hidden rounded-2xl border border-subtle bg-surface">
         {filteredTransactions.length === 0 ? (
           <div className="p-8 text-center">
-            <p className="text-sm font-semibold text-secondary">No transactions match these filters.</p>
+            <p className="text-sm font-semibold text-secondary">No transactions match this view.</p>
             <p className="mt-1 text-sm font-medium text-muted">
-              Clear the filters or add a transaction for this month.
+              Change the filters or add a transaction for this month.
             </p>
+            <div className="mt-4 flex flex-wrap justify-center gap-2">
+              {hasFilters ? <Button type="button" variant="secondary" onClick={clearFilters}>Clear filters</Button> : null}
+              <Button type="button" onClick={() => router.push('/app/add')}>Add transaction</Button>
+            </div>
           </div>
         ) : (
           <div>
@@ -404,14 +433,14 @@ function TransactionForm({
       if (err instanceof AmbiguousLedgerOrderingError) {
         setPendingOrdering({ draft, checkpointId: err.checkpointId });
         setError(
-          'This transaction is on the same date as a balance reconciliation. Choose when it happened.'
+          'This transaction is on the same date as a balance check. Choose whether it happened before or after that balance was recorded.'
         );
       } else {
         setPendingOrdering(null);
         setError(
           err instanceof InsufficientBalanceError
             ? err.message
-            : 'Transaction could not be saved.'
+            : 'Transaction could not be saved. Check the details and try again.'
         );
       }
     } finally {
@@ -423,8 +452,8 @@ function TransactionForm({
     event.preventDefault();
     const title = form.title.trim();
     const amount = parseAmountInput(form.amount);
-    if (!title) return setError('Enter a title for this transaction.');
-    if (amount <= 0) return setError('Enter a valid amount greater than zero.');
+    if (!title) return setError('Add a short description.');
+    if (amount <= 0) return setError('Enter an amount greater than zero.');
 
     await persistDraft({
       type: form.type,
@@ -443,7 +472,7 @@ function TransactionForm({
     if (!pendingOrdering) return;
     const checkpoint = await db.balanceCheckpoints.get(pendingOrdering.checkpointId);
     if (!checkpoint) {
-      setError('The reconciliation checkpoint could not be found.');
+      setError('That balance check could not be found. Return to Balances and try again.');
       setPendingOrdering(null);
       return;
     }
@@ -456,7 +485,7 @@ function TransactionForm({
   return (
     <section className="rounded-2xl border border-subtle bg-surface p-5">
       <h2 id="transaction-form-title" className="text-base font-semibold text-primary">
-        {transaction ? 'Edit transaction' : 'Full editor'}
+        {transaction ? 'Edit transaction' : 'New transaction'}
       </h2>
       <form
         onSubmit={handleSubmit}
@@ -506,7 +535,7 @@ function TransactionForm({
             }))}
           />
           <Field
-            label="Title"
+            label="Description"
             value={form.title}
             onChange={(event) => setField('title', event.target.value)}
             autoComplete="off"
@@ -549,7 +578,7 @@ function TransactionForm({
                   onClick={() => void resolveOrdering('before')}
                   disabled={saving}
                 >
-                  Before reconciliation
+                  Before balance check
                 </Button>
                 <Button
                   type="button"
@@ -557,7 +586,7 @@ function TransactionForm({
                   onClick={() => void resolveOrdering('after')}
                   disabled={saving}
                 >
-                  After reconciliation
+                  After balance check
                 </Button>
               </div>
             ) : null}
