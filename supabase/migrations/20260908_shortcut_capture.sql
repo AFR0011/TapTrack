@@ -51,7 +51,7 @@ grant select, insert, update, delete on table public.capture_rate_limits to serv
 create or replace function public.apply_taptrack_capture(
   target_user_id uuid,
   capture_token_id uuid,
-  request_id uuid,
+  capture_request_id uuid,
   ledger_date text,
   draft jsonb
 )
@@ -66,7 +66,7 @@ declare
   current_bucket timestamptz := date_trunc('minute', now());
   current_count integer;
   available_amount numeric;
-  row_id text := 'capture-' || request_id::text;
+  row_id text := 'capture-' || capture_request_id::text;
   category_name text;
   result_payload jsonb;
 begin
@@ -102,7 +102,7 @@ begin
     into existing_result
   from public.capture_processed_requests processed
   where processed.token_id = capture_token_id
-    and processed.request_id = apply_taptrack_capture.request_id;
+    and processed.request_id = capture_request_id;
 
   if found then
     return existing_result || jsonb_build_object('duplicate', true);
@@ -230,7 +230,7 @@ begin
   insert into public.capture_processed_requests (
     user_id, token_id, request_id, result, processed_at
   ) values (
-    target_user_id, capture_token_id, request_id, result_payload, now_at
+    target_user_id, capture_token_id, capture_request_id, result_payload, now_at
   );
 
   return result_payload;
