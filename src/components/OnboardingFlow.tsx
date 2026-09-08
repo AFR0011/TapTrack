@@ -73,7 +73,7 @@ export default function OnboardingFlow() {
     }));
   };
 
-  const useExistingAccount = async () => {
+  const handleExistingAccount = async () => {
     if (!accountChecked) return;
     if (!accountEmail) {
       router.push('/login');
@@ -149,7 +149,7 @@ export default function OnboardingFlow() {
           const plan = await inspectCloudAdoption();
           if (plan.state === 'remote-empty') await linkEmptyCloudLedger();
         } catch {
-          // Local setup is complete even if a cloud ledger changed during setup.
+          // Local setup is complete even if the cloud ledger changed during setup.
           // Settings will present the explicit reconciliation choice rather than
           // silently merging or replacing finance data here.
         }
@@ -182,7 +182,11 @@ export default function OnboardingFlow() {
                 <span
                   key={number}
                   className={`h-1.5 rounded-full transition-all ${
-                    number === stepNumber ? 'w-7 bg-accent' : number < stepNumber ? 'w-4 bg-accent/50' : 'w-4 bg-surface-raised'
+                    number === stepNumber
+                      ? 'w-7 bg-accent'
+                      : number < stepNumber
+                        ? 'w-4 bg-accent/50'
+                        : 'w-4 bg-surface-raised'
                   }`}
                 />
               ))}
@@ -198,7 +202,7 @@ export default function OnboardingFlow() {
                 accountChecked={accountChecked}
                 busy={busy}
                 onStart={() => setStep('balances')}
-                onExisting={() => void useExistingAccount()}
+                onExisting={() => void handleExistingAccount()}
               />
             ) : step === 'balances' ? (
               <BalancesStep
@@ -266,7 +270,14 @@ function WelcomeStep({
   return (
     <div className="mx-auto max-w-xl text-center">
       <div className="mx-auto mb-7 grid h-24 w-24 place-items-center rounded-[2rem] bg-accent-muted ring-1 ring-accent/20">
-        <svg className="h-12 w-12 text-accent" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.7" aria-hidden="true">
+        <svg
+          className="h-12 w-12 text-accent"
+          viewBox="0 0 24 24"
+          fill="none"
+          stroke="currentColor"
+          strokeWidth="1.7"
+          aria-hidden="true"
+        >
           <path d="M4 18V9m5 9V5m5 13v-7m5 7V3" strokeLinecap="round" />
         </svg>
       </div>
@@ -283,7 +294,15 @@ function WelcomeStep({
         <Button type="button" fullWidth size="lg" onClick={onStart} disabled={busy}>
           Get started
         </Button>
-        <Button type="button" fullWidth size="lg" variant="ghost" onClick={onExisting} loading={busy} disabled={!accountChecked || busy}>
+        <Button
+          type="button"
+          fullWidth
+          size="lg"
+          variant="ghost"
+          onClick={onExisting}
+          loading={busy}
+          disabled={!accountChecked || busy}
+        >
           {accountEmail ? 'Continue with my account' : 'I already use TapTrack'}
         </Button>
       </div>
@@ -309,7 +328,9 @@ function BalancesStep({
   return (
     <div className="mx-auto max-w-xl">
       <p className="text-sm font-semibold text-accent">Your money</p>
-      <h1 className="mt-2 text-3xl font-semibold tracking-tight text-primary sm:text-4xl">What do you use?</h1>
+      <h1 className="mt-2 text-3xl font-semibold tracking-tight text-primary sm:text-4xl">
+        What do you use?
+      </h1>
       <div className="mt-6 flex flex-wrap gap-2">
         {CURRENCIES.map((currency) => {
           const selected = selectedCurrencies.includes(currency);
@@ -320,7 +341,9 @@ function BalancesStep({
               onClick={() => onToggleCurrency(currency)}
               aria-pressed={selected}
               className={`min-h-11 rounded-full border px-5 text-sm font-semibold transition-colors ${
-                selected ? 'border-accent bg-accent text-white' : 'border-subtle bg-surface text-secondary hover:border-accent/40'
+                selected
+                  ? 'border-accent bg-accent text-white'
+                  : 'border-subtle bg-surface text-secondary hover:border-accent/40'
               } ${currency === 'TRY' ? 'cursor-default' : ''}`}
             >
               {currency} {selected ? '✓' : ''}
@@ -381,7 +404,9 @@ function DefaultsStep({
   return (
     <div className="mx-auto max-w-xl">
       <p className="text-sm font-semibold text-accent">Your defaults</p>
-      <h1 className="mt-2 text-3xl font-semibold tracking-tight text-primary sm:text-4xl">Make daily logging faster.</h1>
+      <h1 className="mt-2 text-3xl font-semibold tracking-tight text-primary sm:text-4xl">
+        Make daily logging faster.
+      </h1>
 
       <Card className="mt-7" padding="sm">
         <p className="text-sm font-medium text-secondary">Usually pay with</p>
@@ -438,8 +463,10 @@ function ReadyStep({
 }) {
   return (
     <div className="mx-auto max-w-xl text-center">
-      <div className="mx-auto grid h-16 w-16 place-items-center rounded-2xl bg-success-muted text-2xl text-success">✓</div>
-      <h1 className="mt-5 text-4xl font-semibold tracking-tight text-primary">You're ready.</h1>
+      <div className="mx-auto grid h-16 w-16 place-items-center rounded-2xl bg-success-muted text-2xl text-success">
+        ✓
+      </div>
+      <h1 className="mt-5 text-4xl font-semibold tracking-tight text-primary">You’re ready.</h1>
       <p className="mt-3 text-sm text-muted">Your first transaction can take less time than this screen did.</p>
 
       <div className="mx-auto mt-7 max-w-sm rounded-2xl border border-subtle bg-surface p-4 text-left shadow-sm">
@@ -448,20 +475,31 @@ function ReadyStep({
             <p className="text-xs font-medium text-muted">Try typing</p>
             <p className="mt-1 text-lg font-semibold text-primary">250 coffee</p>
           </div>
-          <span className="rounded-full bg-accent-muted px-3 py-1 text-xs font-semibold text-accent">Food</span>
+          <span className="rounded-full bg-accent-muted px-3 py-1 text-xs font-semibold text-accent">
+            Food
+          </span>
         </div>
       </div>
 
       <div className="mx-auto mt-5 flex max-w-sm flex-wrap justify-center gap-2 text-xs font-medium text-muted">
-        <span>{currencies}</span><span>·</span><span className="capitalize">{defaultMethod}</span>
-        {budget.trim() ? <><span>·</span><span>{budget} TRY target</span></> : null}
+        <span>{currencies}</span>
+        <span>·</span>
+        <span className="capitalize">{defaultMethod}</span>
+        {budget.trim() ? (
+          <>
+            <span>·</span>
+            <span>{budget} TRY target</span>
+          </>
+        ) : null}
       </div>
 
       <div className="mx-auto mt-8 grid max-w-sm gap-2.5">
         <Button type="button" fullWidth size="lg" onClick={onFinish} loading={busy} disabled={busy}>
           Open TapTrack
         </Button>
-        <Button type="button" fullWidth variant="ghost" onClick={onBack} disabled={busy}>Back</Button>
+        <Button type="button" fullWidth variant="ghost" onClick={onBack} disabled={busy}>
+          Back
+        </Button>
       </div>
     </div>
   );
@@ -479,17 +517,37 @@ function ConflictStep({
   return (
     <div className="mx-auto max-w-xl">
       <p className="text-sm font-semibold text-accent">Choose your ledger</p>
-      <h1 className="mt-2 text-3xl font-semibold tracking-tight text-primary sm:text-4xl">This device and your account both have data.</h1>
+      <h1 className="mt-2 text-3xl font-semibold tracking-tight text-primary sm:text-4xl">
+        This device and your account both have data.
+      </h1>
       <div className="mt-7 grid gap-3 sm:grid-cols-2">
         <Card padding="sm">
           <h2 className="text-base font-semibold text-primary">Use cloud data</h2>
-          <p className="mt-2 text-sm text-muted">Replace this device's local ledger with the account copy.</p>
-          <Button type="button" variant="secondary" fullWidth className="mt-5" onClick={onUseCloud} disabled={busy}>Use cloud</Button>
+          <p className="mt-2 text-sm text-muted">Replace this device’s local ledger with the account copy.</p>
+          <Button
+            type="button"
+            variant="secondary"
+            fullWidth
+            className="mt-5"
+            onClick={onUseCloud}
+            disabled={busy}
+          >
+            Use cloud
+          </Button>
         </Card>
         <Card padding="sm">
           <h2 className="text-base font-semibold text-primary">Merge this device</h2>
           <p className="mt-2 text-sm text-muted">Keep both ledgers and reconcile them into the account.</p>
-          <Button type="button" fullWidth className="mt-5" onClick={onMerge} loading={busy} disabled={busy}>Merge</Button>
+          <Button
+            type="button"
+            fullWidth
+            className="mt-5"
+            onClick={onMerge}
+            loading={busy}
+            disabled={busy}
+          >
+            Merge
+          </Button>
         </Card>
       </div>
     </div>
@@ -508,8 +566,12 @@ function MiniFeature({ label }: { label: string }) {
 function StepActions({ onBack, onContinue }: { onBack: () => void; onContinue: () => void }) {
   return (
     <div className="mt-7 flex items-center justify-between gap-3">
-      <Button type="button" variant="ghost" onClick={onBack}>Back</Button>
-      <Button type="button" onClick={onContinue}>Continue</Button>
+      <Button type="button" variant="ghost" onClick={onBack}>
+        Back
+      </Button>
+      <Button type="button" onClick={onContinue}>
+        Continue
+      </Button>
     </div>
   );
 }
