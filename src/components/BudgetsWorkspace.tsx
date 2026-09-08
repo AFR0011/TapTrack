@@ -330,26 +330,23 @@ function CategoryBudgetRow({
           ariaValueText={budget > 0 ? `${Math.round(percent)}% used` : 'No category budget set'}
         />
       </div>
-      <div>
-        <div className="relative">
-          <input
-            inputMode="decimal"
-            value={value}
-            aria-label={`${name} budget in ${currency}`}
-            aria-invalid={error ? true : undefined}
-            aria-describedby={error ? errorId : undefined}
-            onChange={(event) => setValue(event.target.value)}
-            className={cn(
-              'min-h-11 w-full rounded-lg border border-subtle px-3 py-2 pr-14 text-base font-medium text-primary outline-none focus-visible:border-accent md:text-sm',
-              focusVisibleRing,
-              error && 'border-danger focus-visible:border-danger focus-visible:outline-danger'
-            )}
-          />
-          <span className="pointer-events-none absolute inset-y-0 right-3 flex items-center text-xs font-semibold text-muted">
-            {currency}
-          </span>
-        </div>
-        {error ? <p id={errorId} role="alert" className="mt-2 text-sm font-medium text-danger md:hidden">{error}</p> : null}
+      <div className="relative">
+        <input
+          inputMode="decimal"
+          value={value}
+          aria-label={`${name} budget in ${currency}`}
+          aria-invalid={error ? true : undefined}
+          aria-describedby={error ? errorId : undefined}
+          onChange={(event) => setValue(event.target.value)}
+          className={cn(
+            'min-h-11 w-full rounded-lg border border-subtle px-3 py-2 pr-14 text-base font-medium text-primary outline-none focus-visible:border-accent md:text-sm',
+            focusVisibleRing,
+            error && 'border-danger focus-visible:border-danger focus-visible:outline-danger'
+          )}
+        />
+        <span className="pointer-events-none absolute inset-y-0 right-3 flex items-center text-xs font-semibold text-muted">
+          {currency}
+        </span>
       </div>
       <Button
         type="button"
@@ -362,7 +359,7 @@ function CategoryBudgetRow({
       >
         Save
       </Button>
-      {error ? <p id={`${errorId}-desktop`} role="alert" className="text-sm font-medium text-danger md:col-span-3 md:mt-[-0.25rem]">{error}</p> : null}
+      {error ? <p id={errorId} role="alert" className="text-sm font-medium text-danger md:col-span-3 md:mt-[-0.25rem]">{error}</p> : null}
     </div>
   );
 }
