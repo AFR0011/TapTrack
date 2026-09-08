@@ -11,7 +11,7 @@ Enabling integrations changes the privacy boundary:
 - **Supabase sync** stores canonical finance records in the configured remote project.
 - **Groq categorization** sends the transaction title/category context required for classification through an authenticated server route when AI suggestions are enabled.
 - **Exchange rates** are fetched through the application server route from TCMB via Frankfurter using currency/date information.
-- **Telegram entry** is currently deferred. Its legacy route remains outside the current canonical ledger guarantees and should not be treated as release-ready.
+- **Telegram entry** is optional, server-side, and restricted to the configured private owner chat in the current design.
 
 Users should treat browser profiles, Supabase projects, and any enabled third-party integration as part of the security boundary.
 
@@ -49,9 +49,34 @@ The synchronization model includes:
 - explicit cloud-vs-local adoption when both sides contain data;
 - last-successful-sync-wins behavior for conflicting edits to the same existing record;
 - deterministic recurring occurrence identifiers to prevent cross-device duplication;
+- ledger revision/generation metadata for account-wide replacement and stale-client detection;
 - derived balance rebuild after canonical remote changes are applied.
 
-Live migrations must be deployed together with compatible application code. In particular, the remediation branch contains a Groq quota migration that restricts the quota RPC to service-role execution; do not apply that migration independently from the matching server route, or deploy the route while leaving the old authenticated RPC exposure in place.
+A browser/account mismatch fails closed. A linked browser can explicitly disconnect itself without deleting its local finance ledger or changing the cloud account; the device binding and pending outbox are removed together.
+
+### Cloud-link initialization residual
+
+Empty-cloud linking performs a complete remote preflight and rechecks the remote ledger immediately before creating the device binding. However, binding and the subsequent initial seed writes are not one server-side transaction. A narrow time-of-check/time-of-use race therefore remains if another client writes to the same previously empty account between those operations.
+
+The release documentation must not describe initial claim-and-seed as transactional until that server-side primitive exists and is concurrency-tested.
+
+### Protected-write migration ordering
+
+The remediation branch contains `20260908_enforce_protected_sync_writes.sql`, which removes direct authenticated-browser canonical write privileges after the compatible server-mediated sync client is deployed.
+
+Do **not** apply that migration before the B002-compatible application is live. Applying it against the old production application would break its direct browser write path. Deploy the compatible application first, smoke-test it, then apply the protected-write migration as a coordinated release step.
+
+## Backup, restore, reset, and disconnect boundary
+
+Backup replacement is versioned and validated before mutation. Device-only and account-wide destructive actions have explicit scope.
+
+- **Restore only this device** validates the backup, emits a pre-restore safety backup, detaches the browser from sync, and replaces local canonical state.
+- **Restore synced account** requires a correctly linked signed-in browser and network access, replaces the canonical account through the authenticated restore route, rotates the ledger generation, and then replaces the local copy while preserving the binding to the new generation.
+- **Reset only this device** reuses the device-only restore path with a generated fresh-ledger backup.
+- **Reset synced account everywhere** reuses the generation-rotating account replacement path with a generated fresh-ledger backup.
+- **Disconnect this device** removes only the local account binding and pending outbox. Canonical local finance rows and the cloud account remain unchanged.
+
+Account-wide replacement can succeed remotely while local replacement subsequently fails. In that case the client surfaces an explicit recovery instruction to reload online and adopt the new generation before making more changes.
 
 ## AI boundary
 
@@ -77,17 +102,35 @@ Historical exchange and TRY-unified reporting use TCMB rates via Frankfurter for
 
 Supabase authentication callbacks support PKCE code exchange and token-hash verification for email confirmation flows. Callback failures return the user to the login flow with an error rather than silently entering the application.
 
-Production responses include Content Security Policy, frame protection, `X-Content-Type-Options: nosniff`, and a referrer policy. Route smoke tests assert those headers.
+Production-build responses include Content Security Policy, frame protection, `X-Content-Type-Options: nosniff`, and a referrer policy. Route smoke tests assert those headers.
 
 ## PWA/offline boundary
 
-The PWA keeps a versioned offline shell and local IndexedDB ledger. Automated Chromium verification covers warmed offline navigation and an offline-created Quick Add transaction surviving reload at mobile widths.
+The PWA keeps a versioned offline shell and local IndexedDB ledger. Service-worker registration occurs in the authenticated application layout so an unauthenticated installation cannot cache redirected login responses as application-route documents.
 
-This does not prove native installed Safari/iOS behavior. Native interactive widgets are not part of the current web build.
+Automated Chromium verification covers warmed offline navigation and an offline-created Quick Add transaction surviving reload at 320x720 and 390x844.
+
+This does not prove native installed Safari/iOS behavior, storage eviction behavior, or every old-service-worker-to-new-service-worker upgrade path. Native interactive widgets are not part of the current web build.
 
 ## Telegram boundary
 
-Telegram is deliberately deferred. The legacy webhook route may still exist in the repository, but it predates the canonical checkpoint/ledger architecture and must not be represented as equivalent to ordinary TapTrack transaction capture until it is redesigned and reverified.
+Telegram is implemented as an optional private-owner integration, not as a general group/shared-finance interface.
+
+The webhook:
+
+- fails closed unless bot token, webhook secret, owner chat ID, owner Supabase user ID, timezone, Supabase URL, and service-role access are configured;
+- verifies the Telegram secret-token header;
+- rejects non-owner chats and non-private chats;
+- uses the configured IANA timezone for ledger dates;
+- calculates balances from canonical ledger state;
+- excludes soft-deleted transaction rows;
+- escapes dynamic Telegram HTML;
+- applies transaction batches through the server-only `apply_taptrack_telegram_update` PostgreSQL RPC;
+- uses Telegram `update_id` as the idempotency key so retries do not create duplicate transactions.
+
+Ledger correctness does not depend on Telegram successfully sending the confirmation message back to the user.
+
+The database primitive and automated webhook tests are implemented. Final release verification still requires a disposable-account / real-bot end-to-end walkthrough with production-equivalent configuration.
 
 Do not expose Telegram secrets, bot tokens, webhook payloads, owner identifiers, or real finance data in logs, screenshots, issues, or test fixtures.
 
@@ -105,15 +148,34 @@ GitHub Actions installs the committed npm lockfile and runs:
 - route/API smoke checks;
 - offline mobile Playwright verification.
 
+At B002 head `2e01cda7e69e80a4b75fa2bcea20f253fb4ebbc5`, run `34206762454` passed the complete gate with 32 Vitest files / 172 tests, 9 route-smoke assertions, and both mobile Playwright projects. Both dependency audits reported zero vulnerabilities at the configured threshold.
+
 The current runtime baseline is Node 22.x, Next.js 16.3.4, React 19.2.8, and ESLint 9.39.5 with matching `eslint-config-next`.
 
 ## Supabase Auth configuration
 
-Leaked-password protection is configured at the Supabase Auth project level rather than through repository SQL migrations and may require a paid Supabase plan. Deployment owners should enable it when available and appropriate.
+Leaked-password protection is configured at the Supabase Auth project level rather than through repository SQL migrations and may depend on the project plan. Deployment owners should enable it when available and appropriate.
 
 ## Historical repository review
 
 Before using repository screenshots or examples as public release evidence, review repository history for accidentally committed environment files, credentials, real finance data, screenshots, or provider-specific identifiers. Current-tree guards cannot remove material from historical Git objects.
+
+## Release verification still required
+
+A green credential-free CI gate does not prove provider-backed release safety. Before production promotion, use disposable/synthetic data to verify at minimum:
+
+- first account/device link;
+- second-device use-cloud and merge choices;
+- two-device offline edits and convergence;
+- account-wide and device-only restore;
+- account-wide and device-only reset;
+- device disconnect/relink;
+- Telegram with the configured private owner chat and timezone;
+- Groq authenticated categorization;
+- staged protected-write migration ordering;
+- production smoke after migration.
+
+Native Safari/iOS installed-PWA behavior remains a separate residual unless explicitly tested.
 
 ## Reporting
 
