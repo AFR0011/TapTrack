@@ -115,7 +115,7 @@ export async function createBackup(
     categoryBudgets: sortById(categoryBudgets),
     recurringTransactions: sortById(recurringTransactions),
     conversions: sortById(conversions),
-    settings: sortById(settings),
+    settings: sortById(settings.map(stripDeviceLocalSettingsFields)),
   };
 }
 
@@ -759,6 +759,23 @@ function getExpectedBalanceIds(): Set<string> {
 
 function sortById<T extends { id: string }>(rows: T[]): T[] {
   return [...rows].sort((a, b) => a.id.localeCompare(b.id));
+}
+
+function stripDeviceLocalSettingsFields(settings: Settings): Settings {
+  return {
+    id: settings.id,
+    defaultCurrency: settings.defaultCurrency,
+    lastUsedMethod: settings.lastUsedMethod,
+    setupCompleted: settings.setupCompleted,
+    ...(settings.aiCategorizationEnabled !== undefined
+      ? { aiCategorizationEnabled: settings.aiCategorizationEnabled }
+      : {}),
+    ...(settings.darkModeEnabled !== undefined
+      ? { darkModeEnabled: settings.darkModeEnabled }
+      : {}),
+    createdAt: settings.createdAt,
+    updatedAt: settings.updatedAt,
+  };
 }
 
 function countCanonicalRecords(data: CanonicalBackupData): number {

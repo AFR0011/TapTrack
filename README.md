@@ -216,7 +216,8 @@ The current remediation suite contains **24 Vitest files / 137 tests** and cover
 - Telegram entry is deliberately deferred and its legacy webhook accounting path should not be treated as part of the current canonical ledger design.
 - Native interactive iOS/Android widgets are not implemented; current device integration uses PWA/deep-link shortcuts.
 - Native installed Safari/iOS offline behavior still needs dedicated verification.
-- JSON import/reset semantics still need remediation for the checkpoint-based canonical ledger and account-wide vs device-local behavior. Do not treat the existing legacy import path as release-ready for synced ledgers.
+- Versioned JSON restore/replace is implemented for unlinked/local ledgers, including pre-restore safety backup, strict validation, and legacy-backup checkpoint migration. Restore is intentionally blocked on cloud-linked ledgers until device-only versus account-wide scope is decided.
+- Reset/account-unlink cloud scope remains unresolved and must be decided before release.
 - Supabase leaked-password protection is a dashboard-level configuration option and may depend on the project plan; it is not controlled by repository SQL migrations.
 - The final authenticated release walkthrough should use disposable/synthetic finance data.
 

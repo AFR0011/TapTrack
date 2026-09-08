@@ -70,6 +70,7 @@ describe('backupService', () => {
       syncOwnerUserId: 'not-a-ledger-binding',
       linkedAt: '2026-05-06T00:00:00.000Z',
     });
+    await database.settings.update('default', { lastSyncAt: '2026-05-06T12:00:00.000Z' });
 
     const parsed = JSON.parse(
       await exportBackupJSON(database, new Date('2026-05-07T00:00:00.000Z'))
@@ -82,6 +83,7 @@ describe('backupService', () => {
     expect(parsed).not.toHaveProperty('balances');
     expect(parsed).not.toHaveProperty('deviceMetadata');
     expect(parsed).not.toHaveProperty('syncOutbox');
+    expect((parsed.settings as Array<Record<string, unknown>>)[0]).not.toHaveProperty('lastSyncAt');
   });
 
   it('restores by replacement, rebuilds balances, clears stale local outbox, and returns a pre-restore safety backup', async () => {

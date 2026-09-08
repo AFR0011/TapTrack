@@ -22,7 +22,8 @@ TapTrack is being prepared as a public engineering portfolio repository. The pub
 - [x] Pass lint, typecheck, **24 Vitest files / 137 tests**, production build, route smoke, and offline mobile Playwright verification on the remediation branch.
 - [x] License the source code under the MIT License.
 - [x] Update primary architecture/security/project-state documentation to match the remediation branch.
-- [ ] Decide and implement JSON import semantics for the checkpoint-based canonical ledger.
+- [x] Implement versioned JSON restore/replace for unlinked/local ledgers with strict validation, pre-restore safety backup, and legacy checkpoint migration.
+- [ ] Decide device-only vs account-wide restore behavior for cloud-linked ledgers.
 - [ ] Decide and implement device-local vs account-wide reset semantics.
 - [ ] Enable Supabase leaked-password protection if available/appropriate for the project plan.
 - [ ] Complete the historical Git review for old environment files, credentials, real finance data, screenshots, or provider identifiers.
@@ -68,7 +69,7 @@ TapTrack does not implement:
 
 Telegram integration is deliberately deferred. Legacy Telegram route code should not be presented as part of the canonical ledger guarantees until it is redesigned and verified.
 
-The existing legacy JSON import/reset path is also not release-ready for the new checkpoint-based synchronized ledger until merge/replace and device/account reset semantics are explicitly decided and implemented.
+JSON restore/replace is release-ready for unlinked/local ledgers. Cloud-linked restore remains intentionally blocked until device-only versus account-wide scope is selected, and reset/account-unlink behavior still requires explicit device/account semantics.
 
 ## Public claims that are currently supportable
 
@@ -96,7 +97,7 @@ Never publish screenshots containing real Supabase service-role credentials, Gro
 
 ## Release sequence
 
-1. Resolve import/reset/account-unlink product semantics.
+1. Resolve cloud-linked restore, reset, and account-unlink scope semantics.
 2. Implement and test those decisions.
 3. Verify remaining deployment environment variables/live migrations.
 4. Perform disposable-account authenticated manual testing.

@@ -214,7 +214,7 @@ Current remediation verification:
 - production dependency audit: PASS;
 - lint: PASS (with known intentional internal-navigation warnings for offline document fallback paths);
 - TypeScript: PASS;
-- Vitest: **24 files / 137 tests PASS**;
+- Vitest: **25 files / 145 tests PASS**;
 - production build: PASS;
 - route smoke: PASS;
 - offline mobile Playwright: PASS.
@@ -223,11 +223,11 @@ Current remediation verification:
 
 ### Requires product decision
 
-- **JSON import semantics**: merge vs replace for the checkpoint-based canonical ledger.
+- **Cloud-linked restore scope**: restore only this device vs replace the account ledger everywhere.
 - **Reset semantics**: reset only this device vs delete/reset the account ledger everywhere.
 - Account unlink/delete-account behavior where local and cloud copies diverge.
 
-The current legacy JSON backup/import path predates balance checkpoints and should not be treated as release-ready for synced ledgers until those decisions are implemented.
+Versioned JSON restore/replace is implemented for unlinked/local ledgers. It validates the complete backup before mutation, downloads a pre-restore safety backup, excludes derived/device-local sync state, rebuilds balances from canonical records, and migrates valid legacy backups into opening checkpoints without replaying historical activity. Cloud-linked restore remains blocked until its scope decision is implemented.
 
 ### Requires release coordination
 
