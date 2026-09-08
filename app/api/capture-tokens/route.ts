@@ -68,6 +68,29 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
       ? body.label.trim().slice(0, MAX_LABEL_LENGTH)
       : DEFAULT_LABEL;
   const admin = createSupabaseAdminClient();
+
+  const { data: canonicalSettings, error: settingsError } = await admin
+    .from('settings')
+    .select('id')
+    .eq('user_id', auth.user.id)
+    .eq('id', 'default')
+    .eq('setup_completed', true)
+    .is('deleted_at', null)
+    .maybeSingle();
+
+  if (settingsError) {
+    return NextResponse.json(
+      { error: 'Quick Capture account readiness could not be checked.' },
+      { status: 503 }
+    );
+  }
+  if (!canonicalSettings) {
+    return NextResponse.json(
+      { error: 'Link cloud sync and finish account setup before enabling Quick Capture.' },
+      { status: 409 }
+    );
+  }
+
   const { count, error: countError } = await admin
     .from('capture_tokens')
     .select('id', { count: 'exact', head: true })
