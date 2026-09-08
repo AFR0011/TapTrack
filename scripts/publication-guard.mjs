@@ -27,7 +27,7 @@ const categorizeRoute = read('app/api/categorize/route.ts');
 for (const phrase of [
   'local-first',
   'Supabase Auth',
-  'not as a banking',
+  'not a banking',
   'License',
 ]) {
   if (!readme.includes(phrase)) failures.push(`README missing required publication boundary: ${phrase}`);
