@@ -2,7 +2,14 @@ import { type NextRequest, NextResponse } from 'next/server';
 import { createSupabaseAdminClient } from '@/lib/supabase-admin';
 import { parseCommands } from '@/parser/parseCommand';
 import { createDefaultCategories } from '@/defaultData';
-import { SUPPORTED_CURRENCIES, SUPPORTED_METHODS, type Category, type Currency, type Method } from '@/types';
+import { suggestServerCategory } from '@/server/categories/suggestServerCategory';
+import {
+  SUPPORTED_CURRENCIES,
+  SUPPORTED_METHODS,
+  type Category,
+  type Currency,
+  type Method,
+} from '@/types';
 
 interface TelegramUser {
   id: number;
@@ -271,7 +278,7 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
           .is('deleted_at', null),
         supabase
           .from('settings')
-          .select('last_used_method')
+          .select('last_used_method, ai_categorization_enabled')
           .eq('user_id', ownerId)
           .is('deleted_at', null)
           .maybeSingle(),
@@ -308,12 +315,12 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
               ? result.message
               : `Entry ${index + 1}: ${result.message}`
         )
-        .filter((message): message is string => message !== null);
+        .filter((entryMessage): entryMessage is string => entryMessage !== null);
       await sendMessage(chatId, `❌ ${escapeTelegramHtml(messages.join('\n'))}`);
       return NextResponse.json({ ok: true });
     }
 
-    const drafts = results.flatMap((result) =>
+    const parsedDrafts = results.flatMap((result) =>
       result.ok
         ? [
             {
@@ -327,6 +334,22 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
             },
           ]
         : []
+    );
+
+    const drafts = await Promise.all(
+      parsedDrafts.map(async (draft) => {
+        const category = await suggestServerCategory({
+          userId: ownerId,
+          title: draft.title,
+          type: draft.type,
+          categories,
+          aiEnabled: Boolean(settings?.ai_categorization_enabled),
+        });
+        return {
+          ...draft,
+          category_id: category?.categoryId ?? draft.category_id,
+        };
+      })
     );
 
     const { data, error } = await supabase.rpc('apply_taptrack_telegram_update', {
