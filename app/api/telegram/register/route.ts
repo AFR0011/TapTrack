@@ -1,5 +1,4 @@
 import { type NextRequest, NextResponse } from 'next/server';
-import { getDateInTimeZone } from '@/app/api/telegram/webhook/route';
 
 /**
  * GET /api/telegram/register
@@ -34,7 +33,7 @@ export async function GET(request: NextRequest): Promise<NextResponse> {
   }
 
   try {
-    getDateInTimeZone(new Date(), timeZone);
+    new Intl.DateTimeFormat('en-US', { timeZone }).format(new Date());
   } catch {
     return NextResponse.json({ error: 'Telegram timezone is invalid' }, { status: 503 });
   }
