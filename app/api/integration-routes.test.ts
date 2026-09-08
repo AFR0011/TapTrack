@@ -9,6 +9,7 @@ function stubCompleteTelegramEnvironment() {
   vi.stubEnv('TELEGRAM_BOT_TOKEN', 'test-token');
   vi.stubEnv('TAPTRACK_OWNER_TELEGRAM_CHAT_ID', '1001');
   vi.stubEnv('TAPTRACK_OWNER_USER_ID', 'test-owner');
+  vi.stubEnv('TAPTRACK_TIME_ZONE', 'Europe/Istanbul');
   vi.stubEnv('NEXT_PUBLIC_SUPABASE_URL', 'https://example.invalid');
   vi.stubEnv('SUPABASE_SERVICE_ROLE_KEY', 'test-service-role');
 }
