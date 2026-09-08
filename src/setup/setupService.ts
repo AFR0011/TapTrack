@@ -16,7 +16,8 @@ export type InitialSetupInput = {
   balances: Record<string, Record<Method, number>>;
   monthlyBudget: number;
   defaultMethod: Method;
-  defaultCurrency: Currency;
+  /** Optional only for legacy callers/backups. New onboarding always provides it. */
+  defaultCurrency?: Currency;
   month?: string;
 };
 
@@ -32,7 +33,8 @@ export async function completeInitialSetup(
     throw new Error('Initial balances are already locked. Use monthly reconciliation instead.');
   }
 
-  if (!/^[A-Z]{3}$/.test(input.defaultCurrency) || !input.balances[input.defaultCurrency]) {
+  const defaultCurrency = input.defaultCurrency ?? 'TRY';
+  if (!/^[A-Z]{3}$/.test(defaultCurrency) || !input.balances[defaultCurrency]) {
     throw new Error('Choose a valid default currency from your active currencies.');
   }
 
@@ -69,7 +71,7 @@ export async function completeInitialSetup(
   const nextSettings: Settings = {
     ...currentSettings,
     id: DEFAULT_SETTINGS_ID,
-    defaultCurrency: input.defaultCurrency,
+    defaultCurrency,
     lastUsedMethod: input.defaultMethod,
     setupCompleted: true,
     updatedAt: now,
@@ -80,7 +82,7 @@ export async function completeInitialSetup(
     month,
     totalBudget: normalizeAmount(input.monthlyBudget),
     rolloverFromPreviousMonth: 0,
-    currency: input.defaultCurrency,
+    currency: defaultCurrency,
     createdAt: now,
     updatedAt: now,
   };
