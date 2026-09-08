@@ -140,7 +140,7 @@ describe('exportService', () => {
     expect(text).toContain('Total expenses:  200 TRY');
     expect(text).toContain('Net:             -155 TRY');
     expect(text).toContain('Food: 200 TRY');
-    expect(text).toContain('-2 USD (= 80 TRY)');
+    expect(text).toContain('-2 USD \\(= 80 TRY\\)');
     expect(text).toContain('1 historical rate used the most recent prior published date.');
   });
 
