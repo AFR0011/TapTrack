@@ -5,7 +5,7 @@
 create table if not exists public.ledger_versions (
   user_id uuid primary key references auth.users(id) on delete cascade,
   revision bigint not null default 1 check (revision >= 1),
-  generation uuid not null default public.gen_random_uuid(),
+  generation uuid not null default pg_catalog.gen_random_uuid(),
   updated_at timestamptz not null default now()
 );
 
@@ -21,7 +21,7 @@ create policy ledger_versions_owner_select
   using (auth.uid() = user_id);
 create policy ledger_versions_owner_insert
   on public.ledger_versions for insert
-  with check (auth.uid() = user_id);
+  with check (auth.uid() = user_id and revision = 1);
 
 insert into public.ledger_versions (user_id)
 select id from auth.users
@@ -73,7 +73,7 @@ begin
         record->>'title',
         record->>'category_id',
         record->>'method',
-        (record->>'date')::date,
+        record->>'date',
         record->>'note',
         record->>'recurring_source_id',
         (record->>'created_at')::timestamptz,
@@ -216,9 +216,9 @@ begin
         record->>'category_id',
         record->>'method',
         record->>'frequency',
-        (record->>'start_date')::date,
-        nullif(record->>'end_date', '')::date,
-        (record->>'next_run_date')::date,
+        record->>'start_date',
+        nullif(record->>'end_date', ''),
+        record->>'next_run_date',
         (record->>'is_active')::boolean,
         (record->>'created_at')::timestamptz,
         (record->>'updated_at')::timestamptz,
@@ -253,7 +253,7 @@ begin
         record->>'to_method',
         (record->>'from_amount')::numeric,
         (record->>'to_amount')::numeric,
-        (record->>'date')::date,
+        record->>'date',
         record->>'note',
         (record->>'created_at')::timestamptz,
         coalesce(nullif(record->>'updated_at', '')::timestamptz, (record->>'created_at')::timestamptz),
@@ -330,9 +330,15 @@ declare
   current_revision bigint;
   current_generation uuid;
 begin
-  select v.revision, v.generation
+  insert into public.ledger_versions (user_id)
+  values (target_user_id)
+  on conflict (user_id) do nothing;
+
+  select lv.revision, lv.generation
     into current_revision, current_generation
-  from public.get_or_create_ledger_version(target_user_id) v;
+  from public.ledger_versions lv
+  where lv.user_id = target_user_id
+  for update;
 
   if current_revision <> expected_revision or current_generation <> expected_generation then
     return query select false, current_revision, current_generation;
@@ -383,9 +389,21 @@ declare
   table_name text;
   restored_at timestamptz := now();
 begin
-  -- Serialize restore against current canonical mutations as far as PostgreSQL
-  -- can. The generation check in the sync mutation RPC rejects stale clients
-  -- once this transaction commits.
+  -- Acquire the account generation row first. Protected sync mutations take the
+  -- same lock before checking their expected generation, so a write either
+  -- commits entirely before this restore or observes the new generation after it.
+  insert into public.ledger_versions (user_id, revision, generation, updated_at)
+  values (target_user_id, 2, pg_catalog.gen_random_uuid(), restored_at)
+  on conflict (user_id) do update set
+    revision = public.ledger_versions.revision + 1,
+    generation = pg_catalog.gen_random_uuid(),
+    updated_at = restored_at
+  returning public.ledger_versions.revision, public.ledger_versions.generation
+    into new_revision, new_generation;
+
+  -- Keep canonical table locks while the legacy direct-write policies still
+  -- coexist with production main. The later enforcement migration can remove
+  -- that bypass once every deployed writer uses the protected operation route.
   lock table public.transactions in share row exclusive mode;
   lock table public.balance_checkpoints in share row exclusive mode;
   lock table public.categories in share row exclusive mode;
@@ -394,15 +412,6 @@ begin
   lock table public.recurring_transactions in share row exclusive mode;
   lock table public.conversions in share row exclusive mode;
   lock table public.settings in share row exclusive mode;
-
-  insert into public.ledger_versions (user_id, revision, generation, updated_at)
-  values (target_user_id, 2, public.gen_random_uuid(), restored_at)
-  on conflict (user_id) do update set
-    revision = public.ledger_versions.revision + 1,
-    generation = public.gen_random_uuid(),
-    updated_at = restored_at
-  returning public.ledger_versions.revision, public.ledger_versions.generation
-    into new_revision, new_generation;
 
   update public.transactions set deleted_at = restored_at where user_id = target_user_id;
   update public.balance_checkpoints set deleted_at = restored_at where user_id = target_user_id;
