@@ -38,9 +38,9 @@ export function TransactionEntry({
     <div className="space-y-3">
       <div className="flex flex-wrap items-center justify-between gap-3">
         <div>
-          <h2 className="text-base font-semibold text-primary">Add transaction</h2>
+          <h2 className="text-base font-semibold text-primary">Entry method</h2>
           <p className="mt-0.5 text-xs font-medium text-muted">
-            Quick for guided entry, Command for keyboard speed.
+            Use Quick for a guided form or Command for faster keyboard entry.
           </p>
         </div>
         <div className="flex items-center gap-2">
@@ -51,7 +51,7 @@ export function TransactionEntry({
                 type="button"
                 onClick={() => chooseMode(option)}
                 aria-pressed={mode === option}
-                className={`min-h-9 rounded-md px-3 text-xs font-semibold transition-colors ${
+                className={`min-h-11 rounded-md px-3 text-xs font-semibold transition-colors ${
                   mode === option
                     ? 'bg-surface text-primary shadow-sm'
                     : 'text-muted hover:text-primary'
@@ -71,7 +71,7 @@ export function TransactionEntry({
             }}
             className="flex min-h-11 items-center px-2 text-xs font-semibold text-accent hover:underline"
           >
-            Full editor
+            Open full editor
           </Link>
         </div>
       </div>
