@@ -15,7 +15,13 @@ type CaptureTokenMetadata = {
 
 type ShortcutType = 'expense' | 'income';
 
-export function QuickCaptureSettings({ signedIn }: { signedIn: boolean }) {
+export function QuickCaptureSettings({
+  signedIn,
+  linked,
+}: {
+  signedIn: boolean;
+  linked: boolean;
+}) {
   const [tokens, setTokens] = useState<CaptureTokenMetadata[]>([]);
   const [loading, setLoading] = useState(false);
   const [creating, setCreating] = useState(false);
@@ -25,7 +31,7 @@ export function QuickCaptureSettings({ signedIn }: { signedIn: boolean }) {
   const activeTokens = useMemo(() => tokens.filter((token) => !token.revoked_at), [tokens]);
 
   const refresh = async () => {
-    if (!signedIn) return;
+    if (!signedIn || !linked) return;
     setLoading(true);
     try {
       const response = await fetch('/api/capture-tokens');
@@ -40,14 +46,13 @@ export function QuickCaptureSettings({ signedIn }: { signedIn: boolean }) {
   };
 
   useEffect(() => {
-    if (!signedIn) return;
+    if (!signedIn || !linked) return;
     queueMicrotask(() => {
       void refresh();
     });
-    // Account identity is managed by the parent Settings screen. A sign-in/out
-    // transition remounts this fetch contract through the boolean prop.
+    // Account identity and ledger binding are managed by the parent Settings screen.
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [signedIn]);
+  }, [signedIn, linked]);
 
   const createDevice = async () => {
     setCreating(true);
@@ -96,14 +101,18 @@ export function QuickCaptureSettings({ signedIn }: { signedIn: boolean }) {
     }
   };
 
-  if (!signedIn) {
+  if (!signedIn || !linked) {
     return (
       <section className="rounded-2xl border border-subtle bg-surface p-5">
         <div className="flex items-center gap-3">
           <QuickCaptureIcon />
           <div>
             <h2 className="text-base font-semibold text-primary">Quick Capture</h2>
-            <p className="mt-0.5 text-sm text-muted">Sign in to add transactions from iPhone Shortcuts.</p>
+            <p className="mt-0.5 text-sm text-muted">
+              {!signedIn
+                ? 'Sign in to add transactions from iPhone Shortcuts.'
+                : 'Link cloud sync on this device before setting up iPhone Shortcuts.'}
+            </p>
           </div>
         </div>
       </section>
