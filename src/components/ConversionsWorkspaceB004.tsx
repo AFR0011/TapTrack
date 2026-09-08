@@ -42,17 +42,16 @@ type PendingOrdering = { draft: ConversionDraft; checkpointId: string };
 export default function ConversionsWorkspaceB004() {
   const today = formatLocalDate(new Date());
   const { currencies, defaultCurrency, loading: currenciesLoading } = useActiveCurrencies();
-  const [fromCurrency, setFromCurrency] = useState<Currency>('TRY');
+  const [fromCurrencyOverride, setFromCurrencyOverride] = useState<Currency | null>(null);
   const [fromMethod, setFromMethod] = useState<Method>('card');
   const [fromAmountRaw, setFromAmountRaw] = useState('');
-  const [toCurrency, setToCurrency] = useState<Currency>('TRY');
+  const [toCurrencyOverride, setToCurrencyOverride] = useState<Currency | null>(null);
   const [toMethod, setToMethod] = useState<Method>('cash');
   const [date, setDate] = useState(today);
   const [note, setNote] = useState('');
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState('');
   const [pendingOrdering, setPendingOrdering] = useState<PendingOrdering | null>(null);
-  const [initialized, setInitialized] = useState(false);
   const [rateState, setRateState] = useState<RateState>({
     requestKey: '',
     rate: null,
@@ -64,20 +63,17 @@ export default function ConversionsWorkspaceB004() {
     db.conversions.orderBy('date').reverse().limit(30).toArray()
   );
   const isLoading = balances === undefined || conversions === undefined || currenciesLoading;
-
-  useEffect(() => {
-    if (initialized || currenciesLoading || currencies.length === 0) return;
-    let cancelled = false;
-    queueMicrotask(() => {
-      if (cancelled) return;
-      setFromCurrency(defaultCurrency);
-      setToCurrency(currencies.find((currency) => currency !== defaultCurrency) ?? defaultCurrency);
-      setInitialized(true);
-    });
-    return () => {
-      cancelled = true;
-    };
-  }, [currencies, currenciesLoading, defaultCurrency, initialized]);
+  const fromCurrency =
+    fromCurrencyOverride && currencies.includes(fromCurrencyOverride)
+      ? fromCurrencyOverride
+      : defaultCurrency;
+  const defaultToCurrency =
+    currencies.find((currency) => currency !== fromCurrency) ?? fromCurrency;
+  const toCurrency =
+    toCurrencyOverride && currencies.includes(toCurrencyOverride)
+      ? toCurrencyOverride
+      : defaultToCurrency;
+  const initialized = !currenciesLoading && currencies.length > 0;
 
   const balanceMap = useMemo(
     () => new Map((balances ?? []).map((balance) => [balance.id, balance.amount])),
@@ -255,7 +251,7 @@ export default function ConversionsWorkspaceB004() {
                   value={fromCurrency}
                   onChange={(event) => {
                     clearPendingOrdering();
-                    setFromCurrency(event.target.value);
+                    setFromCurrencyOverride(event.target.value);
                   }}
                   options={currencyOptions}
                   disabled={saving}
@@ -301,7 +297,7 @@ export default function ConversionsWorkspaceB004() {
                   value={toCurrency}
                   onChange={(event) => {
                     clearPendingOrdering();
-                    setToCurrency(event.target.value);
+                    setToCurrencyOverride(event.target.value);
                   }}
                   options={currencyOptions}
                   disabled={saving}
