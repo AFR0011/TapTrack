@@ -32,7 +32,11 @@ import { SelectField } from '@/components/ui/SelectField';
 import { SkeletonCard, SkeletonListCard } from '@/components/ui/Skeleton';
 
 type OpKind = 'exchange' | 'transfer';
-type RateState = { requestKey: string; rate: HistoricalExchangeRateResponse | null; error: string };
+type RateState = {
+  requestKey: string;
+  rate: HistoricalExchangeRateResponse | null;
+  error: string;
+};
 type PendingOrdering = { draft: ConversionDraft; checkpointId: string };
 
 export default function ConversionsWorkspaceB004() {
@@ -49,17 +53,30 @@ export default function ConversionsWorkspaceB004() {
   const [error, setError] = useState('');
   const [pendingOrdering, setPendingOrdering] = useState<PendingOrdering | null>(null);
   const [initialized, setInitialized] = useState(false);
-  const [rateState, setRateState] = useState<RateState>({ requestKey: '', rate: null, error: '' });
+  const [rateState, setRateState] = useState<RateState>({
+    requestKey: '',
+    rate: null,
+    error: '',
+  });
 
   const balances = useLiveQuery(() => db.balances.toArray());
-  const conversions = useLiveQuery(() => db.conversions.orderBy('date').reverse().limit(30).toArray());
+  const conversions = useLiveQuery(() =>
+    db.conversions.orderBy('date').reverse().limit(30).toArray()
+  );
   const isLoading = balances === undefined || conversions === undefined || currenciesLoading;
 
   useEffect(() => {
     if (initialized || currenciesLoading || currencies.length === 0) return;
-    setFromCurrency(defaultCurrency);
-    setToCurrency(currencies.find((currency) => currency !== defaultCurrency) ?? defaultCurrency);
-    setInitialized(true);
+    let cancelled = false;
+    queueMicrotask(() => {
+      if (cancelled) return;
+      setFromCurrency(defaultCurrency);
+      setToCurrency(currencies.find((currency) => currency !== defaultCurrency) ?? defaultCurrency);
+      setInitialized(true);
+    });
+    return () => {
+      cancelled = true;
+    };
   }, [currencies, currenciesLoading, defaultCurrency, initialized]);
 
   const balanceMap = useMemo(
@@ -84,7 +101,9 @@ export default function ConversionsWorkspaceB004() {
       signal: controller.signal,
     })
       .then((rate) => {
-        if (!controller.signal.aborted) setRateState({ requestKey: rateRequestKey, rate, error: '' });
+        if (!controller.signal.aborted) {
+          setRateState({ requestKey: rateRequestKey, rate, error: '' });
+        }
       })
       .catch((err: unknown) => {
         if (controller.signal.aborted) return;
@@ -118,14 +137,18 @@ export default function ConversionsWorkspaceB004() {
     setError('');
     try {
       await createConversion(draft);
-      toast.success(draft.fromCurrency !== draft.toCurrency ? 'Exchange recorded.' : 'Transfer recorded.');
+      toast.success(
+        draft.fromCurrency !== draft.toCurrency ? 'Exchange recorded.' : 'Transfer recorded.'
+      );
       setFromAmountRaw('');
       setNote('');
       setPendingOrdering(null);
     } catch (err) {
       if (err instanceof AmbiguousLedgerOrderingError) {
         setPendingOrdering({ draft, checkpointId: err.checkpointId });
-        setError('This transfer or exchange shares a date with a balance reconciliation. Choose when it happened.');
+        setError(
+          'This transfer or exchange shares a date with a balance reconciliation. Choose when it happened.'
+        );
       } else {
         setPendingOrdering(null);
         setError(
@@ -143,11 +166,26 @@ export default function ConversionsWorkspaceB004() {
     event.preventDefault();
     setError('');
     setPendingOrdering(null);
-    if (fromAmount <= 0) return setError('Enter a valid source amount.');
-    if (opKind === 'exchange' && rateLoading) return setError('The exchange rate is still loading.');
-    if (opKind === 'exchange' && !exchangeRate) return setError(rateError || 'A published exchange rate is required before saving.');
-    if (toAmount <= 0) return setError('The calculated destination amount is not valid.');
-    if (opKind === 'transfer' && fromMethod === toMethod) return setError('Choose different payment methods for a same-currency transfer.');
+    if (fromAmount <= 0) {
+      setError('Enter a valid source amount.');
+      return;
+    }
+    if (opKind === 'exchange' && rateLoading) {
+      setError('The exchange rate is still loading.');
+      return;
+    }
+    if (opKind === 'exchange' && !exchangeRate) {
+      setError(rateError || 'A published exchange rate is required before saving.');
+      return;
+    }
+    if (toAmount <= 0) {
+      setError('The calculated destination amount is not valid.');
+      return;
+    }
+    if (opKind === 'transfer' && fromMethod === toMethod) {
+      setError('Choose different payment methods for a same-currency transfer.');
+      return;
+    }
 
     await persistDraft({
       fromCurrency,
@@ -179,7 +217,10 @@ export default function ConversionsWorkspaceB004() {
     return (
       <div className="space-y-5" aria-busy="true" aria-label="Loading transfers and exchanges">
         <PageHeader title="Transfers & exchanges" description="Move money or exchange currency." />
-        <div className="grid gap-4 lg:grid-cols-2"><SkeletonCard /><SkeletonCard /></div>
+        <div className="grid gap-4 lg:grid-cols-2">
+          <SkeletonCard />
+          <SkeletonCard />
+        </div>
         <SkeletonListCard titleWidth="w-56" count={4} />
       </div>
     );
@@ -231,7 +272,10 @@ export default function ConversionsWorkspaceB004() {
                 />
               </div>
               <p className="text-xs font-medium text-muted">
-                Available: <span className="font-semibold text-secondary">{formatMoney(fromAvailable, fromCurrency)}</span>
+                Available:{' '}
+                <span className="font-semibold text-secondary">
+                  {formatMoney(fromAvailable, fromCurrency)}
+                </span>
               </p>
             </fieldset>
 
@@ -276,7 +320,9 @@ export default function ConversionsWorkspaceB004() {
               {opKind === 'exchange' ? (
                 <ExchangeRateStatus rate={exchangeRate} loading={rateLoading} error={rateError} />
               ) : (
-                <p className="text-xs font-medium text-muted">Same-currency transfers move the exact amount 1:1.</p>
+                <p className="text-xs font-medium text-muted">
+                  Same-currency transfers move the exact amount 1:1.
+                </p>
               )}
             </fieldset>
 
@@ -317,15 +363,34 @@ export default function ConversionsWorkspaceB004() {
                   <p>{error}</p>
                   {pendingOrdering ? (
                     <div className="mt-3 flex flex-wrap gap-2">
-                      <Button type="button" variant="secondary" onClick={() => void resolveOrdering('before')} disabled={saving}>Before reconciliation</Button>
-                      <Button type="button" variant="secondary" onClick={() => void resolveOrdering('after')} disabled={saving}>After reconciliation</Button>
+                      <Button
+                        type="button"
+                        variant="secondary"
+                        onClick={() => void resolveOrdering('before')}
+                        disabled={saving}
+                      >
+                        Before reconciliation
+                      </Button>
+                      <Button
+                        type="button"
+                        variant="secondary"
+                        onClick={() => void resolveOrdering('after')}
+                        disabled={saving}
+                      >
+                        After reconciliation
+                      </Button>
                     </div>
                   ) : null}
                 </motion.div>
               ) : null}
             </AnimatePresence>
 
-            <Button type="submit" fullWidth loading={saving} disabled={saving || rateLoading || fromAmount <= 0 || toAmount <= 0}>
+            <Button
+              type="submit"
+              fullWidth
+              loading={saving}
+              disabled={saving || rateLoading || fromAmount <= 0 || toAmount <= 0}
+            >
               {opKind === 'exchange'
                 ? `Exchange ${fromCurrency} → ${toCurrency}`
                 : `Transfer ${fromCurrency} ${fromMethod} → ${toMethod}`}
@@ -347,8 +412,12 @@ export default function ConversionsWorkspaceB004() {
                       : 'border border-subtle bg-surface-muted'
                 }`}
               >
-                <p className="text-xs font-medium text-muted">{balance.currency} {balance.method}</p>
-                <p className="mt-1 text-sm font-bold text-primary">{formatMoney(balance.amount, balance.currency)}</p>
+                <p className="text-xs font-medium text-muted">
+                  {balance.currency} {balance.method}
+                </p>
+                <p className="mt-1 text-sm font-bold text-primary">
+                  {formatMoney(balance.amount, balance.currency)}
+                </p>
               </div>
             ))}
           </div>
@@ -364,18 +433,30 @@ export default function ConversionsWorkspaceB004() {
             <p className="p-6 text-center text-sm font-medium text-muted">No records yet.</p>
           ) : (
             (conversions ?? []).map((conversion) => (
-              <div key={conversion.id} className="grid gap-2 px-4 py-3 sm:grid-cols-[1fr_auto] sm:px-5">
+              <div
+                key={conversion.id}
+                className="grid gap-2 px-4 py-3 sm:grid-cols-[1fr_auto] sm:px-5"
+              >
                 <div>
                   <p className="text-sm font-semibold text-primary">
                     {conversion.fromCurrency === conversion.toCurrency
                       ? `${conversion.fromMethod} → ${conversion.toMethod} transfer`
                       : `${conversion.fromCurrency} → ${conversion.toCurrency} exchange`}
                   </p>
-                  <p className="mt-0.5 text-xs font-medium text-muted">{conversion.date}{conversion.note ? ` · ${conversion.note}` : ''}</p>
+                  <p className="mt-0.5 text-xs font-medium text-muted">
+                    {conversion.date}
+                    {conversion.note ? ` · ${conversion.note}` : ''}
+                  </p>
                 </div>
                 <div className="sm:text-right">
-                  <p className="text-sm font-bold text-danger">−{formatMoney(conversion.fromAmount, conversion.fromCurrency)} <span className="font-medium text-muted">{conversion.fromMethod}</span></p>
-                  <p className="text-sm font-bold text-success">+{formatMoney(conversion.toAmount, conversion.toCurrency)} <span className="font-medium text-muted">{conversion.toMethod}</span></p>
+                  <p className="text-sm font-bold text-danger">
+                    −{formatMoney(conversion.fromAmount, conversion.fromCurrency)}{' '}
+                    <span className="font-medium text-muted">{conversion.fromMethod}</span>
+                  </p>
+                  <p className="text-sm font-bold text-success">
+                    +{formatMoney(conversion.toAmount, conversion.toCurrency)}{' '}
+                    <span className="font-medium text-muted">{conversion.toMethod}</span>
+                  </p>
                 </div>
               </div>
             ))
@@ -395,7 +476,11 @@ function ExchangeRateStatus({
   loading: boolean;
   error: string;
 }) {
-  if (loading) return <p className="text-xs font-medium text-muted">Loading the published rate for this date…</p>;
+  if (loading) {
+    return (
+      <p className="text-xs font-medium text-muted">Loading the published rate for this date…</p>
+    );
+  }
   if (error) return <p className="text-xs font-medium text-danger">{error}</p>;
   if (!rate) return null;
   return (
