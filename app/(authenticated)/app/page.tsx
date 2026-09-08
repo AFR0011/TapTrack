@@ -2,9 +2,7 @@
 
 import { useEffect, useState } from 'react';
 import DashboardSummary from '@/components/DashboardSummary';
-import { FeatureCoachmark } from '@/components/FeatureCoachmark';
 import RecentTransactions from '@/components/RecentTransactions';
-import { TransactionEntry } from '@/components/TransactionEntry';
 import { PageHeader } from '@/components/ui/PageHeader';
 import { Skeleton } from '@/components/ui/Skeleton';
 
@@ -16,7 +14,6 @@ export default function Home() {
       const today = new Date();
       setCurrentMonth(today.toLocaleString('default', { month: 'long', year: 'numeric' }));
     });
-
     return () => window.cancelAnimationFrame(frame);
   }, []);
 
@@ -26,17 +23,8 @@ export default function Home() {
         title="Dashboard"
         description={currentMonth || <Skeleton className="h-4 w-36" aria-hidden="true" />}
       />
-
-      <TransactionEntry />
       <DashboardSummary />
       <RecentTransactions />
-
-      <FeatureCoachmark
-        tipKey="quick-add"
-        eyebrow="Quick Add"
-        title="Amount + title is enough."
-        description="TapTrack fills the usual payment method and suggests a category. Open details only when you need them."
-      />
     </div>
   );
 }
