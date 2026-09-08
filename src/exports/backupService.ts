@@ -12,8 +12,6 @@ import {
   type Category,
   type CategoryBudget,
   type Conversion,
-  type Currency,
-  type Method,
   type MonthlyBudget,
   type RecurringTransaction,
   type Settings,
@@ -171,16 +169,30 @@ export async function restoreBackupJSON(
         database.syncOutbox.clear(),
       ]);
 
-      await Promise.all([
-        putMany(database.transactions, normalized.data.transactions),
-        putMany(database.balanceCheckpoints, normalized.data.balanceCheckpoints),
-        putMany(database.categories, normalized.data.categories),
-        putMany(database.monthlyBudgets, normalized.data.monthlyBudgets),
-        putMany(database.categoryBudgets, normalized.data.categoryBudgets),
-        putMany(database.recurringTransactions, normalized.data.recurringTransactions),
-        putMany(database.conversions, normalized.data.conversions),
-        putMany(database.settings, normalized.data.settings),
-      ]);
+      if (normalized.data.transactions.length) {
+        await database.transactions.bulkPut(normalized.data.transactions);
+      }
+      if (normalized.data.balanceCheckpoints.length) {
+        await database.balanceCheckpoints.bulkPut(normalized.data.balanceCheckpoints);
+      }
+      if (normalized.data.categories.length) {
+        await database.categories.bulkPut(normalized.data.categories);
+      }
+      if (normalized.data.monthlyBudgets.length) {
+        await database.monthlyBudgets.bulkPut(normalized.data.monthlyBudgets);
+      }
+      if (normalized.data.categoryBudgets.length) {
+        await database.categoryBudgets.bulkPut(normalized.data.categoryBudgets);
+      }
+      if (normalized.data.recurringTransactions.length) {
+        await database.recurringTransactions.bulkPut(normalized.data.recurringTransactions);
+      }
+      if (normalized.data.conversions.length) {
+        await database.conversions.bulkPut(normalized.data.conversions);
+      }
+      if (normalized.data.settings.length) {
+        await database.settings.bulkPut(normalized.data.settings);
+      }
 
       await rebuildDerivedBalances(database, now.toISOString());
     }
@@ -749,16 +761,6 @@ function sortById<T extends { id: string }>(rows: T[]): T[] {
   return [...rows].sort((a, b) => a.id.localeCompare(b.id));
 }
 
-async function putMany<T, Key>(
-  table: { bulkPut: (rows: readonly T[]) => PromiseExtendedLike<Key[]> },
-  rows: T[]
-): Promise<void> {
-  if (rows.length > 0) await table.bulkPut(rows);
-}
-
-/** Minimal structural promise shape so the helper stays independent of Dexie's internal bulkPut return type. */
-type PromiseExtendedLike<T> = PromiseLike<T>;
-
 function countCanonicalRecords(data: CanonicalBackupData): number {
   return (
     data.transactions.length +
@@ -772,6 +774,3 @@ function countCanonicalRecords(data: CanonicalBackupData): number {
   );
 }
 
-// Keep these imports type-checked against the supported unions; they also make
-// relationship error messages easier to reason about when those unions evolve.
-void (null as unknown as Currency | Method);

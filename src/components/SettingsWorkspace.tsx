@@ -183,9 +183,29 @@ export default function SettingsWorkspace() {
 
   const handleImportFile = async (file: File | undefined) => {
     if (!file) return;
-    await importJSON(await file.text());
-    await refreshSyncStatus();
-    toast.success('JSON backup imported locally.');
+
+    try {
+      const result = await importJSON(await file.text(), db, {
+        beforeReplace: (safetyBackup) => {
+          const timestamp = new Date().toISOString().replace(/[:.]/g, '-');
+          downloadText(
+            `taptrack-pre-restore-${timestamp}.json`,
+            safetyBackup,
+            'application/json'
+          );
+        },
+      });
+      await refreshSyncStatus();
+      toast.success(
+        result.legacyMigrated
+          ? 'Legacy backup restored locally and upgraded to the checkpoint ledger.'
+          : 'Backup restored locally. A pre-restore safety backup was downloaded.'
+      );
+    } catch (err) {
+      toast.error(err instanceof Error ? err.message : 'Backup could not be restored.');
+    } finally {
+      if (importInputRef.current) importInputRef.current.value = '';
+    }
   };
 
   const resetAppData = async () => {
@@ -583,7 +603,7 @@ export default function SettingsWorkspace() {
 
       <section className="rounded-2xl border border-subtle bg-surface p-5">
         <h2 className="text-base font-semibold text-primary">Data &amp; export</h2>
-        <p className="mt-1 text-sm text-muted">Export a backup or import from a JSON file.</p>
+        <p className="mt-1 text-sm text-muted">Export a canonical backup or restore/replace this local ledger from JSON. A safety backup is downloaded before replacement.</p>
         <div className="mt-4 max-w-xs">
           <Field
             label="Report month"
@@ -605,7 +625,7 @@ export default function SettingsWorkspace() {
             size="sm"
             onClick={() => importInputRef.current?.click()}
           >
-            Import JSON
+            Restore JSON
           </Button>
           <Button type="button" variant="secondary" size="sm" onClick={handleExportPDF}>
             Export PDF
@@ -616,7 +636,7 @@ export default function SettingsWorkspace() {
           type="file"
           accept="application/json"
           className="hidden"
-          onChange={(event) => handleImportFile(event.target.files?.[0])}
+          onChange={(event) => void handleImportFile(event.target.files?.[0])}
         />
       </section>
 

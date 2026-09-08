@@ -39,29 +39,27 @@ describe('exportService', () => {
     expect(csvData).toContain('coffee');
   });
 
-  it('round-trips a full JSON backup', async () => {
+  it('routes JSON export/import through versioned replace semantics', async () => {
     await seedOpeningBalance(database, 'TRY-cash', 200);
-    await createTransaction(expense, database);
+    await createTransaction(expense, database, new Date('2026-05-05T12:00:00.000Z'), 'coffee-original');
 
     const backup = await exportJSON(database);
-    await importJSON(
-      JSON.stringify({
-        transactions: [],
-        balances: [],
-        categories: [],
-        monthlyBudgets: [],
-        categoryBudgets: [],
-        recurringTransactions: [],
-        conversions: [],
-        settings: [],
-      }),
-      database
+    const parsed = JSON.parse(backup);
+    expect(parsed.format).toBe('taptrack-backup');
+    expect(parsed.version).toBe(2);
+    expect(parsed).not.toHaveProperty('balances');
+
+    await createTransaction(
+      { ...expense, amount: 20, title: 'extra', date: '2026-05-06' },
+      database,
+      new Date('2026-05-06T12:00:00.000Z'),
+      'coffee-extra'
     );
-    expect(await database.transactions.count()).toBe(0);
+    expect(await database.transactions.count()).toBe(2);
 
     await importJSON(backup, database);
 
-    expect(await database.transactions.count()).toBe(1);
+    expect((await database.transactions.toArray()).map((item) => item.id)).toEqual(['coffee-original']);
     expect(await database.categories.count()).toBe(6);
     expect(await database.settings.count()).toBe(1);
   });

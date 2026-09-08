@@ -1,4 +1,11 @@
 import Papa from 'papaparse';
+import {
+  exportBackupJSON,
+  restoreBackupJSON,
+  type RestoreBackupOptions,
+  type RestoreBackupResult,
+  type TapTrackBackupV2,
+} from '@/exports/backupService';
 import { db, ensureDatabaseSeeded, type TapTrackDatabase } from '@/database';
 import { formatDisplayMonth } from '@/dates';
 import {
@@ -7,27 +14,9 @@ import {
   type HistoricalReportRateMap,
 } from '@/reports/historicalReportRates';
 import { getBudgetPerformanceReport, getDateRangeTransactionList, getFullTransactionList } from '@/reports/reportService';
-import type {
-  Balance,
-  Category,
-  CategoryBudget,
-  Conversion,
-  MonthlyBudget,
-  RecurringTransaction,
-  Settings,
-  Transaction,
-} from '@/types';
+import type { Transaction } from '@/types';
 
-export type TapTrackBackup = {
-  transactions: Transaction[];
-  balances: Balance[];
-  categories: Category[];
-  monthlyBudgets: MonthlyBudget[];
-  categoryBudgets: CategoryBudget[];
-  recurringTransactions: RecurringTransaction[];
-  conversions: Conversion[];
-  settings: Settings[];
-};
+export type TapTrackBackup = TapTrackBackupV2;
 
 type ReportPeriodOptions =
   | { mode: 'month'; month: string }
@@ -69,53 +58,15 @@ export async function exportCSV(database: TapTrackDatabase = db): Promise<string
 }
 
 export async function exportJSON(database: TapTrackDatabase = db): Promise<string> {
-  const data = await readBackup(database);
-  return JSON.stringify(data, null, 2);
+  return exportBackupJSON(database);
 }
 
-export async function importJSON(jsonData: string, database: TapTrackDatabase = db): Promise<void> {
-  const data = parseBackup(jsonData);
-
-  await database.transaction(
-    'rw',
-    [
-      database.transactions,
-      database.balances,
-      database.categories,
-      database.monthlyBudgets,
-      database.categoryBudgets,
-      database.recurringTransactions,
-      database.conversions,
-      database.settings,
-    ],
-    async () => {
-      await Promise.all([
-        database.transactions.clear(),
-        database.balances.clear(),
-        database.categories.clear(),
-        database.monthlyBudgets.clear(),
-        database.categoryBudgets.clear(),
-        database.recurringTransactions.clear(),
-        database.conversions.clear(),
-        database.settings.clear(),
-      ]);
-
-      await Promise.all([
-        data.transactions.length ? database.transactions.bulkPut(data.transactions) : undefined,
-        data.balances.length ? database.balances.bulkPut(data.balances) : undefined,
-        data.categories.length ? database.categories.bulkPut(data.categories) : undefined,
-        data.monthlyBudgets.length ? database.monthlyBudgets.bulkPut(data.monthlyBudgets) : undefined,
-        data.categoryBudgets.length ? database.categoryBudgets.bulkPut(data.categoryBudgets) : undefined,
-        data.recurringTransactions.length
-          ? database.recurringTransactions.bulkPut(data.recurringTransactions)
-          : undefined,
-        data.conversions.length ? database.conversions.bulkPut(data.conversions) : undefined,
-        data.settings.length ? database.settings.bulkPut(data.settings) : undefined,
-      ]);
-    }
-  );
-
-  await ensureDatabaseSeeded(database);
+export async function importJSON(
+  jsonData: string,
+  database: TapTrackDatabase = db,
+  options: RestoreBackupOptions = {}
+): Promise<RestoreBackupResult> {
+  return restoreBackupJSON(jsonData, database, options);
 }
 
 export async function exportPDF(
@@ -351,60 +302,6 @@ function getFxBasisLines(convertToTRY: boolean, rates: HistoricalReportRateMap):
       : 'All required historical rates were published on their transaction dates.',
     '',
   ];
-}
-
-async function readBackup(database: TapTrackDatabase): Promise<TapTrackBackup> {
-  await ensureDatabaseSeeded(database);
-
-  const [
-    transactions,
-    balances,
-    categories,
-    monthlyBudgets,
-    categoryBudgets,
-    recurringTransactions,
-    conversions,
-    settings,
-  ] = await Promise.all([
-    database.transactions.toArray(),
-    database.balances.toArray(),
-    database.categories.toArray(),
-    database.monthlyBudgets.toArray(),
-    database.categoryBudgets.toArray(),
-    database.recurringTransactions.toArray(),
-    database.conversions.toArray(),
-    database.settings.toArray(),
-  ]);
-
-  return {
-    transactions,
-    balances,
-    categories,
-    monthlyBudgets,
-    categoryBudgets,
-    recurringTransactions,
-    conversions,
-    settings,
-  };
-}
-
-function parseBackup(jsonData: string): TapTrackBackup {
-  const parsed = JSON.parse(jsonData) as Partial<TapTrackBackup>;
-
-  return {
-    transactions: asArray(parsed.transactions),
-    balances: asArray(parsed.balances),
-    categories: asArray(parsed.categories),
-    monthlyBudgets: asArray(parsed.monthlyBudgets),
-    categoryBudgets: asArray(parsed.categoryBudgets),
-    recurringTransactions: asArray(parsed.recurringTransactions),
-    conversions: asArray(parsed.conversions),
-    settings: asArray(parsed.settings),
-  };
-}
-
-function asArray<T>(value: T[] | undefined): T[] {
-  return Array.isArray(value) ? value : [];
 }
 
 function createSimplePdf(lines: string[]) {
