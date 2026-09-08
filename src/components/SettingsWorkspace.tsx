@@ -3,7 +3,7 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { useRouter } from 'next/navigation';
 import { useLiveQuery } from 'dexie-react-hooks';
-import { db, ensureDatabaseSeeded } from '@/database';
+import { db } from '@/database';
 import { DEFAULT_SETTINGS_ID } from '@/defaultData';
 import { getCurrentMonth } from '@/dates';
 import { formatMoney } from '@/format';
@@ -13,6 +13,7 @@ import {
   restoreOnlyThisDevice,
   restoreSyncedAccount,
 } from '@/exports/linkedRestoreService';
+import { resetOnlyThisDevice, resetSyncedAccount } from '@/exports/resetService';
 import { deleteCategory, updateCategory } from '@/budgets/budgetService';
 import { createCustomCategory } from '@/categories/categoryService';
 import { getAdjustmentHistory } from '@/balances/reconciliationService';
@@ -27,6 +28,7 @@ import {
 import { ConfirmDialog } from './ConfirmDialog';
 import { CloudLedgerLink } from './CloudLedgerLink';
 import { RestoreScopeDialog } from './RestoreScopeDialog';
+import { ResetScopeDialog } from './ResetScopeDialog';
 import { toast } from 'sonner';
 import {
   getSyncStatus,
@@ -79,6 +81,9 @@ export default function SettingsWorkspace() {
   const [syncStatus, setSyncStatus] = useState<SyncStatusSnapshot | null>(null);
   const [syncing, setSyncing] = useState(false);
   const [showResetConfirm, setShowResetConfirm] = useState(false);
+  const [showResetScope, setShowResetScope] = useState(false);
+  const [showAccountResetConfirm, setShowAccountResetConfirm] = useState(false);
+  const [resetBusy, setResetBusy] = useState(false);
   const [categoryDeleteConfirm, setCategoryDeleteConfirm] = useState<Category | null>(null);
   const [accountEmail, setAccountEmail] = useState<string | null>(null);
   const [accountChecked, setAccountChecked] = useState(false);
@@ -200,6 +205,15 @@ export default function SettingsWorkspace() {
     );
   }, []);
 
+  const persistPreResetSafetyBackup = useCallback((safetyBackup: string) => {
+    const timestamp = new Date().toISOString().replace(/[:.]/g, '-');
+    downloadText(
+      `taptrack-pre-reset-${timestamp}.json`,
+      safetyBackup,
+      'application/json'
+    );
+  }, []);
+
   const clearPendingRestore = useCallback(() => {
     setPendingRestoreJson(null);
     setShowRestoreScope(false);
@@ -288,37 +302,41 @@ export default function SettingsWorkspace() {
   };
 
 
-  const resetAppData = async () => {
-    await db.transaction(
-      'rw',
-      [
-        db.transactions,
-        db.balances,
-        db.balanceCheckpoints,
-        db.categories,
-        db.monthlyBudgets,
-        db.categoryBudgets,
-        db.recurringTransactions,
-        db.conversions,
-        db.settings,
-      ],
-      async () => {
-        await Promise.all([
-          db.transactions.clear(),
-          db.balances.clear(),
-          db.balanceCheckpoints.clear(),
-          db.categories.clear(),
-          db.monthlyBudgets.clear(),
-          db.categoryBudgets.clear(),
-          db.recurringTransactions.clear(),
-          db.conversions.clear(),
-          db.settings.clear(),
-        ]);
-      }
-    );
-    await ensureDatabaseSeeded();
-    await refreshSyncStatus();
-    toast.success('Local app data reset. Setup will show again.');
+  const executeDeviceOnlyReset = async () => {
+    if (resetBusy) return;
+    setResetBusy(true);
+    try {
+      await resetOnlyThisDevice(persistPreResetSafetyBackup, db);
+      await refreshSyncStatus();
+      setShowResetConfirm(false);
+      setShowResetScope(false);
+      toast.success(
+        syncStatus?.bindingState === 'linked'
+          ? 'This device was reset and disconnected from cloud sync. The synced account was left unchanged.'
+          : 'Local app data reset. A pre-reset safety backup was downloaded and setup will show again.'
+      );
+    } catch (err) {
+      toast.error(err instanceof Error ? err.message : 'This device could not be reset.');
+    } finally {
+      setResetBusy(false);
+    }
+  };
+
+  const executeAccountReset = async () => {
+    if (resetBusy) return;
+    setResetBusy(true);
+    try {
+      await resetSyncedAccount(persistPreResetSafetyBackup, db);
+      await refreshSyncStatus();
+      setShowAccountResetConfirm(false);
+      setShowResetScope(false);
+      toast.success('Synced account reset. Other linked devices will adopt the fresh ledger.');
+    } catch (err) {
+      toast.error(err instanceof Error ? err.message : 'Synced account could not be reset.');
+      setShowResetScope(true);
+    } finally {
+      setResetBusy(false);
+    }
   };
 
   const handleChangeDefaultMethod = async (method: Method) => {
@@ -723,14 +741,17 @@ export default function SettingsWorkspace() {
       <section className="rounded-2xl border border-danger/30 bg-danger-muted p-5">
         <h2 className="text-base font-semibold text-danger">Danger zone</h2>
         <p className="mt-1 text-sm text-muted">
-          Permanently erase local transactions, balances, reconciliation history, budgets,
-          categories, and settings. This cannot be undone.
+          Reset to a fresh ledger. Linked browsers can reset only this device or the synced
+          account everywhere. A safety backup is downloaded before anything is replaced.
         </p>
         <Button
           type="button"
           variant="danger"
           className="mt-4"
-          onClick={() => setShowResetConfirm(true)}
+          onClick={() => {
+            if (syncStatus?.bindingState === 'linked') setShowResetScope(true);
+            else setShowResetConfirm(true);
+          }}
         >
           Reset all data
         </Button>
@@ -745,6 +766,17 @@ export default function SettingsWorkspace() {
         }}
         onRestoreDevice={() => void executeDeviceOnlyRestore()}
         onCancel={clearPendingRestore}
+      />
+
+      <ResetScopeDialog
+        open={showResetScope}
+        busy={resetBusy}
+        onResetAccount={() => {
+          setShowResetScope(false);
+          setShowAccountResetConfirm(true);
+        }}
+        onResetDevice={() => void executeDeviceOnlyReset()}
+        onCancel={() => setShowResetScope(false)}
       />
 
       <ConfirmDialog
@@ -764,15 +796,28 @@ export default function SettingsWorkspace() {
       />
 
       <ConfirmDialog
+        open={showAccountResetConfirm}
+        title="Reset synced account everywhere"
+        message="This will replace the signed-in account with a fresh empty ledger. Every linked device will adopt the reset state, and stale pending changes from before the reset will be discarded. A safety backup is downloaded first."
+        confirmLabel="Reset synced account"
+        confirmVariant="danger"
+        onConfirm={() => {
+          setShowAccountResetConfirm(false);
+          void executeAccountReset();
+        }}
+        onCancel={() => {
+          setShowAccountResetConfirm(false);
+          setShowResetScope(true);
+        }}
+      />
+
+      <ConfirmDialog
         open={showResetConfirm}
         title="Reset local app data"
-        message="This will erase the local finance ledger and reconciliation history on this browser. Cloud reset behavior is handled separately."
+        message="This will replace this browser’s ledger with a fresh empty ledger. A safety backup is downloaded first."
         confirmLabel="Reset local data"
         confirmVariant="danger"
-        onConfirm={async () => {
-          setShowResetConfirm(false);
-          await resetAppData();
-        }}
+        onConfirm={() => void executeDeviceOnlyReset()}
         onCancel={() => setShowResetConfirm(false)}
       />
 
