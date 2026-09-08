@@ -1,0 +1,27 @@
+name: Patch generation sync tests
+
+on:
+  push:
+    branches:
+      - remediation/taptrack-correctness-b002
+    paths:
+      - .github/workflows/patch-generation-sync-tests.yml
+
+permissions:
+  contents: write
+
+jobs:
+  patch:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: remediation/taptrack-correctness-b002
+          fetch-depth: 0
+      - run: python scripts/patch_generation_sync_tests.py
+      - run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add src/exports/backupService.test.ts src/sync/syncBinding.test.ts src/sync/syncService.test.ts src/sync/multiDeviceSync.test.ts
+          git commit -m "Update generation-aware sync acceptance tests"
+          git push origin HEAD:remediation/taptrack-correctness-b002
