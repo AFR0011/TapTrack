@@ -186,6 +186,7 @@ export default function DashboardSummary() {
           </div>
           <Link
             href="/app/reports"
+            prefetch={false}
             className={cn(buttonVariants({ variant: 'secondary', size: 'sm' }))}
           >
             Reports
@@ -221,7 +222,11 @@ export default function DashboardSummary() {
         <section className="rounded-2xl border border-subtle bg-surface p-5">
           <div className="flex items-center justify-between">
             <h2 className="text-base font-semibold text-primary">Budget health</h2>
-            <Link href="/app/budgets" className="text-sm font-semibold text-accent hover:underline">
+            <Link
+              href="/app/budgets"
+              prefetch={false}
+              className="text-sm font-semibold text-accent hover:underline"
+            >
               Manage
             </Link>
           </div>
@@ -254,6 +259,7 @@ export default function DashboardSummary() {
               <p className="text-sm font-medium text-secondary">No budget for this month.</p>
               <Link
                 href="/app/budgets"
+                prefetch={false}
                 className="mt-2 inline-flex text-sm font-semibold text-accent hover:underline"
               >
                 Set a budget
