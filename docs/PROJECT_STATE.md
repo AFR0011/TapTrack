@@ -165,7 +165,7 @@ Groq replaces the earlier Ollama design.
 - Signed-out users do not trigger Groq requests.
 - Per-account quota is stored in Supabase.
 
-A follow-up migration on the remediation branch hardens the quota function so only `service_role` can execute it. That migration is staged in source but must be coordinated with the matching server route during release.
+The live TapTrack Supabase project has applied the server-only quota hardening migration. The quota RPC now accepts the verified user ID only from the service-role application path; `anon` and `authenticated` roles have no execute privilege, and the quota table has an explicit deny policy for browser roles.
 
 ## Authentication and security
 
@@ -177,6 +177,7 @@ A follow-up migration on the remediation branch hardens the quota function so on
 - Next.js is upgraded to 16.3.4.
 - ESLint is aligned to 9.39.5 with matching `eslint-config-next`.
 - Full and production dependency audits currently report zero vulnerabilities at the configured threshold.
+- Current Supabase security advisors report only the Auth-level leaked-password-protection warning; the earlier AI quota RPC/table warnings are cleared.
 
 ## Offline/PWA verification
 
@@ -230,10 +231,8 @@ The current legacy JSON backup/import path predates balance checkpoints and shou
 
 ### Requires release coordination
 
-- Apply the staged server-only AI quota migration together with the matching Groq route.
 - Verify deployment environment variables and live Supabase migrations before merging.
 - Complete a disposable-account authenticated manual walkthrough.
-- Review live Supabase security advisor results after coordinated migrations.
 - Enable Supabase leaked-password protection if available on the project plan and desired.
 
 ### Deferred
@@ -245,4 +244,4 @@ The current legacy JSON backup/import path predates balance checkpoints and shou
 
 ## Release boundary
 
-Do not merge this remediation branch into `main` or promote its Vercel preview to production until the remaining product decisions and coordinated live migrations are resolved and the owner explicitly approves release.
+Do not merge this remediation branch into `main` or promote its Vercel preview to production until the remaining product decisions and coordinated live checks are resolved and the owner explicitly approves release.
