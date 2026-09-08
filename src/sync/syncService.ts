@@ -10,6 +10,15 @@ import {
   type SyncBindingState,
 } from '@/sync/syncBinding';
 import type { SyncOutboxItem } from '@/types';
+import {
+  bindingMatchesLedgerVersion,
+  ensureCloudLedgerVersion,
+  type CloudLedgerVersion,
+} from '@/sync/ledgerVersion';
+import {
+  fetchActiveCloudCanonicalSnapshot,
+  replaceLocalWithRestoredCloudSnapshot,
+} from '@/sync/restoreSnapshot';
 
 export type SyncedDexieTableName = keyof Pick<
   TapTrackDatabase,
@@ -217,14 +226,57 @@ async function recordOperationFailure(
   });
 }
 
+async function adoptChangedLedgerGeneration(
+  access: NonNullable<Awaited<ReturnType<typeof requireLinkedSyncAccess>>>,
+  database: TapTrackDatabase,
+  remoteVersion?: CloudLedgerVersion
+): Promise<void> {
+  const version = remoteVersion ?? (await ensureCloudLedgerVersion(access.client, access.userId));
+  const snapshot = await fetchActiveCloudCanonicalSnapshot(access.client, access.userId);
+  await replaceLocalWithRestoredCloudSnapshot(snapshot, database);
+  await database.deviceMetadata.put({
+    ...access.binding,
+    cloudRevision: version.revision,
+    cloudGeneration: version.generation,
+  });
+}
+
+async function ensurePushLedgerVersion(
+  access: NonNullable<Awaited<ReturnType<typeof requireLinkedSyncAccess>>>,
+  database: TapTrackDatabase
+): Promise<CloudLedgerVersion | null> {
+  const remote = await ensureCloudLedgerVersion(access.client, access.userId);
+  const binding = access.binding;
+
+  if (binding.cloudRevision === undefined || !binding.cloudGeneration) {
+    if (remote.revision === 1) {
+      await database.deviceMetadata.put({
+        ...binding,
+        cloudRevision: remote.revision,
+        cloudGeneration: remote.generation,
+      });
+      return remote;
+    }
+
+    await adoptChangedLedgerGeneration(access, database, remote);
+    return null;
+  }
+
+  if (!bindingMatchesLedgerVersion(binding, remote)) {
+    await adoptChangedLedgerGeneration(access, database, remote);
+    return null;
+  }
+
+  return remote;
+}
+
 async function sendOutboxItem(
   item: SyncOutboxItem,
-  client: SupabaseClient,
-  userId: string,
+  access: NonNullable<Awaited<ReturnType<typeof requireLinkedSyncAccess>>>,
+  version: CloudLedgerVersion,
   database: TapTrackDatabase
 ): Promise<boolean> {
   if (!isCanonicalTableName(item.tableName)) {
-    // Old derived-cache operations are intentionally discarded during migration.
     await acknowledgeExactOperation(item, database);
     return true;
   }
@@ -232,33 +284,45 @@ async function sendOutboxItem(
   const remoteTable = DEXIE_TO_SUPABASE[item.tableName];
 
   try {
-    if (item.operation === 'upsert') {
-      if (!item.record) {
-        await recordOperationFailure(item, database);
-        return false;
-      }
+    const response = await fetch('/api/sync/operation', {
+      method: 'POST',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({
+        revision: version.revision,
+        generation: version.generation,
+        table: remoteTable,
+        operation: item.operation,
+        recordId: item.recordId,
+        record:
+          item.operation === 'upsert' && item.record
+            ? serializeForSupabase(item.record, access.userId)
+            : null,
+      }),
+    });
 
-      const { error } = await client
-        .from(remoteTable)
-        .upsert(serializeForSupabase(item.record, userId), { onConflict: 'user_id,id' });
-      if (error) {
-        await recordOperationFailure(item, database);
-        return false;
-      }
-    } else {
-      const { error } = await client
-        .from(remoteTable)
-        .update({ deleted_at: new Date().toISOString() })
-        .eq('user_id', userId)
-        .eq('id', item.recordId);
-      if (error) {
-        await recordOperationFailure(item, database);
-        return false;
-      }
+    if (response.status === 409) {
+      const body = (await response.json().catch(() => null)) as
+        | { revision?: number; generation?: string }
+        | null;
+      const remoteVersion =
+        body && Number.isInteger(body.revision) && typeof body.generation === 'string'
+          ? {
+              revision: body.revision as number,
+              generation: body.generation,
+              updatedAt: new Date().toISOString(),
+            }
+          : undefined;
+      await adoptChangedLedgerGeneration(access, database, remoteVersion);
+      return false;
+    }
+
+    if (!response.ok) {
+      await recordOperationFailure(item, database);
+      return false;
     }
 
     await acknowledgeExactOperation(item, database);
-    setStatusTimestamp(LAST_PUSH_PREFIX, userId);
+    setStatusTimestamp(LAST_PUSH_PREFIX, access.userId);
     return true;
   } catch {
     await recordOperationFailure(item, database);
@@ -279,7 +343,10 @@ export async function deliverQueuedOperationBestEffort(
   try {
     const access = await requireLinkedSyncAccess(database);
     if (!access) return;
-    await sendOutboxItem(item, access.client, access.userId, database);
+    const version = await ensurePushLedgerVersion(access, database);
+    if (!version) return;
+    if (!(await database.syncOutbox.get(item.id))) return;
+    await sendOutboxItem(item, access, version, database);
   } catch {
     // Leave the operation durable for a later retry cycle.
   }
@@ -324,10 +391,13 @@ export async function syncAllLocalData(database: TapTrackDatabase = db): Promise
 export async function processRetryQueue(database: TapTrackDatabase = db): Promise<void> {
   const access = await requireLinkedSyncAccess(database);
   if (!access) return;
+  const version = await ensurePushLedgerVersion(access, database);
+  if (!version) return;
 
   const items = await database.syncOutbox.orderBy('queuedAt').toArray();
   for (const item of items) {
-    await sendOutboxItem(item, access.client, access.userId, database);
+    const sent = await sendOutboxItem(item, access, version, database);
+    if (!sent && !(await database.syncOutbox.get(item.id))) break;
   }
 }
 

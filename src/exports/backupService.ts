@@ -29,7 +29,7 @@ const MAX_TITLE_LENGTH = 500;
 const MAX_NOTE_LENGTH = 5_000;
 const MAX_CATEGORY_NAME_LENGTH = 200;
 
-type BackupSource = 'v2' | 'legacy';
+export type BackupSource = 'v2' | 'legacy';
 type UnknownRow = Record<string, unknown>;
 
 type CanonicalBackupData = {
@@ -61,6 +61,19 @@ export type RestoreBackupOptions = {
   beforeReplace?: (safetyBackup: string) => void | Promise<void>;
   /** Test seam for deterministic legacy checkpoint creation and exportedAt. */
   now?: Date;
+};
+
+export type PreparedBackupRestore = {
+  source: BackupSource;
+  legacyMigrated: boolean;
+  safetyBackup: string;
+  restoredRecordCount: number;
+  backup: TapTrackBackupV2;
+};
+
+export type ApplyPreparedRestoreOptions = {
+  linkedMode?: 'reject' | 'detach-device' | 'preserve-binding';
+  cloudVersion?: { revision: number; generation: string };
 };
 
 export class BackupValidationError extends Error {
@@ -119,28 +132,62 @@ export async function createBackup(
   };
 }
 
-export async function restoreBackupJSON(
+export function normalizeBackupJSON(
   jsonData: string,
-  database: TapTrackDatabase = db,
-  options: RestoreBackupOptions = {}
-): Promise<RestoreBackupResult> {
+  now = new Date()
+): { source: BackupSource; backup: TapTrackBackupV2 } {
   if (new TextEncoder().encode(jsonData).byteLength > MAX_BACKUP_BYTES) {
     throw new BackupValidationError('Backup is too large to restore safely.');
   }
 
+  const normalized = parseAndValidateBackup(jsonData, now);
+  return {
+    source: normalized.source,
+    backup: {
+      format: TAPTRACK_BACKUP_FORMAT,
+      version: TAPTRACK_BACKUP_VERSION,
+      exportedAt: now.toISOString(),
+      ...normalized.data,
+    },
+  };
+}
+
+export async function prepareBackupRestoreJSON(
+  jsonData: string,
+  database: TapTrackDatabase = db,
+  now = new Date()
+): Promise<PreparedBackupRestore> {
+  const normalized = normalizeBackupJSON(jsonData, now);
+  const safetyBackup = await exportBackupJSON(database, now);
+  return {
+    source: normalized.source,
+    legacyMigrated: normalized.source === 'legacy',
+    safetyBackup,
+    restoredRecordCount: countCanonicalRecords(normalized.backup),
+    backup: normalized.backup,
+  };
+}
+
+export async function applyPreparedBackupRestore(
+  prepared: PreparedBackupRestore,
+  database: TapTrackDatabase = db,
+  options: ApplyPreparedRestoreOptions = {}
+): Promise<RestoreBackupResult> {
+  const linkedMode = options.linkedMode ?? 'reject';
   const binding = await database.deviceMetadata.get(DEVICE_LEDGER_BINDING_ID);
-  if (binding) {
+  if (binding && linkedMode === 'reject') {
     throw new Error(
-      'Restore is temporarily disabled for a cloud-linked ledger until device-only versus account-wide restore behavior is selected.'
+      'This ledger is linked to cloud sync. Choose whether to restore the synced account or only this device.'
     );
   }
+  if (linkedMode === 'preserve-binding' && !binding) {
+    throw new Error('Cloud-linked restore lost its device binding before local replacement.');
+  }
+  if (linkedMode === 'preserve-binding' && !options.cloudVersion) {
+    throw new Error('Cloud-linked restore is missing the restored ledger generation.');
+  }
 
-  const now = options.now ?? new Date();
-  const normalized = parseAndValidateBackup(jsonData, now);
-  const safetyBackup = await exportBackupJSON(database, now);
-
-  await options.beforeReplace?.(safetyBackup);
-
+  const data = prepared.backup;
   await database.transaction(
     'rw',
     [
@@ -154,6 +201,7 @@ export async function restoreBackupJSON(
       database.conversions,
       database.settings,
       database.syncOutbox,
+      database.deviceMetadata,
     ],
     async () => {
       await Promise.all([
@@ -169,41 +217,49 @@ export async function restoreBackupJSON(
         database.syncOutbox.clear(),
       ]);
 
-      if (normalized.data.transactions.length) {
-        await database.transactions.bulkPut(normalized.data.transactions);
+      if (data.transactions.length) await database.transactions.bulkPut(data.transactions);
+      if (data.balanceCheckpoints.length) {
+        await database.balanceCheckpoints.bulkPut(data.balanceCheckpoints);
       }
-      if (normalized.data.balanceCheckpoints.length) {
-        await database.balanceCheckpoints.bulkPut(normalized.data.balanceCheckpoints);
+      if (data.categories.length) await database.categories.bulkPut(data.categories);
+      if (data.monthlyBudgets.length) await database.monthlyBudgets.bulkPut(data.monthlyBudgets);
+      if (data.categoryBudgets.length) await database.categoryBudgets.bulkPut(data.categoryBudgets);
+      if (data.recurringTransactions.length) {
+        await database.recurringTransactions.bulkPut(data.recurringTransactions);
       }
-      if (normalized.data.categories.length) {
-        await database.categories.bulkPut(normalized.data.categories);
-      }
-      if (normalized.data.monthlyBudgets.length) {
-        await database.monthlyBudgets.bulkPut(normalized.data.monthlyBudgets);
-      }
-      if (normalized.data.categoryBudgets.length) {
-        await database.categoryBudgets.bulkPut(normalized.data.categoryBudgets);
-      }
-      if (normalized.data.recurringTransactions.length) {
-        await database.recurringTransactions.bulkPut(normalized.data.recurringTransactions);
-      }
-      if (normalized.data.conversions.length) {
-        await database.conversions.bulkPut(normalized.data.conversions);
-      }
-      if (normalized.data.settings.length) {
-        await database.settings.bulkPut(normalized.data.settings);
+      if (data.conversions.length) await database.conversions.bulkPut(data.conversions);
+      if (data.settings.length) await database.settings.bulkPut(data.settings);
+
+      if (linkedMode === 'detach-device') {
+        await database.deviceMetadata.delete(DEVICE_LEDGER_BINDING_ID);
+      } else if (linkedMode === 'preserve-binding' && binding && options.cloudVersion) {
+        await database.deviceMetadata.put({
+          ...binding,
+          cloudRevision: options.cloudVersion.revision,
+          cloudGeneration: options.cloudVersion.generation,
+        });
       }
 
-      await rebuildDerivedBalances(database, now.toISOString());
+      await rebuildDerivedBalances(database, new Date().toISOString());
     }
   );
 
   return {
-    source: normalized.source,
-    legacyMigrated: normalized.source === 'legacy',
-    safetyBackup,
-    restoredRecordCount: countCanonicalRecords(normalized.data),
+    source: prepared.source,
+    legacyMigrated: prepared.legacyMigrated,
+    safetyBackup: prepared.safetyBackup,
+    restoredRecordCount: prepared.restoredRecordCount,
   };
+}
+
+export async function restoreBackupJSON(
+  jsonData: string,
+  database: TapTrackDatabase = db,
+  options: RestoreBackupOptions = {}
+): Promise<RestoreBackupResult> {
+  const prepared = await prepareBackupRestoreJSON(jsonData, database, options.now ?? new Date());
+  await options.beforeReplace?.(prepared.safetyBackup);
+  return applyPreparedBackupRestore(prepared, database, { linkedMode: 'reject' });
 }
 
 function parseAndValidateBackup(

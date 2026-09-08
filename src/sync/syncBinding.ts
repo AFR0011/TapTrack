@@ -3,6 +3,7 @@
 import type { SupabaseClient } from '@supabase/supabase-js';
 import { db, type TapTrackDatabase } from '@/database';
 import { createSupabaseBrowserClient } from '@/lib/supabase';
+import { ensureCloudLedgerVersion } from '@/sync/ledgerVersion';
 import type { DeviceMetadata } from '@/types';
 
 export const DEVICE_LEDGER_BINDING_ID = 'ledger-binding';
@@ -80,11 +81,11 @@ export async function getSyncAccess(database: TapTrackDatabase = db): Promise<Sy
 
 export async function requireLinkedSyncAccess(
   database: TapTrackDatabase = db
-): Promise<{ client: SupabaseClient; userId: string } | null> {
+): Promise<{ client: SupabaseClient; userId: string; binding: DeviceMetadata } | null> {
   try {
     const access = await getSyncAccess(database);
-    if (access.state !== 'linked' || !access.client || !access.userId) return null;
-    return { client: access.client, userId: access.userId };
+    if (access.state !== 'linked' || !access.client || !access.userId || !access.binding) return null;
+    return { client: access.client, userId: access.userId, binding: access.binding };
   } catch {
     return null;
   }
@@ -247,10 +248,13 @@ export async function linkDeviceLedgerToCurrentUser(
     );
   }
 
+  const cloudVersion = await ensureCloudLedgerVersion(client, user.id);
   const binding: DeviceMetadata = {
     id: DEVICE_LEDGER_BINDING_ID,
     syncOwnerUserId: user.id,
     linkedAt: new Date().toISOString(),
+    cloudRevision: cloudVersion.revision,
+    cloudGeneration: cloudVersion.generation,
   };
 
   try {

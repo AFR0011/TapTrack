@@ -149,6 +149,9 @@ export interface DeviceMetadata {
   id: string;
   syncOwnerUserId: string;
   linkedAt: string;
+  /** Cloud account restore generation adopted by this browser. */
+  cloudRevision?: number;
+  cloudGeneration?: string;
 }
 
 export type SyncOutboxOperation = 'upsert' | 'delete';
