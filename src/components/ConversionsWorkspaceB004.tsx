@@ -1,7 +1,7 @@
 'use client';
 
 import { useEffect, useMemo, useState } from 'react';
-import { AnimatePresence, motion } from 'framer-motion';
+import { AnimatePresence, motion, useReducedMotion } from 'framer-motion';
 import { useLiveQuery } from 'dexie-react-hooks';
 import { toast } from 'sonner';
 import { AmbiguousLedgerOrderingError } from '@/balances/ledgerService';
@@ -40,6 +40,7 @@ type RateState = {
 type PendingOrdering = { draft: ConversionDraft; checkpointId: string };
 
 export default function ConversionsWorkspaceB004() {
+  const reduceMotion = useReducedMotion();
   const today = formatLocalDate(new Date());
   const { currencies, defaultCurrency, loading: currenciesLoading } = useActiveCurrencies();
   const [fromCurrencyOverride, setFromCurrencyOverride] = useState<Currency | null>(null);
@@ -143,14 +144,14 @@ export default function ConversionsWorkspaceB004() {
       if (err instanceof AmbiguousLedgerOrderingError) {
         setPendingOrdering({ draft, checkpointId: err.checkpointId });
         setError(
-          'This transfer or exchange shares a date with a balance reconciliation. Choose when it happened.'
+          'This transfer or exchange is on the same date as a balance check. Choose whether it happened before or after that balance was recorded.'
         );
       } else {
         setPendingOrdering(null);
         setError(
           err instanceof InsufficientConversionBalanceError || err instanceof InvalidConversionError
             ? err.message
-            : 'Could not save. Please try again.'
+            : 'This transfer or exchange could not be saved. Check the details and try again.'
         );
       }
     } finally {
@@ -163,7 +164,7 @@ export default function ConversionsWorkspaceB004() {
     setError('');
     setPendingOrdering(null);
     if (fromAmount <= 0) {
-      setError('Enter a valid source amount.');
+      setError('Enter an amount greater than zero.');
       return;
     }
     if (opKind === 'exchange' && rateLoading) {
@@ -171,15 +172,15 @@ export default function ConversionsWorkspaceB004() {
       return;
     }
     if (opKind === 'exchange' && !exchangeRate) {
-      setError(rateError || 'A published exchange rate is required before saving.');
+      setError(rateError || 'No exchange rate is available for this date yet.');
       return;
     }
     if (toAmount <= 0) {
-      setError('The calculated destination amount is not valid.');
+      setError('The destination amount could not be calculated. Check the amount and currencies.');
       return;
     }
     if (opKind === 'transfer' && fromMethod === toMethod) {
-      setError('Choose different payment methods for a same-currency transfer.');
+      setError('Choose a different destination method for this transfer.');
       return;
     }
 
@@ -199,7 +200,7 @@ export default function ConversionsWorkspaceB004() {
     if (!pendingOrdering) return;
     const checkpoint = await db.balanceCheckpoints.get(pendingOrdering.checkpointId);
     if (!checkpoint) {
-      setError('The reconciliation checkpoint could not be found.');
+      setError('That balance check could not be found. Return to Balances and try again.');
       setPendingOrdering(null);
       return;
     }
@@ -212,7 +213,7 @@ export default function ConversionsWorkspaceB004() {
   if (isLoading) {
     return (
       <div className="space-y-5" aria-busy="true" aria-label="Loading transfers and exchanges">
-        <PageHeader title="Transfers & exchanges" description="Move money or exchange currency." />
+        <PageHeader title="Transfers & exchanges" description="Move money between methods or currencies." />
         <div className="grid gap-4 lg:grid-cols-2">
           <SkeletonCard />
           <SkeletonCard />
@@ -224,7 +225,7 @@ export default function ConversionsWorkspaceB004() {
 
   return (
     <div className="space-y-5">
-      <PageHeader title="Transfers & exchanges" description="Move money or exchange currency." />
+      <PageHeader title="Transfers & exchanges" description="Move money between methods or currencies." />
 
       <section className="grid gap-4 lg:grid-cols-2">
         <Card className="min-w-0" padding="sm">
@@ -290,6 +291,8 @@ export default function ConversionsWorkspaceB004() {
                   value={calculatedToAmountRaw}
                   placeholder={rateLoading ? 'Loading rate…' : '0.00'}
                   readOnly
+                  aria-readonly="true"
+                  className="bg-surface-muted text-secondary"
                   disabled={saving}
                 />
                 <SelectField
@@ -317,7 +320,7 @@ export default function ConversionsWorkspaceB004() {
                 <ExchangeRateStatus rate={exchangeRate} loading={rateLoading} error={rateError} />
               ) : (
                 <p className="text-xs font-medium text-muted">
-                  Same-currency transfers move the exact amount 1:1.
+                  The same amount moves from one payment method to the other.
                 </p>
               )}
             </fieldset>
@@ -350,9 +353,10 @@ export default function ConversionsWorkspaceB004() {
             <AnimatePresence>
               {error ? (
                 <motion.div
-                  initial={{ opacity: 0, y: -4 }}
+                  initial={reduceMotion ? false : { opacity: 0, y: -4 }}
                   animate={{ opacity: 1, y: 0 }}
-                  exit={{ opacity: 0 }}
+                  exit={reduceMotion ? undefined : { opacity: 0 }}
+                  transition={reduceMotion ? { duration: 0 } : undefined}
                   role="alert"
                   className="rounded-lg border border-danger bg-danger-muted px-3 py-2 text-sm font-medium text-danger"
                 >
@@ -365,7 +369,7 @@ export default function ConversionsWorkspaceB004() {
                         onClick={() => void resolveOrdering('before')}
                         disabled={saving}
                       >
-                        Before reconciliation
+                        Before balance check
                       </Button>
                       <Button
                         type="button"
@@ -373,7 +377,7 @@ export default function ConversionsWorkspaceB004() {
                         onClick={() => void resolveOrdering('after')}
                         disabled={saving}
                       >
-                        After reconciliation
+                        After balance check
                       </Button>
                     </div>
                   ) : null}
@@ -397,25 +401,33 @@ export default function ConversionsWorkspaceB004() {
         <Card className="min-w-0" padding="sm">
           <CardHeader title="Current balances" />
           <div className="mt-4 grid gap-2 sm:grid-cols-2">
-            {(balances ?? []).map((balance) => (
-              <div
-                key={balance.id}
-                className={`rounded-xl px-3 py-2.5 ${
-                  balance.id === fromBalanceId
-                    ? 'border-2 border-accent bg-accent-muted'
-                    : balance.id === toBalanceId
-                      ? 'border-2 border-success bg-success-muted'
-                      : 'border border-subtle bg-surface-muted'
-                }`}
-              >
-                <p className="text-xs font-medium text-muted">
-                  {balance.currency} {balance.method}
-                </p>
-                <p className="mt-1 text-sm font-bold text-primary">
-                  {formatMoney(balance.amount, balance.currency)}
-                </p>
-              </div>
-            ))}
+            {(balances ?? []).map((balance) => {
+              const isSource = balance.id === fromBalanceId;
+              const isDestination = balance.id === toBalanceId;
+              return (
+                <div
+                  key={balance.id}
+                  className={`rounded-xl px-3 py-2.5 ${
+                    isSource
+                      ? 'border-2 border-accent bg-accent-muted'
+                      : isDestination
+                        ? 'border-2 border-success bg-success-muted'
+                        : 'border border-subtle bg-surface-muted'
+                  }`}
+                >
+                  <div className="flex items-center justify-between gap-2">
+                    <p className="text-xs font-medium text-muted">
+                      {balance.currency} {balance.method}
+                    </p>
+                    {isSource ? <span className="rounded-full bg-surface px-2 py-0.5 text-[11px] font-semibold text-accent">From</span> : null}
+                    {isDestination ? <span className="rounded-full bg-surface px-2 py-0.5 text-[11px] font-semibold text-success">To</span> : null}
+                  </div>
+                  <p className="mt-1 text-sm font-bold text-primary">
+                    {formatMoney(balance.amount, balance.currency)}
+                  </p>
+                </div>
+              );
+            })}
           </div>
         </Card>
       </section>
@@ -426,7 +438,7 @@ export default function ConversionsWorkspaceB004() {
         </div>
         <div className="divide-y divide-subtle">
           {(conversions ?? []).length === 0 ? (
-            <p className="p-6 text-center text-sm font-medium text-muted">No records yet.</p>
+            <p className="p-6 text-center text-sm font-medium text-muted">No transfers or exchanges yet.</p>
           ) : (
             (conversions ?? []).map((conversion) => (
               <div
@@ -474,15 +486,15 @@ function ExchangeRateStatus({
 }) {
   if (loading) {
     return (
-      <p className="text-xs font-medium text-muted">Loading the published rate for this date…</p>
+      <p className="text-xs font-medium text-muted">Loading the exchange rate for this date…</p>
     );
   }
   if (error) return <p className="text-xs font-medium text-danger">{error}</p>;
   if (!rate) return null;
   return (
     <p className="text-xs font-medium text-ai">
-      1 {rate.base} = {rate.rate.toFixed(6)} {rate.quote} · {rate.source}
-      {rate.dateUsed !== rate.dateRequested ? ` · using ${rate.dateUsed}` : ` · ${rate.dateUsed}`}
+      Rate: 1 {rate.base} = {rate.rate.toFixed(6)} {rate.quote} · {rate.source} · {rate.dateUsed}
+      {rate.dateUsed !== rate.dateRequested ? ` (nearest earlier available date)` : ''}
     </p>
   );
 }
