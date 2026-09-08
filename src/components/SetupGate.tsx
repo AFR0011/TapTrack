@@ -4,7 +4,7 @@ import { useLiveQuery } from 'dexie-react-hooks';
 import type { ReactNode } from 'react';
 import { db } from '@/database';
 import { DEFAULT_SETTINGS_ID } from '@/defaultData';
-import SetupForm from './SetupForm';
+import OnboardingFlow from './OnboardingFlow';
 
 export default function SetupGate({ children }: { children: ReactNode }) {
   const settings = useLiveQuery(() => db.settings.get(DEFAULT_SETTINGS_ID), []);
@@ -18,7 +18,7 @@ export default function SetupGate({ children }: { children: ReactNode }) {
   }
 
   if (!settings.setupCompleted) {
-    return <SetupForm />;
+    return <OnboardingFlow />;
   }
 
   return <>{children}</>;
