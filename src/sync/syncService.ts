@@ -435,10 +435,20 @@ export async function pullUpdates(database: TapTrackDatabase = db): Promise<void
   const access = await requireLinkedSyncAccess(database);
   if (!access) return;
 
+  // Establish the generation this pull belongs to before reading any canonical
+  // table. This also stamps legacy revision-1 bindings or adopts an already
+  // changed generation before a partial read can be applied locally.
+  const startVersion = await ensurePushLedgerVersion(access, database);
+  if (!startVersion) return;
+
   const pending = new Set(
     (await database.syncOutbox.toArray()).map((item) => getOutboxId(item.tableName, item.recordId))
   );
+  const pulled = new Map<SyncedDexieTableName, SupabaseRow[]>();
 
+  // Fetch every table before mutating IndexedDB. If an account restore commits
+  // during these sequential reads, the post-read generation check below rejects
+  // the mixed snapshot and adopts one fresh canonical cloud snapshot instead.
   for (const tableName of CANONICAL_TABLE_NAMES) {
     const remoteTable = DEXIE_TO_SUPABASE[tableName];
     const { data, error } = await access.client
@@ -452,9 +462,19 @@ export async function pullUpdates(database: TapTrackDatabase = db): Promise<void
     if (!Array.isArray(data)) {
       throw new Error(`Cloud pull returned an invalid response for ${remoteTable}.`);
     }
+    pulled.set(tableName, data as SupabaseRow[]);
+  }
 
+  const afterReadVersion = await ensureCloudLedgerVersion(access.client, access.userId);
+  if (!sameLedgerVersion(startVersion, afterReadVersion)) {
+    await adoptChangedLedgerGeneration(access, database, afterReadVersion);
+    setStatusTimestamp(LAST_SYNC_PREFIX, access.userId);
+    return;
+  }
+
+  for (const tableName of CANONICAL_TABLE_NAMES) {
     const localTable = getDexieTable(database, tableName);
-    for (const raw of data as SupabaseRow[]) {
+    for (const raw of pulled.get(tableName) ?? []) {
       if (typeof raw.id !== 'string' || raw.id.length === 0) continue;
       if (pending.has(getOutboxId(tableName, raw.id))) continue;
 
@@ -466,8 +486,22 @@ export async function pullUpdates(database: TapTrackDatabase = db): Promise<void
     }
   }
 
+  // A restore can still win the tiny interval between the post-read check and
+  // local application. Detect that before rebuilding balances or reporting a
+  // completed pull; adoption replaces the just-applied stale snapshot.
+  const afterApplyVersion = await ensureCloudLedgerVersion(access.client, access.userId);
+  if (!sameLedgerVersion(startVersion, afterApplyVersion)) {
+    await adoptChangedLedgerGeneration(access, database, afterApplyVersion);
+    setStatusTimestamp(LAST_SYNC_PREFIX, access.userId);
+    return;
+  }
+
   await rebuildDerivedBalances(database);
   setStatusTimestamp(LAST_SYNC_PREFIX, access.userId);
+}
+
+function sameLedgerVersion(a: CloudLedgerVersion, b: CloudLedgerVersion): boolean {
+  return a.revision === b.revision && a.generation === b.generation;
 }
 
 /** A normal cycle sends durable local changes first, then adopts canonical server state. */

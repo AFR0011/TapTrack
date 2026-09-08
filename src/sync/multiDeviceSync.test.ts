@@ -47,6 +47,8 @@ function createSharedRemoteClient() {
   let revision = 1;
   let generation = INITIAL_GENERATION;
   let rotateBeforeNextOperation = false;
+  let restoreAfterReadTable: string | null = null;
+  let restoreAfterRead: (() => void) | null = null;
 
   const getTable = (tableName: string) => {
     let table = tables.get(tableName);
@@ -86,12 +88,19 @@ function createSharedRemoteClient() {
 
       return {
         select: vi.fn(() =>
-          createFilteredChain(async (filters) => ({
-            data: [...getTable(tableName).values()]
+          createFilteredChain(async (filters) => {
+            const data = [...getTable(tableName).values()]
               .filter((row) => matches(row, filters))
-              .map((row) => ({ ...row })),
-            error: null,
-          }))
+              .map((row) => ({ ...row }));
+            if (restoreAfterReadTable === tableName) {
+              restoreAfterReadTable = null;
+              rotateGeneration();
+              const applyRestore = restoreAfterRead;
+              restoreAfterRead = null;
+              applyRestore?.();
+            }
+            return { data, error: null };
+          })
         ),
       };
     }),
@@ -149,6 +158,18 @@ function createSharedRemoteClient() {
     rotateGeneration,
     rotateBeforeOperation() {
       rotateBeforeNextOperation = true;
+    },
+    restoreAfterReading(tableName: string, applyRestore: () => void) {
+      restoreAfterReadTable = tableName;
+      restoreAfterRead = applyRestore;
+    },
+    put(tableName: string, id: string, row: RemoteRow, userId = 'user-1') {
+      getTable(tableName).set(`${userId}:${id}`, {
+        ...(getTable(tableName).get(`${userId}:${id}`) ?? {}),
+        ...row,
+        user_id: userId,
+        id,
+      });
     },
     getVersion() {
       return { revision, generation };
@@ -422,6 +443,45 @@ describe('two-device canonical ledger convergence', () => {
     await expect(deviceA.deviceMetadata.get('ledger-binding')).resolves.toMatchObject({
       cloudRevision: racedVersion.revision,
       cloudGeneration: racedVersion.generation,
+    });
+  });
+
+  it('rejects a mixed canonical pull when an account restore commits between table reads', async () => {
+    const original: Transaction = {
+      id: 'tx-mid-pull-restore',
+      type: 'expense',
+      amount: 20,
+      currency: 'TRY',
+      title: 'Before account restore',
+      categoryId: 'cat-food',
+      method: 'card',
+      date: '2026-09-08',
+      occurredAt: '2026-09-08T06:10:00.000Z',
+      createdAt: '2026-09-08T06:10:00.000Z',
+      updatedAt: '2026-09-08T06:10:00.000Z',
+    };
+
+    await deviceA.transactions.put(original);
+    await pushRecord('transactions', original as unknown as RemoteRow, deviceA);
+    await pullUpdates(deviceB);
+    expect((await deviceB.transactions.get(original.id))?.title).toBe('Before account restore');
+
+    remote.restoreAfterReading('transactions', () => {
+      remote.put('transactions', original.id, {
+        ...remote.read('transactions', original.id),
+        title: 'Restored canonical title',
+        updated_at: '2026-09-08T06:30:00.000Z',
+        deleted_at: null,
+      });
+    });
+
+    await pullUpdates(deviceB);
+
+    expect((await deviceB.transactions.get(original.id))?.title).toBe('Restored canonical title');
+    const version = remote.getVersion();
+    await expect(deviceB.deviceMetadata.get('ledger-binding')).resolves.toMatchObject({
+      cloudRevision: version.revision,
+      cloudGeneration: version.generation,
     });
   });
 });
