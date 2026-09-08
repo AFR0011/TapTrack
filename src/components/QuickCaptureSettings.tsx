@@ -1,0 +1,282 @@
+'use client';
+
+import { useEffect, useMemo, useState } from 'react';
+import { toast } from 'sonner';
+import { Button } from '@/components/ui/Button';
+import { Field } from '@/components/ui/Field';
+
+type CaptureTokenMetadata = {
+  id: string;
+  label: string;
+  created_at: string;
+  last_used_at: string | null;
+  revoked_at: string | null;
+};
+
+export function QuickCaptureSettings({ signedIn }: { signedIn: boolean }) {
+  const [tokens, setTokens] = useState<CaptureTokenMetadata[]>([]);
+  const [loading, setLoading] = useState(false);
+  const [creating, setCreating] = useState(false);
+  const [label, setLabel] = useState('My iPhone');
+  const [setupToken, setSetupToken] = useState<string | null>(null);
+  const [setupOpen, setSetupOpen] = useState(false);
+  const activeTokens = useMemo(() => tokens.filter((token) => !token.revoked_at), [tokens]);
+
+  const refresh = async () => {
+    if (!signedIn) return;
+    setLoading(true);
+    try {
+      const response = await fetch('/api/capture-tokens');
+      const body = (await response.json()) as { tokens?: CaptureTokenMetadata[]; error?: string };
+      if (!response.ok) throw new Error(body.error ?? 'Quick Capture devices could not be loaded.');
+      setTokens(body.tokens ?? []);
+    } catch (error) {
+      toast.error(error instanceof Error ? error.message : 'Quick Capture devices could not be loaded.');
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  useEffect(() => {
+    if (!signedIn) return;
+    void refresh();
+    // Account identity is managed by the parent Settings screen. A sign-in/out
+    // transition remounts this fetch contract through the boolean prop.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [signedIn]);
+
+  const createDevice = async () => {
+    setCreating(true);
+    try {
+      const response = await fetch('/api/capture-tokens', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ label: label.trim() || 'My iPhone' }),
+      });
+      const body = (await response.json()) as {
+        token?: string;
+        device?: CaptureTokenMetadata;
+        error?: string;
+      };
+      if (!response.ok || !body.token || !body.device) {
+        throw new Error(body.error ?? 'Quick Capture key could not be created.');
+      }
+      setSetupToken(body.token);
+      setSetupOpen(true);
+      setTokens((current) => [body.device!, ...current]);
+      toast.success('Quick Capture key created.');
+    } catch (error) {
+      toast.error(error instanceof Error ? error.message : 'Quick Capture key could not be created.');
+    } finally {
+      setCreating(false);
+    }
+  };
+
+  const revoke = async (id: string) => {
+    try {
+      const response = await fetch('/api/capture-tokens', {
+        method: 'DELETE',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ id }),
+      });
+      const body = (await response.json()) as { error?: string };
+      if (!response.ok) throw new Error(body.error ?? 'Quick Capture device could not be revoked.');
+      setTokens((current) =>
+        current.map((token) =>
+          token.id === id ? { ...token, revoked_at: new Date().toISOString() } : token
+        )
+      );
+      toast.success('Quick Capture device revoked.');
+    } catch (error) {
+      toast.error(error instanceof Error ? error.message : 'Quick Capture device could not be revoked.');
+    }
+  };
+
+  if (!signedIn) {
+    return (
+      <section className="rounded-2xl border border-subtle bg-surface p-5">
+        <div className="flex items-center gap-3">
+          <QuickCaptureIcon />
+          <div>
+            <h2 className="text-base font-semibold text-primary">Quick Capture</h2>
+            <p className="mt-0.5 text-sm text-muted">Sign in to add transactions from iPhone Shortcuts.</p>
+          </div>
+        </div>
+      </section>
+    );
+  }
+
+  return (
+    <>
+      <section className="rounded-2xl border border-subtle bg-surface p-5">
+        <div className="flex flex-col gap-4 sm:flex-row sm:items-start sm:justify-between">
+          <div className="flex items-start gap-3">
+            <QuickCaptureIcon />
+            <div>
+              <h2 className="text-base font-semibold text-primary">Quick Capture</h2>
+              <p className="mt-1 text-sm text-muted">Expense or income from Siri, the Action Button, or your Home Screen.</p>
+            </div>
+          </div>
+          <span className="w-fit rounded-full border border-subtle bg-surface-muted px-2.5 py-1 text-xs font-semibold text-secondary">
+            {activeTokens.length > 0 ? `${activeTokens.length} connected` : 'Not set up'}
+          </span>
+        </div>
+
+        <div className="mt-5 grid gap-3 sm:grid-cols-[1fr_auto] sm:items-end">
+          <Field
+            label="Device name"
+            value={label}
+            onChange={(event) => setLabel(event.target.value)}
+            placeholder="My iPhone"
+            maxLength={80}
+          />
+          <Button type="button" onClick={() => void createDevice()} loading={creating} disabled={creating}>
+            Set up iPhone
+          </Button>
+        </div>
+
+        {loading ? (
+          <div className="mt-4 h-14 animate-pulse rounded-xl bg-surface-muted" aria-hidden="true" />
+        ) : activeTokens.length > 0 ? (
+          <div className="mt-5 divide-y divide-subtle overflow-hidden rounded-xl border border-subtle">
+            {activeTokens.map((token) => (
+              <div key={token.id} className="flex items-center justify-between gap-3 bg-surface-muted px-3 py-3">
+                <div className="min-w-0">
+                  <p className="truncate text-sm font-semibold text-primary">{token.label}</p>
+                  <p className="mt-0.5 text-xs font-medium text-muted">
+                    {token.last_used_at ? `Last used ${formatWhen(token.last_used_at)}` : 'Ready to connect'}
+                  </p>
+                </div>
+                <Button type="button" variant="dangerGhost" size="sm" onClick={() => void revoke(token.id)}>
+                  Revoke
+                </Button>
+              </div>
+            ))}
+          </div>
+        ) : null}
+      </section>
+
+      {setupOpen && setupToken ? (
+        <ShortcutSetupSheet
+          token={setupToken}
+          onClose={() => {
+            setSetupOpen(false);
+            setSetupToken(null);
+          }}
+        />
+      ) : null}
+    </>
+  );
+}
+
+function ShortcutSetupSheet({ token, onClose }: { token: string; onClose: () => void }) {
+  const [copied, setCopied] = useState(false);
+  const endpoint = typeof window === 'undefined' ? '/api/capture' : `${window.location.origin}/api/capture`;
+
+  const copyToken = async () => {
+    await navigator.clipboard.writeText(token);
+    setCopied(true);
+    toast.success('Quick Capture key copied.');
+  };
+
+  return (
+    <div className="fixed inset-0 z-[70] flex items-end justify-center bg-[var(--overlay)] p-0 sm:items-center sm:p-4" role="presentation">
+      <div
+        role="dialog"
+        aria-modal="true"
+        aria-labelledby="shortcut-setup-title"
+        className="max-h-[92vh] w-full overflow-y-auto rounded-t-3xl border border-subtle bg-surface p-5 shadow-[var(--shadow-overlay)] sm:max-w-lg sm:rounded-3xl sm:p-6"
+      >
+        <div className="mx-auto mb-4 h-1.5 w-12 rounded-full bg-surface-raised sm:hidden" />
+        <div className="flex items-start justify-between gap-4">
+          <div>
+            <p className="text-sm font-semibold text-accent">iPhone Shortcut</p>
+            <h2 id="shortcut-setup-title" className="mt-1 text-2xl font-semibold tracking-tight text-primary">Add TapTrack in a few taps.</h2>
+          </div>
+          <button type="button" aria-label="Close" onClick={onClose} className="grid h-11 w-11 shrink-0 place-items-center rounded-full bg-surface-muted text-xl text-secondary">×</button>
+        </div>
+
+        <div className="mt-6 space-y-4">
+          <SetupStep number="1" title="Copy your private key">
+            <p className="text-sm text-muted">It is shown only during this setup.</p>
+            <Button type="button" variant="secondary" className="mt-3" onClick={() => void copyToken()}>
+              {copied ? 'Copied ✓' : 'Copy key'}
+            </Button>
+          </SetupStep>
+
+          <SetupStep number="2" title="Create “TapTrack Expense” in Shortcuts">
+            <ol className="list-decimal space-y-1.5 pl-5 text-sm text-muted">
+              <li>Add <strong className="text-secondary">Ask for Input</strong> → Number → “Amount”.</li>
+              <li>Add <strong className="text-secondary">Ask for Input</strong> → Text → “What was it?”.</li>
+              <li>Add <strong className="text-secondary">Generate UUID</strong>.</li>
+              <li>Add <strong className="text-secondary">Get Contents of URL</strong>.</li>
+            </ol>
+            <a href="shortcuts://" className="mt-3 inline-flex min-h-11 items-center text-sm font-semibold text-accent hover:underline">Open Shortcuts</a>
+          </SetupStep>
+
+          <SetupStep number="3" title="Configure the request">
+            <div className="space-y-2 rounded-xl bg-surface-muted p-3 text-xs font-medium text-secondary">
+              <CopyRow label="URL" value={endpoint} />
+              <CopyRow label="Method" value="POST" />
+              <CopyRow label="Header" value="Authorization: Bearer [your copied key]" />
+              <CopyRow label="Header" value="Content-Type: application/json" />
+            </div>
+            <p className="mt-3 text-sm text-muted">Use a JSON request body with the generated UUID, Amount, and title:</p>
+            <pre className="mt-2 overflow-x-auto rounded-xl bg-surface-muted p-3 text-xs text-secondary">{`{
+  "requestId": "[UUID]",
+  "type": "expense",
+  "amount": [Amount],
+  "title": "[What was it?]",
+  "date": "[Current Date as yyyy-MM-dd]"
+}`}</pre>
+          </SetupStep>
+
+          <SetupStep number="4" title="Put it where you need it">
+            <p className="text-sm text-muted">Add the Shortcut to Siri, your Home Screen, or assign it to the Action Button.</p>
+          </SetupStep>
+        </div>
+
+        <Button type="button" fullWidth className="mt-6" onClick={onClose}>Done</Button>
+      </div>
+    </div>
+  );
+}
+
+function SetupStep({ number, title, children }: { number: string; title: string; children: React.ReactNode }) {
+  return (
+    <div className="rounded-2xl border border-subtle p-4">
+      <div className="flex gap-3">
+        <span className="grid h-7 w-7 shrink-0 place-items-center rounded-full bg-accent text-xs font-bold text-white">{number}</span>
+        <div className="min-w-0 flex-1">
+          <h3 className="text-sm font-semibold text-primary">{title}</h3>
+          <div className="mt-2">{children}</div>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+function CopyRow({ label, value }: { label: string; value: string }) {
+  return (
+    <div className="grid gap-0.5">
+      <span className="text-[10px] font-bold uppercase tracking-wide text-muted">{label}</span>
+      <span className="break-all">{value}</span>
+    </div>
+  );
+}
+
+function QuickCaptureIcon() {
+  return (
+    <div className="grid h-11 w-11 shrink-0 place-items-center rounded-xl bg-accent-muted text-accent">
+      <svg className="h-5 w-5" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" aria-hidden="true">
+        <path d="M13 2L4.5 13H11l-1 9L19.5 11H13l0-9z" strokeLinejoin="round" />
+      </svg>
+    </div>
+  );
+}
+
+function formatWhen(value: string): string {
+  const date = new Date(value);
+  if (Number.isNaN(date.getTime())) return 'recently';
+  return new Intl.DateTimeFormat(undefined, { dateStyle: 'medium', timeStyle: 'short' }).format(date);
+}
