@@ -1,9 +1,7 @@
 import { type NextRequest, NextResponse } from 'next/server';
-import { findCategoryForTransaction } from '@/defaultData';
 import { createSupabaseAdminClient } from '@/lib/supabase-admin';
-import { consumeAICategorizationQuota } from '@/server/categories/aiQuota';
-import { categorizeWithAI } from '@/server/categories/categorizeWithAI';
 import { hashCaptureToken, isCaptureToken } from '@/server/capture/captureTokens';
+import { suggestServerCategory } from '@/server/categories/suggestServerCategory';
 import type { Category, Currency, Method, TransactionType } from '@/types';
 
 const UUID_PATTERN = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{12}$/i;
@@ -110,31 +108,16 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
     createdAt: String(category.created_at),
     updatedAt: String(category.updated_at),
   }));
-  const typedCategories = categories.filter((category) => category.type === parsed.type);
-  const localCategory = findCategoryForTransaction(categories, parsed.type, parsed.title) ?? typedCategories[0];
-  if (!localCategory) {
-    return NextResponse.json({ error: 'No matching TapTrack category is available.' }, { status: 409 });
-  }
 
-  let categoryId = localCategory.id;
-  let categorySource: 'local' | 'ai' = 'local';
-  if (settings.ai_categorization_enabled && process.env.GROQ_API_KEY) {
-    const quota = await consumeAICategorizationQuota(String(tokenRow.user_id));
-    if (quota === 'allowed') {
-      const ai = await categorizeWithAI({
-        title: parsed.title,
-        transactionType: parsed.type,
-        categories: typedCategories.map((category) => ({
-          id: category.id,
-          name: category.name,
-          type: category.type,
-        })),
-      });
-      if (ai.categoryId && typedCategories.some((category) => category.id === ai.categoryId)) {
-        categoryId = ai.categoryId;
-        categorySource = 'ai';
-      }
-    }
+  const category = await suggestServerCategory({
+    userId: String(tokenRow.user_id),
+    title: parsed.title,
+    type: parsed.type,
+    categories,
+    aiEnabled: Boolean(settings.ai_categorization_enabled),
+  });
+  if (!category) {
+    return NextResponse.json({ error: 'No matching TapTrack category is available.' }, { status: 409 });
   }
 
   const method: Method = parsed.method ?? (settings.last_used_method === 'cash' ? 'cash' : 'card');
@@ -149,8 +132,8 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
       amount: parsed.amount,
       currency,
       title: parsed.title,
-      category_id: categoryId,
-      category_source: categorySource,
+      category_id: category.categoryId,
+      category_source: category.source,
       method,
       note: parsed.note ?? null,
     },
