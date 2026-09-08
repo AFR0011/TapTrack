@@ -1,0 +1,58 @@
+name: Apply PDF FX view
+
+on:
+  push:
+    branches:
+      - remediation/taptrack-correctness-b002
+    paths:
+      - .github/workflows/apply-pdf-fx-view.yml
+
+permissions:
+  contents: write
+
+jobs:
+  patch:
+    if: github.actor != 'github-actions[bot]'
+    runs-on: ubuntu-latest
+    steps:
+      - name: Check out remediation branch
+        uses: actions/checkout@v7
+        with:
+          ref: remediation/taptrack-correctness-b002
+          fetch-depth: 0
+
+      - name: Apply PDF FX view patch
+        shell: python
+        run: |
+          from pathlib import Path
+
+          path = Path('src/components/ReportsWorkspace.tsx')
+          text = path.read_text()
+          old = """    const options: ReportExportOptions =
+      reportMode === 'month'
+        ? { mode: 'month', month }
+        : reportMode === 'year'
+          ? { mode: 'year', year }
+          : { mode: 'range', startDate: rangeStart, endDate: rangeEnd };
+"""
+          new = """    const fxExportOptions = unifyToTRY
+      ? { convertToTRY: true as const, historicalRates }
+      : { convertToTRY: false as const };
+    const options: ReportExportOptions =
+      reportMode === 'month'
+        ? { mode: 'month', month, ...fxExportOptions }
+        : reportMode === 'year'
+          ? { mode: 'year', year, ...fxExportOptions }
+          : { mode: 'range', startDate: rangeStart, endDate: rangeEnd, ...fxExportOptions };
+"""
+          if text.count(old) != 1:
+              raise SystemExit(f'Expected one export options block, found {text.count(old)}')
+          path.write_text(text.replace(old, new))
+
+      - name: Commit PDF FX view patch
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add src/components/ReportsWorkspace.tsx
+          git commit -m "Make PDF export follow report FX view"
+          git push origin HEAD:remediation/taptrack-correctness-b002
