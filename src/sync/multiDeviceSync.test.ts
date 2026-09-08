@@ -376,9 +376,11 @@ describe('two-device canonical ledger convergence', () => {
     expect(await deviceB.syncOutbox.get('transactions:tx-generation')).toBeUndefined();
     expect((await deviceB.transactions.get('tx-generation'))?.title).toBe('Cloud canonical title');
     expect(remote.read('transactions', 'tx-generation')?.title).toBe('Cloud canonical title');
-    await expect(deviceB.deviceMetadata.get('ledger-binding')).resolves.toMatchObject(
-      remote.getVersion()
-    );
+    const restoredVersion = remote.getVersion();
+    await expect(deviceB.deviceMetadata.get('ledger-binding')).resolves.toMatchObject({
+      cloudRevision: restoredVersion.revision,
+      cloudGeneration: restoredVersion.generation,
+    });
   });
 
   it('rejects a stale write when generation rotates after precheck but before the protected server operation', async () => {
@@ -416,8 +418,10 @@ describe('two-device canonical ledger convergence', () => {
     expect(await deviceA.syncOutbox.get('transactions:tx-generation-race')).toBeUndefined();
     expect((await deviceA.transactions.get('tx-generation-race'))?.title).toBe('Cloud before race');
     expect(remote.read('transactions', 'tx-generation-race')?.title).toBe('Cloud before race');
-    await expect(deviceA.deviceMetadata.get('ledger-binding')).resolves.toMatchObject(
-      remote.getVersion()
-    );
+    const racedVersion = remote.getVersion();
+    await expect(deviceA.deviceMetadata.get('ledger-binding')).resolves.toMatchObject({
+      cloudRevision: racedVersion.revision,
+      cloudGeneration: racedVersion.generation,
+    });
   });
 });
