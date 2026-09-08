@@ -1,5 +1,7 @@
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 import { TapTrackDatabase, ensureDatabaseSeeded } from '@/database';
+import { EXCHANGE_RATE_SOURCE } from '@/exchangeRates';
+import { getHistoricalReportRateKey, type HistoricalReportRateMap } from '@/reports/historicalReportRates';
 import { createTransaction } from '@/transactions/createTransaction';
 import { seedOpeningBalance } from '@/test/ledgerTestUtils';
 import { exportCSV, exportJSON, exportPDF, importJSON } from './exportService';
@@ -77,6 +79,94 @@ describe('exportService', () => {
     expect(text).toContain('Food');
   });
 
+  it('makes PDF totals follow the historical TRY report view', async () => {
+    await seedOpeningBalance(database, 'TRY-cash', 500);
+    await seedOpeningBalance(database, 'USD-card', 100);
+    await createTransaction(expense, database);
+    await createTransaction(
+      {
+        type: 'expense',
+        amount: 2,
+        currency: 'USD',
+        title: 'usd lunch',
+        categoryId: 'cat-food',
+        method: 'card',
+        date: '2026-05-05',
+      },
+      database
+    );
+    await createTransaction(
+      {
+        type: 'income',
+        amount: 1,
+        currency: 'EUR',
+        title: 'euro refund',
+        categoryId: 'cat-income',
+        method: 'cash',
+        date: '2026-05-06',
+      },
+      database
+    );
+
+    const historicalRates: HistoricalReportRateMap = {
+      [getHistoricalReportRateKey('USD', '2026-05-05')]: {
+        base: 'USD',
+        quote: 'TRY',
+        dateRequested: '2026-05-05',
+        dateUsed: '2026-05-05',
+        rate: 40,
+        source: EXCHANGE_RATE_SOURCE,
+        status: 'historical',
+      },
+      [getHistoricalReportRateKey('EUR', '2026-05-06')]: {
+        base: 'EUR',
+        quote: 'TRY',
+        dateRequested: '2026-05-06',
+        dateUsed: '2026-05-05',
+        rate: 45,
+        source: EXCHANGE_RATE_SOURCE,
+        status: 'prior-available',
+      },
+    };
+
+    const pdf = await exportPDF(
+      { mode: 'month', month: '2026-05', convertToTRY: true, historicalRates },
+      database
+    );
+    const text = await pdf.text();
+
+    expect(text).toContain('FX BASIS');
+    expect(text).toContain('Total income:    45 TRY');
+    expect(text).toContain('Total expenses:  200 TRY');
+    expect(text).toContain('Net:             -155 TRY');
+    expect(text).toContain('Food: 200 TRY');
+    expect(text).toContain('-2 USD (= 80 TRY)');
+    expect(text).toContain('1 historical rate used the most recent prior published date.');
+  });
+
+  it('refuses TRY-unified PDF export when a required historical rate is missing', async () => {
+    await seedOpeningBalance(database, 'USD-card', 100);
+    await createTransaction(
+      {
+        type: 'expense',
+        amount: 2,
+        currency: 'USD',
+        title: 'usd lunch',
+        categoryId: 'cat-food',
+        method: 'card',
+        date: '2026-05-05',
+      },
+      database
+    );
+
+    await expect(
+      exportPDF(
+        { mode: 'month', month: '2026-05', convertToTRY: true, historicalRates: {} },
+        database
+      )
+    ).rejects.toThrow('Historical USD/TRY rate is missing for 2026-05-05');
+  });
+
   it('exports a PDF blob for custom date ranges', async () => {
     await seedOpeningBalance(database, 'TRY-cash', 500);
     await createTransaction(expense, database);
@@ -112,5 +202,41 @@ describe('exportService', () => {
     expect(text).toContain('TapTrack Yearly Report');
     expect(text).toContain('MONTHLY SUMMARY');
     expect(text).toContain('2026-01 | income 1000 TRY');
+  });
+
+  it('uses historical rates in yearly PDF summaries when TRY conversion is enabled', async () => {
+    await createTransaction(
+      {
+        type: 'income',
+        amount: 10,
+        currency: 'USD',
+        title: 'usd income',
+        categoryId: 'cat-income',
+        method: 'card',
+        date: '2026-01-03',
+      },
+      database
+    );
+
+    const historicalRates: HistoricalReportRateMap = {
+      [getHistoricalReportRateKey('USD', '2026-01-03')]: {
+        base: 'USD',
+        quote: 'TRY',
+        dateRequested: '2026-01-03',
+        dateUsed: '2026-01-02',
+        rate: 43,
+        source: EXCHANGE_RATE_SOURCE,
+        status: 'prior-available',
+      },
+    };
+
+    const pdf = await exportPDF(
+      { mode: 'year', year: '2026', convertToTRY: true, historicalRates },
+      database
+    );
+    const text = await pdf.text();
+
+    expect(text).toContain('Total income:    430 TRY');
+    expect(text).toContain('2026-01 | income 430 TRY | expenses 0 TRY | net 430 TRY');
   });
 });
