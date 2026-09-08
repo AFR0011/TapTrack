@@ -301,12 +301,15 @@ export default function ReportsWorkspace() {
     setExporting(true);
     setExportError('');
 
+    const fxExportOptions = unifyToTRY
+      ? { convertToTRY: true as const, historicalRates }
+      : { convertToTRY: false as const };
     const options: ReportExportOptions =
       reportMode === 'month'
-        ? { mode: 'month', month }
+        ? { mode: 'month', month, ...fxExportOptions }
         : reportMode === 'year'
-          ? { mode: 'year', year }
-          : { mode: 'range', startDate: rangeStart, endDate: rangeEnd };
+          ? { mode: 'year', year, ...fxExportOptions }
+          : { mode: 'range', startDate: rangeStart, endDate: rangeEnd, ...fxExportOptions };
 
     try {
       const blob = await exportPDF(options);
