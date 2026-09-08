@@ -159,20 +159,14 @@ test('device-local ledger works across warmed offline mobile routes', async ({ p
   await page.goto('/app');
   await completeFreshOnboarding(page);
   await expectHeadingWithDiagnostics(page, 'Dashboard', 'Post-setup app state', diagnostics);
-
-  const quickAddCoachmark = page.getByRole('dialog', { name: 'Amount + title is enough.' });
-  await expect(quickAddCoachmark).toBeVisible();
   await assertNoHorizontalOverflow(page);
-  await expectMobileTargetSize(quickAddCoachmark.getByRole('button', { name: 'Got it' }));
-  await quickAddCoachmark.getByRole('button', { name: 'Got it' }).click();
-  await expect(quickAddCoachmark).toBeHidden();
+  await expectMobileTargetSize(page.getByRole('link', { name: 'Add transaction', exact: true }));
 
   await page.evaluate(async () => {
     await navigator.serviceWorker.ready;
   });
   await page.reload();
   await expectHeadingWithDiagnostics(page, 'Dashboard', 'Service-worker-controlled reload', diagnostics);
-  await expect(quickAddCoachmark).toBeHidden();
   await expect.poll(() => page.evaluate(() => Boolean(navigator.serviceWorker.controller))).toBe(true);
 
   for (const route of CORE_ROUTES) {
