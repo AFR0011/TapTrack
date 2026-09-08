@@ -33,6 +33,10 @@ export function activeCurrenciesFromBalances(balances: Balance[], defaultCurrenc
 }
 
 export async function fetchCurrencyCatalog(signal?: AbortSignal): Promise<CurrencyOption[]> {
+  if (typeof navigator !== 'undefined' && navigator.onLine === false) {
+    return FALLBACK_CURRENCIES;
+  }
+
   try {
     const response = await fetch('/api/exchange-rates/currencies', {
       signal,
