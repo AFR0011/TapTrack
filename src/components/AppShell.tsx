@@ -2,7 +2,7 @@
 
 import Link from 'next/link';
 import { usePathname } from 'next/navigation';
-import { useEffect, useState, type MouseEvent, type ReactNode } from 'react';
+import { useState, type MouseEvent, type ReactNode } from 'react';
 import { motion } from 'framer-motion';
 import { cn, focusVisibleRing } from '@/lib/cn';
 import MonthlyReconciliationPrompt from '@/components/MonthlyReconciliationPrompt';
@@ -61,11 +61,8 @@ function isNavItemActive(pathname: string, href: string) {
 
 export default function AppShell({ children }: { children: ReactNode }) {
   const pathname = usePathname();
-  const [mobileMoreOpen, setMobileMoreOpen] = useState(false);
-
-  useEffect(() => {
-    setMobileMoreOpen(false);
-  }, [pathname]);
+  const [mobileMorePath, setMobileMorePath] = useState<string | null>(null);
+  const mobileMoreOpen = mobileMorePath === pathname;
 
   const forceDocumentNavigationOffline = (event: MouseEvent<HTMLAnchorElement>, href: string) => {
     if (navigator.onLine !== false) return;
@@ -140,7 +137,7 @@ export default function AppShell({ children }: { children: ReactNode }) {
           type="button"
           aria-label="Close navigation menu"
           className="fixed inset-0 z-30 bg-transparent md:hidden"
-          onClick={() => setMobileMoreOpen(false)}
+          onClick={() => setMobileMorePath(null)}
         />
       ) : null}
 
@@ -191,7 +188,7 @@ export default function AppShell({ children }: { children: ReactNode }) {
             type="button"
             aria-haspopup="menu"
             aria-expanded={mobileMoreOpen}
-            onClick={() => setMobileMoreOpen((current) => !current)}
+            onClick={() => setMobileMorePath((current) => (current === pathname ? null : pathname))}
             className={cn(
               'relative flex min-h-12 min-w-0 flex-col items-center justify-center gap-0.5 rounded-xl px-0.5 py-1.5 text-[10px] leading-none transition-all sm:text-xs',
               focusVisibleRing,
@@ -223,7 +220,7 @@ export default function AppShell({ children }: { children: ReactNode }) {
                     role="menuitem"
                     prefetch={false}
                     onClick={(event) => {
-                      setMobileMoreOpen(false);
+                      setMobileMorePath(null);
                       forceDocumentNavigationOffline(event, item.href);
                     }}
                     className={cn(
