@@ -167,6 +167,104 @@ describe('backupService', () => {
     );
   });
 
+  it('round-trips a completed canonical ledger with a dynamic currency', async () => {
+    await completeInitialSetup(
+      {
+        balances: { GBP: { cash: 500, card: 0 } },
+        monthlyBudget: 1_500,
+        defaultMethod: 'cash',
+        defaultCurrency: 'GBP',
+        month: '2026-05',
+      },
+      database,
+      new Date('2026-05-01T09:00:00.000Z')
+    );
+    await createTransaction(
+      {
+        type: 'expense',
+        amount: 120,
+        currency: 'GBP',
+        title: 'train',
+        categoryId: 'cat-other',
+        method: 'cash',
+        date: '2026-05-05',
+      },
+      database,
+      new Date('2026-05-05T12:00:00.000Z'),
+      'gbp-train'
+    );
+
+    const backup = await exportBackupJSON(database, new Date('2026-05-07T00:00:00.000Z'));
+    await database.transactions.clear();
+    await database.balanceCheckpoints.clear();
+    await database.balances.clear();
+
+    const result = await restoreBackupJSON(backup, database, {
+      now: new Date('2026-05-08T00:00:00.000Z'),
+    });
+
+    expect(result.source).toBe('v2');
+    expect((await database.settings.get('default'))?.defaultCurrency).toBe('GBP');
+    expect((await getBalance('GBP', 'cash'))?.amount).toBe(380);
+    expect((await database.monthlyBudgets.get('2026-05'))?.currency).toBe('GBP');
+  });
+
+  it.each(['GB', 'gbp', 'USDT'])('rejects malformed canonical currency code %s', async (currency) => {
+    await completeInitialSetup(
+      {
+        balances: { GBP: { cash: 500, card: 0 } },
+        monthlyBudget: 1_500,
+        defaultMethod: 'cash',
+        defaultCurrency: 'GBP',
+        month: '2026-05',
+      },
+      database,
+      new Date('2026-05-01T09:00:00.000Z')
+    );
+    await createTransaction(
+      {
+        type: 'expense',
+        amount: 10,
+        currency: 'GBP',
+        title: 'test',
+        categoryId: 'cat-other',
+        method: 'cash',
+        date: '2026-05-05',
+      },
+      database,
+      new Date('2026-05-05T12:00:00.000Z'),
+      'bad-currency-source'
+    );
+    const parsed = JSON.parse(await exportBackupJSON(database));
+    parsed.transactions[0].currency = currency;
+
+    await expect(restoreBackupJSON(JSON.stringify(parsed), database)).rejects.toThrow(
+      'uppercase three-letter currency code'
+    );
+  });
+
+  it('requires both payment-method opening checkpoints for each dynamic active currency', async () => {
+    await completeInitialSetup(
+      {
+        balances: { GBP: { cash: 500, card: 0 } },
+        monthlyBudget: 1_500,
+        defaultMethod: 'cash',
+        defaultCurrency: 'GBP',
+        month: '2026-05',
+      },
+      database,
+      new Date('2026-05-01T09:00:00.000Z')
+    );
+    const parsed = JSON.parse(await exportBackupJSON(database));
+    parsed.balanceCheckpoints = parsed.balanceCheckpoints.filter(
+      (checkpoint: { balanceId: string }) => checkpoint.balanceId !== 'GBP-card'
+    );
+
+    await expect(restoreBackupJSON(JSON.stringify(parsed), database)).rejects.toThrow(
+      'Completed backup is missing opening checkpoints for: GBP-card.'
+    );
+  });
+
   it('blocks restore on a cloud-linked ledger until restore scope is explicitly decided', async () => {
     await setupLedger();
     const backup = await exportBackupJSON(database);
@@ -218,6 +316,27 @@ describe('backupService', () => {
       expect(balance.amount).toBe(expectedBalances.get(balance.id));
     }
     expect((await getBalance('TRY', 'cash'))?.amount).toBe(380);
+  });
+
+  it('keeps legacy backups restricted to their original currency model', async () => {
+    await setupLedger();
+    const legacyBackup = {
+      transactions: await database.transactions.toArray(),
+      balances: await database.balances.toArray(),
+      categories: await database.categories.toArray(),
+      monthlyBudgets: await database.monthlyBudgets.toArray(),
+      categoryBudgets: await database.categoryBudgets.toArray(),
+      recurringTransactions: await database.recurringTransactions.toArray(),
+      conversions: await database.conversions.toArray(),
+      settings: (await database.settings.toArray()).map((settings) => ({
+        ...settings,
+        defaultCurrency: 'GBP',
+      })),
+    };
+
+    await expect(restoreBackupJSON(JSON.stringify(legacyBackup), database)).rejects.toThrow(
+      'Legacy backup default currency must be TRY.'
+    );
   });
 
   it('rejects a malformed legacy balance snapshot instead of guessing a baseline', async () => {
