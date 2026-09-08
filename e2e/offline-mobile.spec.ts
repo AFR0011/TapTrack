@@ -175,6 +175,12 @@ test('device-local ledger works across warmed offline mobile routes', async ({ p
     await assertMobileLayout(page);
   }
 
+  // B004 moved transaction capture from the dashboard to its own route. Warm that
+  // route explicitly so the actual capture workflow is available after going offline.
+  await page.goto('/app/add');
+  await expectHeadingWithDiagnostics(page, 'Add transaction', 'Warmed capture route', diagnostics);
+  await assertNoHorizontalOverflow(page);
+
   const cacheInventory = await page.evaluate(async () => {
     const keys = await caches.keys();
     const tapTrackKeys = keys.filter((key) => key.startsWith('taptrack-shell-'));
@@ -199,11 +205,13 @@ test('device-local ledger works across warmed offline mobile routes', async ({ p
     await assertMobileLayout(page);
   }
 
-  await page.goto('/app');
+  await page.goto('/app/add');
+  await expectHeadingWithDiagnostics(page, 'Add transaction', 'Offline capture route', diagnostics);
   await page.getByLabel('Amount', { exact: true }).fill('5');
   await page.getByLabel('What was it?').fill('offlinecheck');
   await page.getByRole('button', { name: 'Cash', exact: true }).click();
   await page.getByRole('button', { name: 'Save expense', exact: true }).click();
+  await expectHeadingWithDiagnostics(page, 'Dashboard', 'Post-save offline dashboard', diagnostics);
   await expect(page.getByText('offlinecheck', { exact: true }).last()).toBeVisible();
   await page.reload();
   await expectHeadingWithDiagnostics(page, 'Dashboard', 'Offline reload', diagnostics);
