@@ -62,7 +62,7 @@ async function completeFreshOnboarding(page: Page) {
   await expectMobileTargetSize(page.getByRole('button', { name: 'Get started' }));
   await page.getByRole('button', { name: 'Get started' }).click();
 
-  await expect(page.getByRole('heading', { name: 'What do you use?' })).toBeVisible();
+  await expect(page.getByRole('heading', { name: 'Choose the currencies you use.' })).toBeVisible();
   await assertNoHorizontalOverflow(page);
   await page.getByLabel('Cash', { exact: true }).fill('1000');
   await expectMobileTargetSize(page.getByRole('button', { name: 'Continue' }));
