@@ -22,7 +22,30 @@ function createClient(options?: {
   failedTable?: string;
 }) {
   const userId = options?.userId === undefined ? 'user-1' : options.userId;
+  let ledgerVersion = {
+    revision: 1,
+    generation: '123e4567-e89b-42d3-a456-426614174000',
+    updated_at: '2026-09-08T06:00:00.000Z',
+  };
+
   const from = vi.fn((tableName: string) => {
+    if (tableName === 'ledger_versions') {
+      const chain = {
+        select: vi.fn(() => chain),
+        eq: vi.fn(() => chain),
+        maybeSingle: vi.fn(async () => ({ data: ledgerVersion, error: null })),
+        insert: vi.fn(async () => {
+          ledgerVersion = {
+            revision: 1,
+            generation: '123e4567-e89b-42d3-a456-426614174000',
+            updated_at: '2026-09-08T06:00:00.000Z',
+          };
+          return { error: null };
+        }),
+      };
+      return chain;
+    }
+
     const response = () => ({
       data: options?.nonEmptyTable === tableName ? [{ id: 'remote-row' }] : [],
       error: options?.failedTable === tableName ? { message: 'read failed' } : null,
@@ -111,12 +134,12 @@ describe('device ledger sync binding', () => {
     const binding = await linkDeviceLedgerToCurrentUser(database);
 
     expect(binding.syncOwnerUserId).toBe('user-1');
-    expect(client.from).toHaveBeenCalledTimes(REMOTE_FINANCE_TABLES.length);
+    expect(client.from).toHaveBeenCalledTimes(REMOTE_FINANCE_TABLES.length + 1);
     await expect(database.deviceMetadata.get(DEVICE_LEDGER_BINDING_ID)).resolves.toEqual(binding);
 
     const repeated = await linkDeviceLedgerToCurrentUser(database);
     expect(repeated).toEqual(binding);
-    expect(client.from).toHaveBeenCalledTimes(REMOTE_FINANCE_TABLES.length);
+    expect(client.from).toHaveBeenCalledTimes(REMOTE_FINANCE_TABLES.length + 1);
   });
 
   it('requires an explicit adoption mode for existing cloud data', async () => {

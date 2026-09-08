@@ -177,7 +177,7 @@ describe('backupService', () => {
     });
 
     await expect(restoreBackupJSON(backup, database)).rejects.toThrow(
-      'device-only versus account-wide restore behavior is selected'
+      'Choose whether to restore the synced account or only this device'
     );
   });
 

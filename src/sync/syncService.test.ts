@@ -7,6 +7,15 @@ vi.mock('@/sync/syncBinding', () => ({
   requireLinkedSyncAccess: vi.fn(),
 }));
 
+vi.mock('@/sync/ledgerVersion', () => ({
+  ensureCloudLedgerVersion: vi.fn(async () => ({
+    revision: 1,
+    generation: '123e4567-e89b-42d3-a456-426614174000',
+    updatedAt: '2026-09-08T06:00:00.000Z',
+  })),
+  bindingMatchesLedgerVersion: vi.fn(() => true),
+}));
+
 import { getSyncAccess, requireLinkedSyncAccess } from '@/sync/syncBinding';
 import {
   deleteRecord,
@@ -45,9 +54,27 @@ function createClientMock(options: ClientOptions = {}) {
     return createAwaitableChain({ error: options.updateError ?? null });
   });
 
+  const syncOperation = vi.fn(async (body: Record<string, unknown>) => {
+    if (body.operation === 'delete') {
+      if (options.updateError) {
+        return new Response(JSON.stringify({ error: options.updateError.message }), { status: 503 });
+      }
+      return new Response(JSON.stringify({ ok: true }), { status: 200 });
+    }
+
+    if (options.upsert) {
+      const result = await options.upsert(String(body.table ?? ''), body.record);
+      if (result.error) {
+        return new Response(JSON.stringify({ error: result.error.message }), { status: 503 });
+      }
+    }
+    return new Response(JSON.stringify({ ok: true }), { status: 200 });
+  });
+
   return {
     upsert,
     update,
+    syncOperation,
     auth: {
       getUser: vi.fn(async () => ({ data: { user: { id: 'user-1' } } })),
     },
@@ -80,6 +107,10 @@ function authorize(client = createClientMock()) {
       cloudGeneration: '123e4567-e89b-42d3-a456-426614174000',
     },
   });
+  vi.stubGlobal('fetch', vi.fn(async (_input: RequestInfo | URL, init?: RequestInit) => {
+    const body = JSON.parse(String(init?.body ?? '{}')) as Record<string, unknown>;
+    return client.syncOperation(body);
+  }));
   return client;
 }
 
@@ -101,6 +132,7 @@ beforeEach(async () => {
 });
 
 afterEach(async () => {
+  vi.unstubAllGlobals();
   vi.clearAllMocks();
   await database.delete();
 });
@@ -238,10 +270,11 @@ describe('syncService durable protocol', () => {
 
     await deleteRecord('transactions', 'tx-1', database);
 
-    expect(client.update).toHaveBeenCalledTimes(1);
-    expect(client.update.mock.calls[0]?.[0]).toBe('transactions');
-    expect(client.update.mock.calls[0]?.[1]).toMatchObject({
-      deleted_at: expect.any(String),
+    expect(client.syncOperation).toHaveBeenCalledTimes(1);
+    expect(client.syncOperation.mock.calls[0]?.[0]).toMatchObject({
+      table: 'transactions',
+      operation: 'delete',
+      recordId: 'tx-1',
     });
     expect(await database.syncOutbox.get('transactions:tx-1')).toBeUndefined();
   });

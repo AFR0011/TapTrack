@@ -27,6 +27,10 @@ function createFilteredChain<T>(resolveValue: (filters: Filters) => T | Promise<
       filters[field] = value;
       return chain;
     }),
+    is: vi.fn((field: string, value: unknown) => {
+      filters[field] = value;
+      return chain;
+    }),
     then: (
       resolve: (result: T) => unknown,
       reject?: (reason: unknown) => unknown
@@ -35,8 +39,14 @@ function createFilteredChain<T>(resolveValue: (filters: Filters) => T | Promise<
   return chain;
 }
 
+const INITIAL_GENERATION = '123e4567-e89b-42d3-a456-426614174000';
+const ROTATED_GENERATION = '223e4567-e89b-42d3-a456-426614174000';
+
 function createSharedRemoteClient() {
   const tables = new Map<string, Map<string, RemoteRow>>();
+  let revision = 1;
+  let generation = INITIAL_GENERATION;
+  let rotateBeforeNextOperation = false;
 
   const getTable = (tableName: string) => {
     let table = tables.get(tableName);
@@ -51,36 +61,99 @@ function createSharedRemoteClient() {
   const matches = (row: RemoteRow, filters: Filters) =>
     Object.entries(filters).every(([field, value]) => row[field] === value);
 
+  const rotateGeneration = () => {
+    revision += 1;
+    generation = ROTATED_GENERATION;
+  };
+
   const client = {
-    from: vi.fn((tableName: string) => ({
-      upsert: vi.fn(async (payload: RemoteRow) => {
-        const table = getTable(tableName);
-        const key = getKey(payload);
-        table.set(key, { ...(table.get(key) ?? {}), ...payload });
-        return { error: null };
-      }),
-      update: vi.fn((payload: RemoteRow) =>
-        createFilteredChain(async (filters) => {
-          const table = getTable(tableName);
-          for (const [key, row] of table.entries()) {
-            if (matches(row, filters)) table.set(key, { ...row, ...payload });
-          }
-          return { error: null };
-        })
-      ),
-      select: vi.fn(() =>
-        createFilteredChain(async (filters) => ({
-          data: [...getTable(tableName).values()]
-            .filter((row) => matches(row, filters))
-            .map((row) => ({ ...row })),
-          error: null,
-        }))
-      ),
-    })),
+    from: vi.fn((tableName: string) => {
+      if (tableName === 'ledger_versions') {
+        const chain = {
+          select: vi.fn(() => chain),
+          eq: vi.fn(() => chain),
+          maybeSingle: vi.fn(async () => ({
+            data: {
+              revision,
+              generation,
+              updated_at: '2026-09-08T06:00:00.000Z',
+            },
+            error: null,
+          })),
+          insert: vi.fn(async () => ({ error: null })),
+        };
+        return chain;
+      }
+
+      return {
+        select: vi.fn(() =>
+          createFilteredChain(async (filters) => ({
+            data: [...getTable(tableName).values()]
+              .filter((row) => matches(row, filters))
+              .map((row) => ({ ...row })),
+            error: null,
+          }))
+        ),
+      };
+    }),
+  };
+
+  const handleSyncRequest = async (_input: RequestInfo | URL, init?: RequestInit) => {
+    if (rotateBeforeNextOperation) {
+      rotateBeforeNextOperation = false;
+      rotateGeneration();
+    }
+
+    const body = JSON.parse(String(init?.body ?? '{}')) as {
+      revision?: number;
+      generation?: string;
+      table?: string;
+      operation?: string;
+      recordId?: string;
+      record?: RemoteRow | null;
+    };
+
+    if (body.revision !== revision || body.generation !== generation) {
+      return new Response(JSON.stringify({ revision, generation }), {
+        status: 409,
+        headers: { 'content-type': 'application/json' },
+      });
+    }
+
+    if (!body.table || !body.recordId) {
+      return new Response(JSON.stringify({ error: 'invalid request' }), { status: 400 });
+    }
+
+    const table = getTable(body.table);
+    const key = `user-1:${body.recordId}`;
+    if (body.operation === 'delete') {
+      table.set(key, {
+        ...(table.get(key) ?? { user_id: 'user-1', id: body.recordId }),
+        deleted_at: '2026-09-08T06:30:00.000Z',
+        updated_at: '2026-09-08T06:30:00.000Z',
+      });
+    } else if (body.operation === 'upsert' && body.record) {
+      table.set(key, { ...(table.get(key) ?? {}), ...body.record, deleted_at: null });
+    } else {
+      return new Response(JSON.stringify({ error: 'invalid operation' }), { status: 400 });
+    }
+
+    return new Response(JSON.stringify({ ok: true }), {
+      status: 200,
+      headers: { 'content-type': 'application/json' },
+    });
   };
 
   return {
     client,
+    handleSyncRequest,
+    rotateGeneration,
+    rotateBeforeOperation() {
+      rotateBeforeNextOperation = true;
+    },
+    getVersion() {
+      return { revision, generation };
+    },
     read(tableName: string, id: string, userId = 'user-1') {
       return getTable(tableName).get(`${userId}:${id}`);
     },
@@ -88,16 +161,14 @@ function createSharedRemoteClient() {
 }
 
 function authorize(client: ReturnType<typeof createSharedRemoteClient>['client']) {
-  vi.mocked(requireLinkedSyncAccess).mockResolvedValue({
-    client: client as never,
-    userId: 'user-1',
-    binding: {
-      id: 'ledger-binding',
-      syncOwnerUserId: 'user-1',
-      linkedAt: '2026-05-18T00:00:00.000Z',
-      cloudRevision: 1,
-      cloudGeneration: '123e4567-e89b-42d3-a456-426614174000',
-    },
+  vi.mocked(requireLinkedSyncAccess).mockImplementation(async (database: TapTrackDatabase) => {
+    const binding = await database.deviceMetadata.get('ledger-binding');
+    if (!binding) return null;
+    return {
+      client: client as never,
+      userId: 'user-1',
+      binding,
+    };
   });
 }
 
@@ -115,11 +186,24 @@ describe('two-device canonical ledger convergence', () => {
     deviceB = new TapTrackDatabase(`TapTrackDeviceB-${crypto.randomUUID()}`);
     await ensureDatabaseSeeded(deviceA);
     await ensureDatabaseSeeded(deviceB);
+    const initialBinding = {
+      id: 'ledger-binding',
+      syncOwnerUserId: 'user-1',
+      linkedAt: '2026-09-08T06:00:00.000Z',
+      cloudRevision: 1,
+      cloudGeneration: INITIAL_GENERATION,
+    };
+    await deviceA.deviceMetadata.put(initialBinding);
+    await deviceB.deviceMetadata.put(initialBinding);
     remote = createSharedRemoteClient();
+    vi.stubGlobal('fetch', vi.fn((input: RequestInfo | URL, init?: RequestInit) =>
+      remote.handleSyncRequest(input, init)
+    ));
     authorize(remote.client);
   });
 
   afterEach(async () => {
+    vi.unstubAllGlobals();
     vi.clearAllMocks();
     await deviceA.delete();
     await deviceB.delete();
@@ -254,5 +338,86 @@ describe('two-device canonical ledger convergence', () => {
     expect(remote.read('transactions', 'tx-shared')?.deleted_at).toEqual(expect.any(String));
     expect((await deviceA.balances.get(getBalanceId('TRY', 'card')))?.amount).toBe(80);
     expect((await deviceB.balances.get(getBalanceId('TRY', 'card')))?.amount).toBe(80);
+  });
+
+  it('discards an offline stale outbox and adopts cloud after an account restore generation changes', async () => {
+    const transaction: Transaction = {
+      id: 'tx-generation',
+      type: 'expense',
+      amount: 10,
+      currency: 'TRY',
+      title: 'Cloud canonical title',
+      categoryId: 'cat-food',
+      method: 'card',
+      date: '2026-09-08',
+      occurredAt: '2026-09-08T06:10:00.000Z',
+      createdAt: '2026-09-08T06:10:00.000Z',
+      updatedAt: '2026-09-08T06:10:00.000Z',
+    };
+
+    await deviceA.transactions.put(transaction);
+    await pushRecord('transactions', transaction as unknown as RemoteRow, deviceA);
+    await pullUpdates(deviceB);
+
+    goOfflineForSync();
+    const staleEdit = {
+      ...transaction,
+      title: 'Offline stale edit',
+      updatedAt: '2026-09-08T06:20:00.000Z',
+    };
+    await deviceB.transactions.put(staleEdit);
+    await pushRecord('transactions', staleEdit as unknown as RemoteRow, deviceB);
+    expect(await deviceB.syncOutbox.get('transactions:tx-generation')).toBeDefined();
+
+    remote.rotateGeneration();
+    authorize(remote.client);
+    await processRetryQueue(deviceB);
+
+    expect(await deviceB.syncOutbox.get('transactions:tx-generation')).toBeUndefined();
+    expect((await deviceB.transactions.get('tx-generation'))?.title).toBe('Cloud canonical title');
+    expect(remote.read('transactions', 'tx-generation')?.title).toBe('Cloud canonical title');
+    await expect(deviceB.deviceMetadata.get('ledger-binding')).resolves.toMatchObject(
+      remote.getVersion()
+    );
+  });
+
+  it('rejects a stale write when generation rotates after precheck but before the protected server operation', async () => {
+    const transaction: Transaction = {
+      id: 'tx-generation-race',
+      type: 'expense',
+      amount: 15,
+      currency: 'TRY',
+      title: 'Cloud before race',
+      categoryId: 'cat-food',
+      method: 'card',
+      date: '2026-09-08',
+      occurredAt: '2026-09-08T06:10:00.000Z',
+      createdAt: '2026-09-08T06:10:00.000Z',
+      updatedAt: '2026-09-08T06:10:00.000Z',
+    };
+
+    await deviceA.transactions.put(transaction);
+    await pushRecord('transactions', transaction as unknown as RemoteRow, deviceA);
+
+    goOfflineForSync();
+    const staleEdit = {
+      ...transaction,
+      title: 'Stale race edit',
+      updatedAt: '2026-09-08T06:25:00.000Z',
+    };
+    await deviceA.transactions.put(staleEdit);
+    await pushRecord('transactions', staleEdit as unknown as RemoteRow, deviceA);
+    expect(await deviceA.syncOutbox.get('transactions:tx-generation-race')).toBeDefined();
+
+    authorize(remote.client);
+    remote.rotateBeforeOperation();
+    await processRetryQueue(deviceA);
+
+    expect(await deviceA.syncOutbox.get('transactions:tx-generation-race')).toBeUndefined();
+    expect((await deviceA.transactions.get('tx-generation-race'))?.title).toBe('Cloud before race');
+    expect(remote.read('transactions', 'tx-generation-race')?.title).toBe('Cloud before race');
+    await expect(deviceA.deviceMetadata.get('ledger-binding')).resolves.toMatchObject(
+      remote.getVersion()
+    );
   });
 });
