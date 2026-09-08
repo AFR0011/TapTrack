@@ -41,7 +41,7 @@ async function assertMobileLayout(page: Page) {
   await moreButton.click();
 
   for (const route of moreRoutes) {
-    await expectMobileTargetSize(mobileNav.getByRole('link', { name: route.nav, exact: true }));
+    await expectMobileTargetSize(mobileNav.getByRole('menuitem', { name: route.nav, exact: true }));
   }
 
   await moreButton.click();
