@@ -5,6 +5,7 @@ import { createCaptureToken, hashCaptureToken } from '@/server/capture/captureTo
 
 const DEFAULT_LABEL = 'iPhone Quick Capture';
 const MAX_LABEL_LENGTH = 80;
+const MAX_ACTIVE_TOKENS = 10;
 
 async function getAuthenticatedUser() {
   if (
@@ -66,9 +67,25 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
     typeof body.label === 'string' && body.label.trim()
       ? body.label.trim().slice(0, MAX_LABEL_LENGTH)
       : DEFAULT_LABEL;
+  const admin = createSupabaseAdminClient();
+  const { count, error: countError } = await admin
+    .from('capture_tokens')
+    .select('id', { count: 'exact', head: true })
+    .eq('user_id', auth.user.id)
+    .is('revoked_at', null);
+
+  if (countError) {
+    return NextResponse.json({ error: 'Quick Capture devices could not be checked.' }, { status: 503 });
+  }
+  if ((count ?? 0) >= MAX_ACTIVE_TOKENS) {
+    return NextResponse.json(
+      { error: 'Revoke an old Quick Capture device before adding another.' },
+      { status: 409 }
+    );
+  }
+
   const rawToken = createCaptureToken();
   const tokenHash = hashCaptureToken(rawToken);
-  const admin = createSupabaseAdminClient();
   const { data, error } = await admin
     .from('capture_tokens')
     .insert({
