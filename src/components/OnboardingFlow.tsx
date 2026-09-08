@@ -7,6 +7,7 @@ import { Button } from '@/components/ui/Button';
 import { Card } from '@/components/ui/Card';
 import { Field } from '@/components/ui/Field';
 import { SelectField } from '@/components/ui/SelectField';
+import { ConfirmDialog } from '@/components/ConfirmDialog';
 import { fetchCurrencyCatalog, type CurrencyOption } from '@/currencies/currencyCatalog';
 import { getSignedInEmail } from '@/lib/auth';
 import { markOnboardingComplete } from '@/onboarding/onboardingState';
@@ -37,6 +38,7 @@ export default function OnboardingFlow() {
   const [accountChecked, setAccountChecked] = useState(false);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState('');
+  const [confirmUseAccountData, setConfirmUseAccountData] = useState(false);
 
   useEffect(() => {
     let active = true;
@@ -106,7 +108,7 @@ export default function OnboardingFlow() {
       if (plan.state === 'cloud-only' || (plan.state === 'already-linked' && plan.remoteHasData)) {
         await adoptCloudLedger();
         markOnboardingComplete();
-        toast.success('Your TapTrack ledger is ready.');
+        toast.success('Your synced TapTrack data is ready.');
         router.replace('/app');
         router.refresh();
         return;
@@ -116,9 +118,9 @@ export default function OnboardingFlow() {
         return;
       }
       setStep('balances');
-      toast.info('This account is ready for a new TapTrack ledger.');
+      toast.info('No saved TapTrack data was found for this account. Let’s finish setup.');
     } catch (err) {
-      setError(err instanceof Error ? err.message : 'Your TapTrack account could not be checked.');
+      setError(err instanceof Error ? err.message : 'TapTrack could not check your account. Try again.');
     } finally {
       setBusy(false);
     }
@@ -131,11 +133,11 @@ export default function OnboardingFlow() {
       if (choice === 'cloud') await adoptCloudLedger();
       else await mergeLocalLedgerIntoCloud();
       markOnboardingComplete();
-      toast.success(choice === 'cloud' ? 'Cloud ledger loaded.' : 'Ledgers merged.');
+      toast.success(choice === 'cloud' ? 'Synced account data loaded.' : 'Your TapTrack data was merged.');
       router.replace('/app');
       router.refresh();
     } catch (err) {
-      setError(err instanceof Error ? err.message : 'TapTrack could not finish linking this device.');
+      setError(err instanceof Error ? err.message : 'TapTrack could not finish connecting this device. Try again.');
     } finally {
       setBusy(false);
     }
@@ -175,25 +177,25 @@ export default function OnboardingFlow() {
       router.replace('/app');
       router.refresh();
     } catch (err) {
-      setError(err instanceof Error ? err.message : 'TapTrack could not finish setup.');
+      setError(err instanceof Error ? err.message : 'TapTrack could not finish setup. Check the details and try again.');
     } finally {
       setBusy(false);
     }
   };
 
   return (
-    <div className="min-h-screen bg-background text-primary">
-      <div className="mx-auto flex min-h-screen w-full max-w-3xl flex-col px-5 py-6 sm:px-8 sm:py-10">
+    <div className="min-h-dvh bg-background text-primary">
+      <div className="mx-auto flex min-h-dvh w-full max-w-3xl flex-col px-5 py-6 sm:px-8 sm:py-10">
         <div className="flex items-center justify-between">
           <div className="flex items-center gap-2.5">
-            <div className="flex h-9 w-9 items-center justify-center rounded-xl bg-accent text-sm font-black text-white shadow-sm">T</div>
+            <div className="flex h-9 w-9 items-center justify-center rounded-xl bg-action-primary text-sm font-black text-white shadow-sm">T</div>
             <span className="text-base font-bold tracking-tight text-primary">TapTrack</span>
           </div>
           {stepNumber > 0 ? (
             <div className="flex items-center gap-1.5" aria-label={`Setup step ${stepNumber} of 3`}>
               {[1, 2, 3].map((number) => (
                 <span key={number} className={`h-1.5 rounded-full transition-all ${
-                  number === stepNumber ? 'w-7 bg-accent' : number < stepNumber ? 'w-4 bg-accent/50' : 'w-4 bg-surface-raised'
+                  number === stepNumber ? 'w-7 bg-action-primary' : number < stepNumber ? 'w-4 bg-accent/50' : 'w-4 bg-surface-raised'
                 }`} />
               ))}
             </div>
@@ -225,13 +227,31 @@ export default function OnboardingFlow() {
             ) : step === 'ready' ? (
               <ReadyStep currencies={selectedSummary} defaultCurrency={defaultCurrency} defaultMethod={defaultMethod} budget={monthlyBudget} busy={busy} onBack={() => setStep('defaults')} onFinish={() => void finishSetup()} />
             ) : (
-              <ConflictStep busy={busy} onUseCloud={() => void resolveConflict('cloud')} onMerge={() => void resolveConflict('merge')} />
+              <ConflictStep
+                busy={busy}
+                onUseAccount={() => setConfirmUseAccountData(true)}
+                onMerge={() => void resolveConflict('merge')}
+                onBack={() => setStep('welcome')}
+              />
             )}
 
             {error ? <p role="alert" className="mx-auto mt-5 max-w-xl rounded-xl border border-danger bg-danger-muted px-4 py-3 text-sm font-medium text-danger">{error}</p> : null}
           </div>
         </div>
       </div>
+
+      <ConfirmDialog
+        open={confirmUseAccountData}
+        title="Replace the data on this device?"
+        message="TapTrack will replace the current data on this device with the data already saved to your synced account. The two sets of data will not be merged."
+        confirmLabel="Use synced account"
+        confirmVariant="danger"
+        onConfirm={() => {
+          setConfirmUseAccountData(false);
+          void resolveConflict('cloud');
+        }}
+        onCancel={() => setConfirmUseAccountData(false)}
+      />
     </div>
   );
 }
@@ -331,15 +351,33 @@ function ReadyStep({ currencies, defaultCurrency, defaultMethod, budget, busy, o
       <div className="mx-auto mt-7 max-w-sm rounded-2xl border border-subtle bg-surface p-5 text-left shadow-sm">
         <div className="flex items-center justify-between"><div><p className="text-sm font-semibold text-primary">Coffee</p><p className="mt-1 text-xs font-medium text-muted">Food · {defaultMethod}</p></div><p className="text-lg font-bold text-primary">250 {defaultCurrency}</p></div>
       </div>
-      <div className="mt-5 text-sm text-muted"><p>Main: <strong className="text-secondary">{defaultCurrency}</strong></p><p className="mt-1">Currencies: {currencies}</p>{budget ? <p className="mt-1">Monthly target: {budget} {defaultCurrency}</p> : null}</div>
+      <div className="mt-5 text-sm text-muted"><p>Main: <strong className="text-secondary">{defaultCurrency}</strong></p><p className="mt-1">Currencies: {currencies}</p>{budget ? <p className="mt-1">Monthly budget: {budget} {defaultCurrency}</p> : null}</div>
       <div className="mx-auto mt-8 grid max-w-sm gap-2.5"><Button type="button" size="lg" fullWidth onClick={onFinish} loading={busy} disabled={busy}>Open TapTrack</Button><Button type="button" size="lg" fullWidth variant="ghost" onClick={onBack} disabled={busy}>Back</Button></div>
     </div>
   );
 }
 
-function ConflictStep({ busy, onUseCloud, onMerge }: { busy: boolean; onUseCloud: () => void; onMerge: () => void }) {
+function ConflictStep({ busy, onUseAccount, onMerge, onBack }: { busy: boolean; onUseAccount: () => void; onMerge: () => void; onBack: () => void }) {
   return (
-    <div className="mx-auto max-w-xl"><p className="text-sm font-semibold text-accent">Choose your ledger</p><h1 className="mt-2 text-3xl font-semibold tracking-tight text-primary sm:text-4xl">This device and your account both have data.</h1><div className="mt-7 grid gap-3 sm:grid-cols-2"><Card padding="sm"><h2 className="font-semibold text-primary">Use cloud data</h2><p className="mt-2 text-sm text-muted">Replace this device’s local ledger with the account ledger.</p><Button type="button" fullWidth className="mt-5" onClick={onUseCloud} loading={busy} disabled={busy}>Use cloud data</Button></Card><Card padding="sm"><h2 className="font-semibold text-primary">Merge this device</h2><p className="mt-2 text-sm text-muted">Keep both ledgers and merge records into the account.</p><Button type="button" fullWidth variant="secondary" className="mt-5" onClick={onMerge} disabled={busy}>Merge</Button></Card></div></div>
+    <div className="mx-auto max-w-xl">
+      <p className="text-sm font-semibold text-accent">Choose what to keep</p>
+      <h1 className="mt-2 text-3xl font-semibold tracking-tight text-primary sm:text-4xl">This device and your synced account both have TapTrack data.</h1>
+      <p className="mt-3 text-sm leading-6 text-muted">Keeping both is the safest choice. Replacing this device will discard its current TapTrack data instead of merging it.</p>
+      <div className="mt-7 grid gap-3 sm:grid-cols-2">
+        <Card padding="sm" className="ring-1 ring-accent/20">
+          <span className="inline-flex rounded-full bg-accent-muted px-2 py-1 text-xs font-semibold text-accent">Recommended</span>
+          <h2 className="mt-3 font-semibold text-primary">Keep both</h2>
+          <p className="mt-2 text-sm text-muted">Combine the data on this device with the data already saved to your account.</p>
+          <Button type="button" fullWidth className="mt-5" onClick={onMerge} loading={busy} disabled={busy}>Keep both and merge</Button>
+        </Card>
+        <Card padding="sm">
+          <h2 className="font-semibold text-primary">Use synced account only</h2>
+          <p className="mt-2 text-sm text-muted">Replace the TapTrack data on this device with the data already saved to your account.</p>
+          <Button type="button" fullWidth variant="secondary" className="mt-5" onClick={onUseAccount} disabled={busy}>Use synced account</Button>
+        </Card>
+      </div>
+      <Button type="button" variant="ghost" className="mt-4" onClick={onBack} disabled={busy}>Back</Button>
+    </div>
   );
 }
 
