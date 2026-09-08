@@ -133,6 +133,7 @@ export default function DashboardSummary() {
     budgetAvailable > 0 ? clampPercent((budgetSpent / budgetAvailable) * 100) : 0;
 
   const trendData = buildTrendData(dashboardTransactions, thirtyDaysAgo, today, convert);
+  const trendTotal = trendData.reduce((sum, item) => sum + item.amount, 0);
   const categoryById = new Map(categories.map((category) => [category.id, category.name]));
   const categorySpending = new Map<string, number>();
   for (const transaction of monthTransactions) {
@@ -155,7 +156,7 @@ export default function DashboardSummary() {
   return (
     <section className="space-y-5">
       <div className="grid gap-3 sm:grid-cols-3">
-        <Metric label="Available" value={totalBalance} currency={defaultCurrency} loading={ratesLoading} />
+        <Metric label="Available balance" value={totalBalance} currency={defaultCurrency} loading={ratesLoading} />
         <Metric
           label="Month net"
           value={monthNet}
@@ -174,14 +175,14 @@ export default function DashboardSummary() {
 
       {rateError ? (
         <p className="rounded-xl border border-subtle bg-surface-muted px-3 py-2 text-xs font-medium text-muted">
-          Cross-currency totals are temporarily incomplete.
+          Some currency balances could not be included in the totals right now.
         </p>
       ) : null}
 
       <section className="rounded-2xl border border-subtle bg-surface p-5">
         <div className="flex items-start justify-between gap-4">
           <div>
-            <h2 className="text-base font-semibold text-primary">Spending trend</h2>
+            <h2 className="text-base font-semibold text-primary">Daily spending</h2>
             <p className="mt-1 text-sm text-muted">Last 30 days · {defaultCurrency}</p>
           </div>
           <Link
@@ -192,30 +193,42 @@ export default function DashboardSummary() {
             Reports
           </Link>
         </div>
-        <div className="mt-5 h-44" aria-label="Daily spending over the last 30 days">
-          <ResponsiveContainer width="100%" height="100%">
-            <BarChart data={trendData} margin={{ top: 4, right: 0, left: 0, bottom: 0 }}>
-              <XAxis
-                dataKey="label"
-                axisLine={false}
-                tickLine={false}
-                tick={{ fill: 'var(--text-muted)', fontSize: 10 }}
-                interval={6}
-              />
-              <Tooltip
-                cursor={{ fill: 'var(--surface-muted)' }}
-                formatter={(value) => formatCurrency(Number(value ?? 0), defaultCurrency)}
-                labelFormatter={(label) => String(label)}
-                contentStyle={{
-                  background: 'var(--surface)',
-                  border: '1px solid var(--border-subtle)',
-                  borderRadius: 12,
-                }}
-              />
-              <Bar dataKey="amount" fill="var(--chart-1)" radius={[4, 4, 0, 0]} />
-            </BarChart>
-          </ResponsiveContainer>
-        </div>
+        {trendTotal > 0 ? (
+          <>
+            <p className="sr-only">
+              Total spending over the last 30 days was {formatCurrency(trendTotal, defaultCurrency)}.
+            </p>
+            <div className="mt-5 h-44" aria-label="Daily spending over the last 30 days">
+              <ResponsiveContainer width="100%" height="100%">
+                <BarChart data={trendData} margin={{ top: 4, right: 0, left: 0, bottom: 0 }}>
+                  <XAxis
+                    dataKey="label"
+                    axisLine={false}
+                    tickLine={false}
+                    tick={{ fill: 'var(--text-muted)', fontSize: 11 }}
+                    interval={6}
+                  />
+                  <Tooltip
+                    cursor={{ fill: 'var(--surface-muted)' }}
+                    formatter={(value) => formatCurrency(Number(value ?? 0), defaultCurrency)}
+                    labelFormatter={(label) => String(label)}
+                    contentStyle={{
+                      background: 'var(--surface)',
+                      border: '1px solid var(--border)',
+                      borderRadius: 12,
+                    }}
+                  />
+                  <Bar dataKey="amount" fill="var(--chart-1)" radius={[4, 4, 0, 0]} />
+                </BarChart>
+              </ResponsiveContainer>
+            </div>
+          </>
+        ) : (
+          <div className="mt-5 rounded-xl bg-surface-muted p-4">
+            <p className="text-sm font-medium text-secondary">No spending in the last 30 days.</p>
+            <p className="mt-1 text-xs font-medium text-muted">Your daily trend will appear after you add expenses.</p>
+          </div>
+        )}
       </section>
 
       <div className="grid gap-4 lg:grid-cols-2">
@@ -252,6 +265,8 @@ export default function DashboardSummary() {
                 percent={budgetUsed}
                 usedLabel={`${Math.round(budgetUsed)}% used`}
                 remainingLabel={formatCurrency(Math.max(budgetRemaining, 0), budgetCurrency)}
+                ariaLabel="Monthly budget used"
+                ariaValueText={`${Math.round(budgetUsed)}% used, ${formatCurrency(Math.max(budgetRemaining, 0), budgetCurrency)} remaining`}
               />
             </>
           ) : (
