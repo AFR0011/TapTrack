@@ -1,8 +1,12 @@
 # Publication Readiness
 
-TapTrack is being prepared as a public engineering portfolio repository. The public presentation should focus on the local-first canonical ledger, durable offline/sync design, multiple transaction-capture modes, historical FX handling, authenticated Groq integration, responsive/PWA behavior, and automated verification.
+TapTrack is being prepared as a public engineering portfolio repository. The public presentation should focus on the local-first canonical ledger, durable offline/sync design, explicit destructive-action semantics, multiple transaction-capture modes, historical FX handling, authenticated Groq integration, private-owner Telegram integration, responsive/PWA behavior, and automated verification.
+
+This file describes the B002 remediation branch. Production `main` remains on the earlier TT-B001 baseline until an explicit release decision is made.
 
 ## Required before public release
+
+### Engineering implementation
 
 - [x] Upgrade to the patched Next.js 16.3.4 / React 19.2.8 baseline.
 - [x] Align ESLint with the supported Next lint stack.
@@ -10,26 +14,37 @@ TapTrack is being prepared as a public engineering portfolio repository. The pub
 - [x] Replace mutable synced balances with checkpoint-based canonical ledger semantics.
 - [x] Make normal canonical finance writes and durable sync intent atomic in IndexedDB.
 - [x] Add explicit cloud-vs-local adoption and multi-device convergence coverage.
+- [x] Add ledger revision/generation handling for account-wide replacement and stale clients.
 - [x] Add Quick Add while preserving Command and detailed transaction entry.
 - [x] Add `/app/add` deep-link capture and Android PWA shortcuts.
 - [x] Replace hard-coded FX fallbacks with historical TCMB rates via Frankfurter.
 - [x] Make TRY-unified reports and PDF export use each transaction's historical date.
 - [x] Replace Ollama with authenticated server-side Groq categorization.
 - [x] Restrict the live Groq quota RPC to service-role execution and verify browser roles cannot execute it.
-- [x] Re-run live Supabase security advisors after quota hardening; only the Auth leaked-password-protection warning remains.
 - [x] Add production CSP/security headers and smoke assertions.
 - [x] Repair Supabase auth callback handling for PKCE/email confirmation flows.
-- [x] Pass lint, typecheck, **24 Vitest files / 137 tests**, production build, route smoke, and offline mobile Playwright verification on the remediation branch.
+- [x] Implement versioned JSON backup/restore with strict validation, pre-restore safety backup, and legacy checkpoint migration.
+- [x] Implement explicit **restore only this device** and **restore synced account** behavior.
+- [x] Implement explicit **reset only this device** and **reset synced account everywhere** behavior by reusing the validated restore/replacement machinery.
+- [x] Add explicit **disconnect this device** behavior that preserves canonical local data and leaves the cloud account unchanged.
+- [x] Rebuild Telegram against the canonical ledger with private-owner authorization, timezone-aware dates, atomic batch writes, and `update_id` idempotency.
+- [x] Scope service-worker registration to the authenticated application shell.
+- [x] Pass the complete B002 gate on implementation head `2e01cda7e69e80a4b75fa2bcea20f253fb4ebbc5`: 32 Vitest files / 172 tests, production build, 9 route-smoke checks, and both offline-mobile Playwright projects.
 - [x] License the source code under the MIT License.
-- [x] Update primary architecture/security/project-state documentation to match the remediation branch.
-- [x] Implement versioned JSON restore/replace for unlinked/local ledgers with strict validation, pre-restore safety backup, and legacy checkpoint migration.
-- [ ] Decide device-only vs account-wide restore behavior for cloud-linked ledgers.
-- [ ] Decide and implement device-local vs account-wide reset semantics.
-- [ ] Enable Supabase leaked-password protection if available/appropriate for the project plan.
-- [ ] Complete the historical Git review for old environment files, credentials, real finance data, screenshots, or provider identifiers.
-- [ ] Use only synthetic/demo financial values and transaction descriptions in public screenshots.
-- [ ] Perform a final authenticated walkthrough using a disposable Supabase account.
-- [ ] Obtain explicit owner approval before merging the remediation branch or promoting it to production.
+
+### Final release evidence
+
+- [ ] Finish documentation reconciliation and freeze the final B002 head.
+- [ ] Pass the complete CI gate on that documentation-frozen head.
+- [ ] Obtain a READY Vercel preview whose Git commit SHA exactly matches the final head.
+- [ ] Configure preview/provider secrets without exposing them to the repository.
+- [ ] Perform a disposable-account authenticated walkthrough covering first device, second-device use-cloud, second-device merge, two-device offline convergence, reconciliation, recurring, FX/reporting, account/device restore, account/device reset, disconnect/relink, Telegram, and Groq.
+- [ ] Complete the historical Git/public-artifact review for old environment files, credentials, real finance data, screenshots, or provider identifiers.
+- [ ] Use only synthetic/demo financial values and transaction descriptions in public screenshots/exports.
+- [ ] Enable Supabase leaked-password protection if available/appropriate for the project plan, or record the accepted project-level limitation.
+- [ ] Obtain explicit owner approval before merging/promoting B002.
+- [ ] Deploy the compatible application before applying `20260908_enforce_protected_sync_writes.sql`.
+- [ ] Smoke-test production before and after the protected-write migration.
 
 ## Project scope
 
@@ -46,13 +61,16 @@ Implemented engineering features include:
 - durable IndexedDB sync outbox with atomic finance+intent commits;
 - explicit cloud-use vs local-merge account adoption;
 - two-device convergence tests including conflicting offline edits and deletes;
+- generation-aware account restore/reset and stale-client protection;
+- device-only/account-wide restore and reset choices;
+- explicit per-device cloud disconnect;
 - historical TCMB FX conversion with prior-published-date fallback only;
 - Month/Range/Year reporting and matching historical-FX PDF export;
 - authenticated Groq categorization with server-only credentials and per-account quota;
-- server-only Supabase quota RPC privileges verified on the live project;
+- private-owner Telegram capture through an atomic/idempotent server-side write primitive;
 - PKCE/token-hash auth callback handling;
 - CSP and related production security headers;
-- PWA/offline mobile verification;
+- PWA/offline mobile Chromium verification;
 - Android manifest shortcuts and stable `/app/add` deep-link capture.
 
 ## Product boundaries
@@ -67,42 +85,65 @@ TapTrack does not implement:
 - receipt/photo OCR;
 - a server-side background recurring scheduler.
 
-Telegram integration is deliberately deferred. Legacy Telegram route code should not be presented as part of the canonical ledger guarantees until it is redesigned and verified.
+Telegram is intentionally a **single private-owner** integration in the current release design. Group/shared financial mutation is fail-closed rather than supported implicitly.
 
-JSON restore/replace is release-ready for unlinked/local ledgers. Cloud-linked restore remains intentionally blocked until device-only versus account-wide scope is selected, and reset/account-unlink behavior still requires explicit device/account semantics.
+Native installed Safari/iOS behavior has not been verified. The empty-cloud binding path rechecks remote emptiness before binding but does not make claim + initial seed one server transaction. JavaScript `number` remains the money representation. These are documented residuals, not claims to be hidden in portfolio copy.
 
-## Public claims that are currently supportable
+## Public claims currently supportable from implementation + CI
 
-The remediation branch can accurately claim that:
+B002 can accurately claim that:
 
 - ordinary finance capture is local-first and can operate offline after the PWA shell is warmed;
 - opening/reconciliation checkpoints plus later finance events define canonical balance state;
 - display balances are derived rather than independently synchronized truth;
 - normal canonical finance writes store durable sync intent atomically with the local mutation;
+- devices require explicit account binding and mismatched accounts fail closed;
 - same-record conflicts use last successful sync wins;
 - recurring occurrence IDs converge across devices;
+- versioned device/account restore and reset semantics are implemented;
+- explicit device disconnect preserves the local canonical ledger while removing the sync binding/outbox;
+- account-wide replacement rotates ledger generation so stale clients can adopt rather than replay pre-replacement work;
 - historical FX values are fetched from TCMB via Frankfurter and do not use estimated hard-coded fallbacks;
 - TRY-unified report screen and PDF export use transaction-date valuation;
 - hosted AI categorization is authenticated and server-side;
-- the live AI quota function is not executable by `anon` or `authenticated` roles;
-- current automated Chromium coverage verifies offline mobile navigation and persistence of an offline Quick Add transaction.
+- Telegram canonical transaction batches are applied by an atomic/idempotent server-side primitive and group access is fail-closed;
+- current automated Chromium coverage verifies offline mobile navigation and persistence of an offline Quick Add transaction;
+- exact implementation head `2e01cda7...` passed 32/32 Vitest files, 172/172 tests, build, 9/9 route smoke, and both mobile Playwright projects.
 
-Do **not** claim native Safari/iOS offline verification, production Telegram correctness, or release-ready synced import/reset behavior yet.
+Do **not** claim that:
+
+- B002 is already production;
+- native installed Safari/iOS behavior has been verified;
+- a final production-equivalent real-bot or two-device provider walkthrough has already been completed on the release head;
+- empty-cloud claim-and-seed is a single server-side transaction;
+- IndexedDB is encrypted by TapTrack;
+- money uses exact integer-minor-unit/decimal arithmetic;
+- the protected-write migration is already safe to apply while old `main` remains production.
 
 ## Privacy presentation rule
 
-Screenshots, GIFs, demo exports, database examples, and sample sync payloads intended for the public repository should use synthetic names, amounts, account balances, provider identifiers, and transaction histories.
+Screenshots, GIFs, demo exports, database examples, and sample sync payloads intended for the public repository must use synthetic names, amounts, account balances, provider identifiers, and transaction histories.
 
 Never publish screenshots containing real Supabase service-role credentials, Groq credentials, Telegram tokens, webhook secrets, real user IDs, or personal finance history.
 
-## Release sequence
+## Required release sequence
 
-1. Resolve cloud-linked restore, reset, and account-unlink scope semantics.
-2. Implement and test those decisions.
-3. Verify remaining deployment environment variables/live migrations.
-4. Perform disposable-account authenticated manual testing.
-5. Review the final Vercel preview and repository diff/history.
-6. Merge/promote only after explicit owner approval.
+1. Finish/freeze B002 documentation and implementation.
+2. Pass the complete CI gate on the exact final head.
+3. Obtain a READY Vercel preview for that exact Git SHA.
+4. Configure preview/provider secrets and complete the disposable-account walkthrough.
+5. Complete history/public-artifact review and owner release review.
+6. Merge/promote the compatible B002 application.
+7. Smoke-test production while existing direct-write privileges still support rollback/recovery.
+8. Apply `20260908_enforce_protected_sync_writes.sql`.
+9. Smoke-test production again, including canonical browser mutation through the server-mediated sync route.
+10. Only then describe the protected-write production boundary as deployed.
+
+## Current readiness judgment
+
+The major engineering remediation is complete enough for release preparation. The remaining work is evidence and coordinated deployment, not another broad redesign.
+
+Release is **not approved yet** because the exact final preview, provider-backed walkthrough, history/public-artifact review, owner approval, and protected-write migration sequence remain outstanding.
 
 ## License
 
