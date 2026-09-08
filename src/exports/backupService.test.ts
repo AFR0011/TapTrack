@@ -206,7 +206,7 @@ describe('backupService', () => {
     expect(result.source).toBe('v2');
     expect((await database.settings.get('default'))?.defaultCurrency).toBe('GBP');
     expect((await getBalance('GBP', 'cash'))?.amount).toBe(380);
-    expect((await database.monthlyBudgets.get('2026-05'))?.currency).toBe('GBP');
+    expect((await database.monthlyBudgets.where('month').equals('2026-05').first())?.currency).toBe('GBP');
   });
 
   it.each(['GB', 'gbp', 'USDT'])('rejects malformed canonical currency code %s', async (currency) => {
