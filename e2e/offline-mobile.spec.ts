@@ -1,13 +1,13 @@
 import { expect, test } from '@playwright/test';
 
 const CORE_ROUTES = [
-  { path: '/app', heading: 'Dashboard', nav: 'Home' },
-  { path: '/app/transactions', heading: 'Transactions', nav: 'History' },
-  { path: '/app/conversions', heading: 'Transfers & exchanges', nav: 'Transfer' },
-  { path: '/app/budgets', heading: 'Budgets', nav: 'Budgets' },
-  { path: '/app/recurring', heading: 'Recurring', nav: 'Recurring' },
-  { path: '/app/reports', heading: 'Reports', nav: 'Reports' },
-  { path: '/app/settings', heading: 'Settings', nav: 'Settings' },
+  { path: '/app', heading: 'Dashboard', nav: 'Dashboard', placement: 'primary' },
+  { path: '/app/transactions', heading: 'Transactions', nav: 'Transactions', placement: 'primary' },
+  { path: '/app/conversions', heading: 'Transfers & exchanges', nav: 'Transfers', placement: 'primary' },
+  { path: '/app/budgets', heading: 'Budgets', nav: 'Budgets', placement: 'more' },
+  { path: '/app/recurring', heading: 'Recurring', nav: 'Recurring', placement: 'more' },
+  { path: '/app/reports', heading: 'Reports', nav: 'Reports', placement: 'primary' },
+  { path: '/app/settings', heading: 'Settings', nav: 'Settings', placement: 'more' },
 ] as const;
 
 type Page = import('@playwright/test').Page;
@@ -17,19 +17,35 @@ type BrowserDiagnostics = {
   failedRequests: string[];
 };
 
+async function expectMobileTargetSize(target: ReturnType<Page['getByRole']>) {
+  await expect(target).toBeVisible();
+  const box = await target.boundingBox();
+  expect(box?.width ?? 0).toBeGreaterThanOrEqual(44);
+  expect(box?.height ?? 0).toBeGreaterThanOrEqual(44);
+}
+
 async function assertMobileLayout(page: Page) {
   const mobileNav = page.getByRole('navigation', { name: 'Mobile' });
   await expect(mobileNav).toBeVisible();
-  const links = mobileNav.getByRole('link');
-  await expect(links).toHaveCount(CORE_ROUTES.length);
 
-  for (const route of CORE_ROUTES) {
-    const target = mobileNav.getByRole('link', { name: route.nav, exact: true });
-    await expect(target).toBeVisible();
-    const box = await target.boundingBox();
-    expect(box?.width ?? 0).toBeGreaterThanOrEqual(44);
-    expect(box?.height ?? 0).toBeGreaterThanOrEqual(44);
+  const primaryRoutes = CORE_ROUTES.filter((route) => route.placement === 'primary');
+  const moreRoutes = CORE_ROUTES.filter((route) => route.placement === 'more');
+  await expect(mobileNav.getByRole('link')).toHaveCount(primaryRoutes.length);
+
+  for (const route of primaryRoutes) {
+    await expectMobileTargetSize(mobileNav.getByRole('link', { name: route.nav, exact: true }));
   }
+
+  const moreButton = mobileNav.getByRole('button', { name: 'More', exact: true });
+  await expectMobileTargetSize(moreButton);
+  await moreButton.click();
+
+  for (const route of moreRoutes) {
+    await expectMobileTargetSize(mobileNav.getByRole('link', { name: route.nav, exact: true }));
+  }
+
+  await moreButton.click();
+  await expect(mobileNav.getByRole('link')).toHaveCount(primaryRoutes.length);
 
   const hasHorizontalOverflow = await page.evaluate(
     () => document.documentElement.scrollWidth > document.documentElement.clientWidth
