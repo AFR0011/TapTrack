@@ -29,7 +29,8 @@ export default function BudgetsWorkspace() {
     [month]
   );
   const [saving, setSaving] = useState('');
-  const [error, setError] = useState('');
+  const [monthlyError, setMonthlyError] = useState('');
+  const [categoryErrors, setCategoryErrors] = useState<Record<string, string>>({});
 
   const isLoading =
     transactions === undefined ||
@@ -61,7 +62,7 @@ export default function BudgetsWorkspace() {
 
   const saveMonthlyBudget = async (value: string) => {
     setSaving('monthly');
-    setError('');
+    setMonthlyError('');
     try {
       await upsertMonthlyBudget({
         month,
@@ -70,7 +71,7 @@ export default function BudgetsWorkspace() {
       });
       toast.success('Monthly budget saved.');
     } catch (err) {
-      setError(err instanceof Error ? err.message : 'Budget could not be saved.');
+      setMonthlyError(err instanceof Error ? err.message : 'Monthly budget could not be saved. Check the amount and try again.');
     } finally {
       setSaving('');
     }
@@ -78,7 +79,7 @@ export default function BudgetsWorkspace() {
 
   const saveCategoryBudget = async (categoryId: string, value: string) => {
     setSaving(categoryId);
-    setError('');
+    setCategoryErrors((current) => ({ ...current, [categoryId]: '' }));
     try {
       const existing = categoryBudgetByCategory.get(categoryId);
       await upsertCategoryBudget({
@@ -89,7 +90,10 @@ export default function BudgetsWorkspace() {
       });
       toast.success('Category budget saved.');
     } catch (err) {
-      setError(err instanceof Error ? err.message : 'Category budget could not be saved.');
+      setCategoryErrors((current) => ({
+        ...current,
+        [categoryId]: err instanceof Error ? err.message : 'This category budget could not be saved. Check the amount and try again.',
+      }));
     } finally {
       setSaving('');
     }
@@ -98,7 +102,7 @@ export default function BudgetsWorkspace() {
   if (isLoading) {
     return (
       <div className="space-y-5" aria-busy="true" aria-label="Loading budgets">
-        <PageHeader title="Budgets" description="Monthly spending limits." />
+        <PageHeader title="Budgets" description="Plan monthly spending." />
         <div className="grid gap-4 lg:grid-cols-2">
           <SkeletonCard />
           <SkeletonCard />
@@ -111,14 +115,15 @@ export default function BudgetsWorkspace() {
     <div className="space-y-5">
       <PageHeader
         title="Budgets"
-        description={`${budgetCurrency} budget for this month.`}
+        description={`${budgetCurrency} spending plan.`}
         action={
           <input
             type="month"
+            aria-label="Budget month"
             value={month}
             onChange={(event) => setMonth(event.target.value)}
             className={cn(
-              'min-h-11 rounded-lg border border-subtle px-3 py-2 text-sm font-medium text-primary outline-none focus-visible:border-accent',
+              'min-h-11 rounded-lg border border-subtle px-3 py-2 text-base font-medium text-primary outline-none focus-visible:border-accent md:text-sm',
               focusVisibleRing
             )}
           />
@@ -138,9 +143,9 @@ export default function BudgetsWorkspace() {
             savedValue={savedTotalBudget}
             currency={budgetCurrency}
             saving={saving === 'monthly'}
+            error={monthlyError}
             onSave={saveMonthlyBudget}
           />
-          {error ? <p className="mt-3 text-sm font-medium text-danger">{error}</p> : null}
 
           <div className="mt-5">
             <p className="text-sm font-medium text-secondary">Remaining</p>
@@ -170,6 +175,12 @@ export default function BudgetsWorkspace() {
                 ? `${formatMoney(Math.max(remaining, 0), budgetCurrency)} remaining`
                 : 'Set a monthly total to track usage'
             }
+            ariaLabel="Monthly budget used"
+            ariaValueText={
+              budgetAvailable > 0
+                ? `${Math.round(totalPercent)}% used, ${formatMoney(Math.max(remaining, 0), budgetCurrency)} remaining`
+                : 'No monthly budget set'
+            }
           />
         </div>
 
@@ -180,7 +191,7 @@ export default function BudgetsWorkspace() {
               <div className="py-8 text-center">
                 <p className="text-sm font-semibold text-secondary">No expense categories available.</p>
                 <p className="mt-1 text-sm font-medium text-muted">
-                  Create a category in Settings, then assign a monthly limit.
+                  Add a category in Settings, then give it a monthly limit.
                 </p>
               </div>
             ) : (
@@ -208,6 +219,7 @@ export default function BudgetsWorkspace() {
                     budget={budget}
                     percent={percent}
                     saving={saving === category.id}
+                    error={categoryErrors[category.id] ?? ''}
                     onSave={(value) => void saveCategoryBudget(category.id, value)}
                   />
                 );
@@ -233,41 +245,49 @@ function MonthlyBudgetEditor({
   savedValue,
   currency,
   saving,
+  error,
   onSave,
 }: {
   savedValue: number;
   currency: Currency;
   saving: boolean;
+  error: string;
   onSave: (value: string) => void;
 }) {
   const [value, setValue] = useState(String(savedValue));
   const dirty = parseAmountInput(value) !== savedValue;
 
   return (
-    <div className="mt-4 grid gap-3 sm:grid-cols-[1fr_auto]">
-      <div className="relative">
-        <input
-          inputMode="decimal"
-          value={value}
-          aria-label={`Monthly budget in ${currency}`}
-          onChange={(event) => setValue(event.target.value)}
-          className={cn(
-            'min-h-11 w-full rounded-lg border border-subtle px-3 py-2 pr-14 text-sm font-medium text-primary outline-none focus-visible:border-accent',
-            focusVisibleRing
-          )}
-        />
-        <span className="pointer-events-none absolute inset-y-0 right-3 flex items-center text-xs font-semibold text-muted">
-          {currency}
-        </span>
+    <div className="mt-4">
+      <div className="grid gap-3 sm:grid-cols-[1fr_auto]">
+        <div className="relative">
+          <input
+            inputMode="decimal"
+            value={value}
+            aria-label={`Monthly budget in ${currency}`}
+            aria-invalid={error ? true : undefined}
+            aria-describedby={error ? 'monthly-budget-error' : undefined}
+            onChange={(event) => setValue(event.target.value)}
+            className={cn(
+              'min-h-11 w-full rounded-lg border border-subtle px-3 py-2 pr-14 text-base font-medium text-primary outline-none focus-visible:border-accent md:text-sm',
+              focusVisibleRing,
+              error && 'border-danger focus-visible:border-danger focus-visible:outline-danger'
+            )}
+          />
+          <span className="pointer-events-none absolute inset-y-0 right-3 flex items-center text-xs font-semibold text-muted">
+            {currency}
+          </span>
+        </div>
+        <Button
+          type="button"
+          onClick={() => onSave(value)}
+          loading={saving}
+          disabled={saving || !dirty}
+        >
+          Save total
+        </Button>
       </div>
-      <Button
-        type="button"
-        onClick={() => onSave(value)}
-        loading={saving}
-        disabled={saving || !dirty}
-      >
-        Save total
-      </Button>
+      {error ? <p id="monthly-budget-error" role="alert" className="mt-2 text-sm font-medium text-danger">{error}</p> : null}
     </div>
   );
 }
@@ -279,6 +299,7 @@ function CategoryBudgetRow({
   budget,
   percent,
   saving,
+  error,
   onSave,
 }: {
   name: string;
@@ -287,10 +308,12 @@ function CategoryBudgetRow({
   budget: number;
   percent: number;
   saving: boolean;
+  error: string;
   onSave: (value: string) => void;
 }) {
   const [value, setValue] = useState(String(budget));
   const dirty = parseAmountInput(value) !== budget;
+  const errorId = `category-budget-${name.toLowerCase().replace(/[^a-z0-9]+/g, '-')}-error`;
 
   return (
     <div className="grid gap-3 py-3 md:grid-cols-[1fr_180px_auto] md:items-center">
@@ -299,22 +322,34 @@ function CategoryBudgetRow({
         <p className="mt-1 text-xs font-medium text-muted">
           {formatMoney(spent, currency)} spent of {formatMoney(budget, currency)}
         </p>
-        <ProgressBar className="mt-2" percent={percent} compact />
-      </div>
-      <div className="relative">
-        <input
-          inputMode="decimal"
-          value={value}
-          aria-label={`${name} budget in ${currency}`}
-          onChange={(event) => setValue(event.target.value)}
-          className={cn(
-            'min-h-11 w-full rounded-lg border border-subtle px-3 py-2 pr-14 text-sm font-medium text-primary outline-none focus-visible:border-accent',
-            focusVisibleRing
-          )}
+        <ProgressBar
+          className="mt-2"
+          percent={percent}
+          compact
+          ariaLabel={`${name} budget used`}
+          ariaValueText={budget > 0 ? `${Math.round(percent)}% used` : 'No category budget set'}
         />
-        <span className="pointer-events-none absolute inset-y-0 right-3 flex items-center text-xs font-semibold text-muted">
-          {currency}
-        </span>
+      </div>
+      <div>
+        <div className="relative">
+          <input
+            inputMode="decimal"
+            value={value}
+            aria-label={`${name} budget in ${currency}`}
+            aria-invalid={error ? true : undefined}
+            aria-describedby={error ? errorId : undefined}
+            onChange={(event) => setValue(event.target.value)}
+            className={cn(
+              'min-h-11 w-full rounded-lg border border-subtle px-3 py-2 pr-14 text-base font-medium text-primary outline-none focus-visible:border-accent md:text-sm',
+              focusVisibleRing,
+              error && 'border-danger focus-visible:border-danger focus-visible:outline-danger'
+            )}
+          />
+          <span className="pointer-events-none absolute inset-y-0 right-3 flex items-center text-xs font-semibold text-muted">
+            {currency}
+          </span>
+        </div>
+        {error ? <p id={errorId} role="alert" className="mt-2 text-sm font-medium text-danger md:hidden">{error}</p> : null}
       </div>
       <Button
         type="button"
@@ -327,6 +362,7 @@ function CategoryBudgetRow({
       >
         Save
       </Button>
+      {error ? <p id={`${errorId}-desktop`} role="alert" className="text-sm font-medium text-danger md:col-span-3 md:mt-[-0.25rem]">{error}</p> : null}
     </div>
   );
 }
