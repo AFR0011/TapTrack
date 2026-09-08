@@ -67,8 +67,12 @@ export default function CommandInput() {
       setAiLoading(new Set(drafts.map((_, index) => index)));
       drafts.forEach((draft, index) => {
         void fetchAICategorySuggestion(draft.title, draft.type, categories).then((result) => {
-          if (result.status === 'suggested' && result.categoryId) {
-            setAiOverrides((current) => ({ ...current, [index]: { categoryId: result.categoryId!, label: categoriesById.get(result.categoryId)?.name ?? result.categoryId! } }));
+          const suggestedId = result.categoryId;
+          if (result.status === 'suggested' && suggestedId) {
+            setAiOverrides((current) => ({
+              ...current,
+              [index]: { categoryId: suggestedId, label: categoriesById.get(suggestedId)?.name ?? suggestedId },
+            }));
           } else if (result.status === 'unavailable') {
             setAiUnavailable((current) => new Set(current).add(index));
           }
