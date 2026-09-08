@@ -142,7 +142,7 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
   const { data, error: rpcError } = await admin.rpc('apply_taptrack_capture', {
     target_user_id: tokenRow.user_id,
     capture_token_id: tokenRow.id,
-    request_id: parsed.requestId,
+    capture_request_id: parsed.requestId,
     ledger_date: parsed.date,
     draft: {
       type: parsed.type,
@@ -201,7 +201,7 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
   );
 }
 
-function parseCaptureBody(body: CaptureRequestBody):
+export function parseCaptureBody(body: CaptureRequestBody):
   | {
       ok: true;
       requestId: string;
