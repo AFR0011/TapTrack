@@ -10,7 +10,7 @@ import type { Currency, Method, TransactionType } from '@/types';
 
 const VALID_TYPES = new Set<TransactionType>(['expense', 'income']);
 const VALID_METHODS = new Set<Method>(['cash', 'card']);
-const VALID_CURRENCIES = new Set<Currency>(['TRY', 'USD', 'EUR']);
+const CURRENCY_PATTERN = /^[A-Z]{3}$/;
 const DATE_PATTERN = /^\d{4}-\d{2}-\d{2}$/;
 const AMOUNT_PATTERN = /^\d+(?:[.,]\d{1,2})?$/;
 
@@ -35,8 +35,9 @@ function parseCaptureParameters(params: URLSearchParams): {
   if (rawMethod && VALID_METHODS.has(rawMethod as Method)) {
     prefill.method = rawMethod as Method;
   }
-  if (rawCurrency && VALID_CURRENCIES.has(rawCurrency as Currency)) {
-    prefill.currency = rawCurrency as Currency;
+  const normalizedCurrency = rawCurrency?.trim().toUpperCase() ?? '';
+  if (CURRENCY_PATTERN.test(normalizedCurrency)) {
+    prefill.currency = normalizedCurrency as Currency;
   }
   if (rawDate && DATE_PATTERN.test(rawDate)) {
     prefill.date = rawDate;
