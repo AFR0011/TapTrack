@@ -1,3 +1,4 @@
+import { NextRequest } from 'next/server';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
 const getUser = vi.fn();
@@ -21,7 +22,7 @@ vi.mock('@/server/capture/captureTokens', () => ({
 import { POST } from './route';
 
 function request(body: unknown = { label: 'My iPhone' }) {
-  return new Request('http://localhost/api/capture-tokens', {
+  return new NextRequest('http://localhost/api/capture-tokens', {
     method: 'POST',
     headers: { 'content-type': 'application/json' },
     body: JSON.stringify(body),
