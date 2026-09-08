@@ -36,7 +36,7 @@ export function ResetScopeDialog({
       }
       if (event.key !== 'Tab') return;
       const focusable = panelRef.current?.querySelectorAll<HTMLElement>(
-        'button, [href], input, select, textarea, [tabindex]:not([tabindex="-1"])'
+        'button:not(:disabled), [href], input:not(:disabled), select:not(:disabled), textarea:not(:disabled), [tabindex]:not([tabindex="-1"])'
       );
       if (!focusable?.length) return;
       const first = focusable[0];
@@ -75,17 +75,17 @@ export function ResetScopeDialog({
         className="w-full max-w-lg rounded-xl border border-subtle bg-surface p-5 shadow-[var(--shadow-overlay)]"
       >
         <h3 id={titleId} className="text-base font-semibold text-primary">
-          Where should TapTrack be reset?
+          What should be reset?
         </h3>
         <p id={descriptionId} className="mt-2 text-sm font-medium text-secondary">
-          This browser is linked to cloud sync. TapTrack will download a safety backup first and will not remember a default reset scope.
+          A safety backup will be downloaded first. Choose whether to clear TapTrack only on this device or across your synced account.
         </p>
 
         <div className="mt-5 grid gap-3">
           <div className="rounded-lg border border-danger/40 bg-danger-muted p-4">
             <p className="text-sm font-semibold text-danger">Reset synced account</p>
             <p className="mt-1 text-xs font-medium text-secondary">
-              Replace the synced account with a fresh empty ledger. Every linked device will adopt the reset state and stale pending operations will be discarded.
+              Clear the TapTrack data in your synced account. Other connected devices will receive the empty account when they next sync.
             </p>
             <Button
               type="button"
@@ -101,7 +101,7 @@ export function ResetScopeDialog({
           <div className="rounded-lg border border-subtle bg-surface-muted p-4">
             <p className="text-sm font-semibold text-primary">Reset only this device</p>
             <p className="mt-1 text-xs font-medium text-muted">
-              Disconnect this browser from cloud sync and reset only its local ledger. The synced account and every other device remain unchanged.
+              Disconnect this device from sync and clear TapTrack only here. Your synced account and other devices remain unchanged.
             </p>
             <Button
               type="button"
