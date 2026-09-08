@@ -16,13 +16,11 @@ import {
   DEFAULT_SETTINGS_ID,
   createDefaultCategories,
   createDefaultSettings,
-  createInitialBalances,
 } from '@/defaultData';
 import { formatLocalDate, getCurrentMonth } from '@/dates';
 
 export class TapTrackDatabase extends Dexie {
   transactions!: Table<Transaction, string>;
-  /** Derived local cache. Never treat this table as authoritative sync state. */
   balances!: Table<Balance, string>;
   balanceCheckpoints!: Table<BalanceCheckpoint, string>;
   categories!: Table<Category, string>;
@@ -32,7 +30,6 @@ export class TapTrackDatabase extends Dexie {
   conversions!: Table<Conversion, string>;
   settings!: Table<Settings, string>;
   deviceMetadata!: Table<DeviceMetadata, string>;
-  /** Device-local durable queue. Never synced as finance data itself. */
   syncOutbox!: Table<SyncOutboxItem, string>;
 
   constructor(name = 'TapTrackDB') {
@@ -47,25 +44,15 @@ export class TapTrackDatabase extends Dexie {
       conversions: 'id, date, fromCurrency, toCurrency',
       settings: 'id',
     });
-    this.version(2).stores({
-      conversions: 'id, date, fromCurrency, toCurrency, fromMethod, toMethod',
-    });
-    this.version(3).stores({
-      deviceMetadata: 'id',
-    });
+    this.version(2).stores({ conversions: 'id, date, fromCurrency, toCurrency, fromMethod, toMethod' });
+    this.version(3).stores({ deviceMetadata: 'id' });
     this.version(4)
-      .stores({
-        balanceCheckpoints: 'id, balanceId, kind, month, effectiveAt',
-      })
+      .stores({ balanceCheckpoints: 'id, balanceId, kind, month, effectiveAt' })
       .upgrade(async (transaction) => {
-        const settings = (await transaction.table('settings').get(DEFAULT_SETTINGS_ID)) as
-          | Settings
-          | undefined;
+        const settings = (await transaction.table('settings').get(DEFAULT_SETTINGS_ID)) as Settings | undefined;
         if (!settings?.setupCompleted) return;
-
         const checkpointTable = transaction.table('balanceCheckpoints');
         if ((await checkpointTable.count()) > 0) return;
-
         const balances = (await transaction.table('balances').toArray()) as Balance[];
         if (balances.length === 0) return;
 
@@ -87,41 +74,23 @@ export class TapTrackDatabase extends Dexie {
           createdAt: now,
           updatedAt: now,
         }));
-
         await checkpointTable.bulkPut(checkpoints);
       });
 
-    // Version 5 replaces best-effort localStorage retries with a durable
-    // IndexedDB outbox. An already-linked pre-v5 device is the original ledger
-    // (older linking rejected accounts that already had cloud data), so its
-    // canonical rows are safely queued once for migration/backfill.
     this.version(5)
-      .stores({
-        syncOutbox: 'id, tableName, recordId, operation, queuedAt',
-      })
+      .stores({ syncOutbox: 'id, tableName, recordId, operation, queuedAt' })
       .upgrade(async (transaction) => {
-        const binding = (await transaction.table('deviceMetadata').get('ledger-binding')) as
-          | DeviceMetadata
-          | undefined;
+        const binding = (await transaction.table('deviceMetadata').get('ledger-binding')) as DeviceMetadata | undefined;
         if (!binding) return;
-
         const outbox = transaction.table('syncOutbox');
         const tableNames = [
-          'transactions',
-          'balanceCheckpoints',
-          'categories',
-          'monthlyBudgets',
-          'categoryBudgets',
-          'recurringTransactions',
-          'conversions',
-          'settings',
+          'transactions', 'balanceCheckpoints', 'categories', 'monthlyBudgets',
+          'categoryBudgets', 'recurringTransactions', 'conversions', 'settings',
         ] as const;
         const queuedAt = new Date().toISOString();
 
         for (const tableName of tableNames) {
-          const rows = (await transaction.table(tableName).toArray()) as Array<
-            Record<string, unknown>
-          >;
+          const rows = (await transaction.table(tableName).toArray()) as Array<Record<string, unknown>>;
           for (const row of rows) {
             if (typeof row.id !== 'string' || row.id.length === 0) continue;
             const item: SyncOutboxItem = {
@@ -146,29 +115,15 @@ export const db = new TapTrackDatabase();
 export async function ensureDatabaseSeeded(database: TapTrackDatabase = db) {
   const now = new Date().toISOString();
 
-  await database.transaction('rw', database.categories, database.balances, database.settings, async () => {
+  await database.transaction('rw', database.categories, database.settings, async () => {
     const existingCategories = await database.categories.toArray();
     const existingCategoryIds = new Set(existingCategories.map((category) => category.id));
     const missingCategories = createDefaultCategories(now).filter(
       (category) => !existingCategoryIds.has(category.id)
     );
-    if (missingCategories.length > 0) {
-      await database.categories.bulkPut(missingCategories);
-    }
-
-    const existingBalances = await database.balances.toArray();
-    const existingBalanceIds = new Set(existingBalances.map((balance) => balance.id));
-    const missingBalances = createInitialBalances(now).filter(
-      (balance) => !existingBalanceIds.has(balance.id)
-    );
-
-    if (missingBalances.length > 0) {
-      await database.balances.bulkPut(missingBalances);
-    }
+    if (missingCategories.length > 0) await database.categories.bulkPut(missingCategories);
 
     const settings = await database.settings.get(DEFAULT_SETTINGS_ID);
-    if (!settings) {
-      await database.settings.put(createDefaultSettings(now));
-    }
+    if (!settings) await database.settings.put(createDefaultSettings(now));
   });
 }
