@@ -27,6 +27,14 @@ const config: Config = {
           DEFAULT: 'var(--accent)',
           muted: 'var(--accent-muted)',
         },
+        action: {
+          primary: 'var(--action-primary)',
+          'primary-hover': 'var(--action-primary-hover)',
+          success: 'var(--action-success)',
+          'success-hover': 'var(--action-success-hover)',
+          danger: 'var(--action-danger)',
+          'danger-hover': 'var(--action-danger-hover)',
+        },
         danger: {
           DEFAULT: 'var(--danger)',
           muted: 'var(--danger-muted)',
