@@ -2,7 +2,6 @@
 
 import { useEffect, useState } from 'react';
 import DashboardSummary from '@/components/DashboardSummary';
-import RecentTransactions from '@/components/RecentTransactions';
 import { Skeleton } from '@/components/ui/Skeleton';
 
 export default function Home() {
@@ -25,7 +24,6 @@ export default function Home() {
         <h1 className="mt-1.5 text-3xl font-semibold tracking-[-0.035em] text-primary">Dashboard</h1>
       </header>
       <DashboardSummary />
-      <RecentTransactions />
     </div>
   );
 }

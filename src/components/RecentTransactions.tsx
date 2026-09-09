@@ -30,14 +30,14 @@ export default function RecentTransactions() {
 
   return (
     <motion.section
-      initial={reduceMotion ? false : { opacity: 0, y: 12 }}
+      initial={reduceMotion ? false : { opacity: 0, y: 10 }}
       animate={{ opacity: 1, y: 0 }}
-      transition={reduceMotion ? { duration: 0 } : { duration: 0.32, ease: 'easeOut', delay: 0.08 }}
+      transition={reduceMotion ? { duration: 0 } : { duration: 0.28, ease: 'easeOut', delay: 0.06 }}
     >
       <div className="mb-3 flex items-end justify-between gap-3">
         <div>
           <p className="text-xs font-semibold uppercase tracking-[0.16em] text-muted">Activity</p>
-          <h2 className="mt-1 text-lg font-semibold tracking-tight text-primary">Recent transactions</h2>
+          <h2 className="mt-1 text-lg font-semibold tracking-tight text-primary">Recent activity</h2>
         </div>
         <Link
           href="/app/transactions"
@@ -66,17 +66,17 @@ export default function RecentTransactions() {
           </div>
         ) : (
           <div className="divide-y divide-subtle">
-            {sortedTransactions.slice(0, 6).map((transaction, index) => {
+            {sortedTransactions.slice(0, 4).map((transaction, index) => {
               const category = categoryMap.get(transaction.categoryId);
               return (
                 <motion.div
                   key={transaction.id}
-                  initial={reduceMotion ? false : { opacity: 0, y: 6 }}
+                  initial={reduceMotion ? false : { opacity: 0, y: 5 }}
                   animate={{ opacity: 1, y: 0 }}
-                  transition={reduceMotion ? { duration: 0 } : { duration: 0.22, ease: 'easeOut', delay: index * 0.025 }}
-                  className="flex items-center gap-3 px-4 py-3.5"
+                  transition={reduceMotion ? { duration: 0 } : { duration: 0.2, ease: 'easeOut', delay: index * 0.02 }}
+                  className="flex items-center gap-3 px-4 py-3"
                 >
-                  <CategoryIcon icon={category?.icon} color={category?.color} className="h-10 w-10 rounded-2xl" />
+                  <CategoryIcon icon={category?.icon} color={category?.color} className="h-9 w-9 rounded-2xl" />
                   <div className="min-w-0 flex-1">
                     <p className="truncate text-sm font-semibold text-primary">{transaction.title}</p>
                     <p className="mt-0.5 truncate text-xs font-medium text-muted">
