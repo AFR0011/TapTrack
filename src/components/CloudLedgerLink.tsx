@@ -69,7 +69,7 @@ export function CloudLedgerLink({ onLinked }: CloudLedgerLinkProps) {
   };
 
   useEffect(() => {
-    if (!open) return;
+    if (!open || confirmReplace) return;
     const previousActive = document.activeElement as HTMLElement | null;
     cancelRef.current?.focus();
 
@@ -100,7 +100,7 @@ export function CloudLedgerLink({ onLinked }: CloudLedgerLinkProps) {
       document.removeEventListener('keydown', handleKeyDown);
       previousActive?.focus();
     };
-  }, [busy, open]);
+  }, [busy, confirmReplace, open]);
 
   return (
     <>
@@ -115,7 +115,7 @@ export function CloudLedgerLink({ onLinked }: CloudLedgerLinkProps) {
         Connect this device to sync
       </Button>
 
-      {open && plan ? (
+      {open && plan && !confirmReplace ? (
         <div
           className="fixed inset-0 z-50 flex items-center justify-center bg-[var(--overlay)] p-4"
           onClick={(event) => {
