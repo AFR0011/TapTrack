@@ -522,7 +522,7 @@ export default function ConversionsWorkspaceB004() {
             </div>
           ) : null}
 
-          <div className="mt-5 rounded-xl bg-info-muted px-4 py-3 text-sm font-medium text-secondary ring-1 ring-info/20">
+          <div className="mt-5 rounded-xl bg-accent-muted px-4 py-3 text-sm font-medium text-secondary ring-1 ring-subtle/70">
             This is a balance move, not new money or spending. Reports and budgets are not inflated by it.
           </div>
         </aside>
