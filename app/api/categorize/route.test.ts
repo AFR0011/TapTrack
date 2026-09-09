@@ -84,16 +84,39 @@ describe('POST /api/categorize', () => {
     expect(response.status).toBe(503);
   });
 
-  it('returns only a category id from the allowed list', async () => {
-    vi.stubGlobal('fetch', vi.fn(async () => new Response(JSON.stringify({
-      choices: [{ message: { content: 'cat-subscriptions' } }],
-    }), { status: 200, headers: { 'content-type': 'application/json' } })));
+  it('returns a structured existing-category result from the allowed list', async () => {
+    vi.stubGlobal(
+      'fetch',
+      vi.fn(async () =>
+        new Response(
+          JSON.stringify({
+            choices: [
+              {
+                message: {
+                  content: JSON.stringify({
+                    kind: 'existing',
+                    categoryId: 'cat-subscriptions',
+                    confidence: 0.94,
+                  }),
+                },
+              },
+            ],
+          }),
+          { status: 200, headers: { 'content-type': 'application/json' } }
+        )
+      )
+    );
 
     const response = await POST(request());
     const body = await response.json();
 
     expect(response.status).toBe(200);
-    expect(body).toEqual({ categoryId: 'cat-subscriptions', unavailable: false });
+    expect(body).toEqual({
+      kind: 'existing',
+      categoryId: 'cat-subscriptions',
+      confidence: 0.94,
+      unavailable: false,
+    });
     expect(adminRpc).toHaveBeenCalledWith('consume_ai_categorization_quota', {
       target_user_id: 'user-1',
     });
@@ -106,7 +129,7 @@ describe('POST /api/categorize', () => {
     const body = await response.json();
 
     expect(response.status).toBe(200);
-    expect(body).toEqual({ categoryId: null, unavailable: true });
+    expect(body).toEqual({ kind: 'none', unavailable: true });
   });
 
   it('rejects oversized titles without calling Groq or consuming quota', async () => {
