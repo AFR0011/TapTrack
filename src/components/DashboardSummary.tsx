@@ -9,6 +9,7 @@ import { DEFAULT_SETTINGS_ID } from '@/defaultData';
 import { formatLocalDate, getCurrentMonth } from '@/dates';
 import { clampPercent } from '@/format';
 import { formatCurrency } from '@/currencies/currencyCatalog';
+import { resolveActiveCurrencies } from '@/currencies/activeCurrencySelection';
 import { fetchHistoricalExchangeRate } from '@/exchangeRates';
 import {
   getTransactionAmountInCurrency,
@@ -40,6 +41,14 @@ export default function DashboardSummary() {
   const [rateError, setRateError] = useState(false);
 
   const defaultCurrency = settings?.defaultCurrency ?? 'TRY';
+  const activeCurrencies = useMemo(
+    () => (settings ? resolveActiveCurrencies(settings, balances ?? []) : []),
+    [balances, settings]
+  );
+  const activeBalances = useMemo(() => {
+    const active = new Set(activeCurrencies);
+    return (balances ?? []).filter((balance) => active.has(balance.currency));
+  }, [activeCurrencies, balances]);
   const budgetCurrency = monthlyBudget?.currency ?? defaultCurrency;
   const today = formatLocalDate(new Date());
   const thirtyDaysAgo = shiftDate(today, -29);
@@ -59,7 +68,7 @@ export default function DashboardSummary() {
   );
 
   useEffect(() => {
-    if (!transactions || !settings || !balances) return;
+    if (!transactions || !settings || balances === undefined) return;
     const controller = new AbortController();
     queueMicrotask(() => {
       setRatesLoading(true);
@@ -74,7 +83,7 @@ export default function DashboardSummary() {
             defaultCurrency,
             controller.signal
           ),
-          loadBalanceRates(balances, defaultCurrency, today, controller.signal),
+          loadBalanceRates(activeBalances, defaultCurrency, today, controller.signal),
         ]);
         if (controller.signal.aborted) return;
         setRates(defaultRates);
@@ -87,7 +96,7 @@ export default function DashboardSummary() {
     };
     void load();
     return () => controller.abort();
-  }, [balances, dashboardTransactions, defaultCurrency, settings, today, transactions]);
+  }, [activeBalances, balances, dashboardTransactions, defaultCurrency, settings, today, transactions]);
 
   if (!balances || !transactions || !categories || !settings || monthlyBudget === undefined) {
     return (
@@ -114,7 +123,7 @@ export default function DashboardSummary() {
     convert
   );
   const monthNet = monthIncome - monthExpenses;
-  const totalBalance = balances.reduce((sum, balance) => {
+  const totalBalance = activeBalances.reduce((sum, balance) => {
     if (balance.currency === defaultCurrency) return sum + balance.amount;
     const rate = balanceRates[balance.currency];
     return rate ? sum + balance.amount * rate : sum;
@@ -175,7 +184,7 @@ export default function DashboardSummary() {
 
       {rateError ? (
         <p className="rounded-xl border border-subtle bg-surface-muted px-3 py-2 text-xs font-medium text-muted">
-          Some currency balances could not be included in the totals right now.
+          Some active currency balances could not be included in the totals right now.
         </p>
       ) : null}
 
@@ -310,10 +319,12 @@ export default function DashboardSummary() {
       <section>
         <div className="flex items-center justify-between">
           <h2 className="text-sm font-semibold text-muted">Balances</h2>
-          <span className="text-xs font-medium text-muted">{defaultCurrency} summary</span>
+          <Link href="/app/balances" prefetch={false} className="text-xs font-semibold text-accent hover:underline">
+            Manage
+          </Link>
         </div>
         <div className="mt-2 grid grid-cols-2 gap-2 sm:grid-cols-3">
-          {balances.map((balance) => (
+          {activeBalances.map((balance) => (
             <div
               key={balance.id}
               className="min-w-0 rounded-xl border border-subtle bg-surface px-3 py-2"
