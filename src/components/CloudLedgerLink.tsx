@@ -8,6 +8,9 @@ import {
   mergeLocalLedgerIntoCloud,
 } from '@/sync/syncAdoption';
 import type { LedgerLinkPlan } from '@/sync/syncBinding';
+import { db } from '@/database';
+import { exportJSON } from '@/exports/exportService';
+import { downloadText } from '@/lib/download';
 import { Button } from '@/components/ui/Button';
 import { ConfirmDialog } from './ConfirmDialog';
 import { toast } from 'sonner';
@@ -44,19 +47,33 @@ export function CloudLedgerLink({ onLinked }: CloudLedgerLinkProps) {
     }
   };
 
+  const persistPreAdoptionSafetyBackup = async () => {
+    const backup = await exportJSON();
+    const timestamp = new Date().toISOString().replace(/[:.]/g, '-');
+    downloadText(`taptrack-pre-sync-replace-${timestamp}.json`, backup, 'application/json');
+  };
+
   const run = async (action: 'empty' | 'account' | 'merge') => {
     setBusy(true);
     try {
       if (action === 'empty') await linkEmptyCloudLedger();
-      if (action === 'account') await adoptCloudLedger();
+      if (action === 'account') {
+        await adoptCloudLedger(
+          db,
+          plan?.state === 'merge-choice' ? persistPreAdoptionSafetyBackup : undefined
+        );
+      }
       if (action === 'merge') await mergeLocalLedgerIntoCloud();
+      const replacedLocalData = action === 'account' && plan?.state === 'merge-choice';
       setOpen(false);
       setConfirmReplace(false);
       setPlan(null);
       await onLinked();
       toast.success(
         action === 'account'
-          ? 'Synced account data loaded on this device.'
+          ? replacedLocalData
+            ? 'Synced account data loaded. A safety backup of this device was downloaded first.'
+            : 'Synced account data loaded on this device.'
           : action === 'merge'
             ? 'The data on this device was combined with your synced account.'
             : 'This device is now connected to sync.'
@@ -128,25 +145,25 @@ export function CloudLedgerLink({ onLinked }: CloudLedgerLinkProps) {
             aria-modal="true"
             aria-labelledby={titleId}
             aria-describedby={descriptionId}
-            className="w-full max-w-md rounded-xl border border-subtle bg-surface p-5 shadow-[var(--shadow-overlay)]"
+            className="w-full max-w-md rounded-[1.5rem] bg-surface p-5 shadow-[var(--shadow-overlay)] ring-1 ring-subtle"
           >
             <h3 id={titleId} className="text-base font-semibold text-primary">
               {plan.state === 'merge-choice' ? 'Choose what to keep' : 'Connect this device to sync'}
             </h3>
-            <p id={descriptionId} className="mt-2 text-sm font-medium text-secondary">
+            <p id={descriptionId} className="mt-2 text-sm font-medium leading-6 text-secondary">
               {plan.state === 'remote-empty'
                 ? 'Your synced account does not have TapTrack data yet. The data on this device will become the starting copy.'
                 : plan.state === 'cloud-only'
                   ? 'There is no TapTrack data on this device to preserve. TapTrack can load the data already saved to your account.'
-                  : 'This device and your synced account both have TapTrack data. Keeping both is the safest choice.'}
+                  : 'This device and your synced account both contain TapTrack data. Keeping both is the safest choice.'}
             </p>
 
             {plan.state === 'merge-choice' ? (
               <div className="mt-5 grid gap-3">
-                <div className="rounded-lg border border-accent/30 bg-accent-muted/40 p-3">
+                <div className="rounded-2xl border border-accent/30 bg-accent-muted/40 p-4">
                   <span className="inline-flex rounded-full bg-surface px-2 py-0.5 text-xs font-semibold text-accent">Recommended</span>
                   <p className="mt-2 text-sm font-semibold text-primary">Keep both</p>
-                  <p className="mt-1 text-xs font-medium text-muted">
+                  <p className="mt-1 text-xs font-medium leading-5 text-muted">
                     Combine the data on this device with the data already saved to your account.
                   </p>
                   <Button
@@ -159,10 +176,10 @@ export function CloudLedgerLink({ onLinked }: CloudLedgerLinkProps) {
                     Keep both and connect
                   </Button>
                 </div>
-                <div className="rounded-lg border border-subtle bg-surface-muted p-3">
+                <div className="rounded-2xl border border-subtle bg-surface-muted p-4">
                   <p className="text-sm font-semibold text-primary">Use synced account only</p>
-                  <p className="mt-1 text-xs font-medium text-muted">
-                    Replace the TapTrack data on this device with the data already saved to your account.
+                  <p className="mt-1 text-xs font-medium leading-5 text-muted">
+                    Replace this device's TapTrack data with the copy already saved to your account. A safety backup of this device will be downloaded first.
                   </p>
                   <Button
                     type="button"
@@ -204,7 +221,7 @@ export function CloudLedgerLink({ onLinked }: CloudLedgerLinkProps) {
       <ConfirmDialog
         open={confirmReplace}
         title="Replace the data on this device?"
-        message="TapTrack will replace the current data on this device with the data in your synced account. The two sets of data will not be combined."
+        message="TapTrack will first download a safety backup, then replace the current data on this device with the data in your synced account. The two ledgers will not be combined."
         confirmLabel="Use synced account"
         confirmVariant="danger"
         onConfirm={() => void run('account')}
