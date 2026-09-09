@@ -126,7 +126,7 @@ test('desktop dashboard, transactions, budgets, reports, balances, transfers, an
   const recurringSummary = page.locator('[data-layout="recurring-summary"]');
   await expect(recurringSummary).toBeVisible();
   await expect(recurringSummary.locator(':scope > div')).toHaveCount(3);
-  await page.getByRole('button', { name: 'New recurring', exact: true }).click();
+  await page.getByRole('button', { name: 'New recurring', exact: true }).first().click();
   const recurringDialog = page.getByRole('dialog');
   await expect(recurringDialog).toBeVisible();
   await expect(recurringDialog.getByRole('heading', { name: 'New recurring transaction', exact: true })).toBeVisible();
