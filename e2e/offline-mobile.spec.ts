@@ -32,6 +32,10 @@ async function assertNoHorizontalOverflow(page: Page) {
   expect(hasHorizontalOverflow).toBe(false);
 }
 
+async function assertMainFocused(page: Page) {
+  await expect.poll(() => page.evaluate(() => document.activeElement?.id ?? '')).toBe('main-content');
+}
+
 async function assertMobileLayout(page: Page) {
   const mobileNav = page.getByRole('navigation', { name: 'Mobile' });
   await expect(mobileNav).toBeVisible();
@@ -165,6 +169,14 @@ test('device-local ledger works across warmed offline mobile routes', async ({ p
   await expectHeadingWithDiagnostics(page, 'Dashboard', 'Post-setup app state', diagnostics);
   await assertNoHorizontalOverflow(page);
   await expectMobileTargetSize(page.getByLabel('Add transaction', { exact: true }));
+
+  const mobileNav = page.getByRole('navigation', { name: 'Mobile' });
+  await mobileNav.getByRole('link', { name: 'Transactions', exact: true }).click();
+  await expectHeadingWithDiagnostics(page, 'Transactions', 'Client navigation to transactions', diagnostics);
+  await assertMainFocused(page);
+  await mobileNav.getByRole('link', { name: 'Dashboard', exact: true }).click();
+  await expectHeadingWithDiagnostics(page, 'Dashboard', 'Client navigation back to dashboard', diagnostics);
+  await assertMainFocused(page);
 
   await page.evaluate(async () => {
     await navigator.serviceWorker.ready;
