@@ -4,6 +4,7 @@ import { useMemo, useState } from 'react';
 import Link from 'next/link';
 import { AnimatePresence, motion, useReducedMotion } from 'framer-motion';
 import { useLiveQuery } from 'dexie-react-hooks';
+import { CategoryIcon } from '@/categories/categoryVisuals';
 import { db } from '@/database';
 import { formatMoney } from '@/format';
 import { SkeletonListRows } from '@/components/ui/Skeleton';
@@ -26,21 +27,17 @@ export default function RecentTransactions() {
     () => new Map((categories ?? []).map((category) => [category.id, category])),
     [categories]
   );
-
   const sortedTransactions = useMemo(
     () =>
       [...(transactions ?? [])].sort((a, b) => {
         const dateDiff = b.date.localeCompare(a.date);
-        if (dateDiff !== 0) return dateDiff;
-        return b.createdAt.localeCompare(a.createdAt);
+        return dateDiff !== 0 ? dateDiff : b.createdAt.localeCompare(a.createdAt);
       }),
     [transactions]
   );
-
-  const filteredTransactions = sortedTransactions.filter((transaction: Transaction) => {
-    if (filter === 'all') return true;
-    return transaction.type === filter;
-  });
+  const filteredTransactions = sortedTransactions.filter((transaction: Transaction) =>
+    filter === 'all' ? true : transaction.type === filter
+  );
 
   return (
     <motion.section
@@ -64,13 +61,13 @@ export default function RecentTransactions() {
                 filter === option ? 'text-white' : 'bg-surface-muted text-secondary hover:bg-surface-raised'
               )}
             >
-              {filter === option && (
+              {filter === option ? (
                 <motion.span
                   layoutId="filter-pill"
                   className="absolute inset-0 rounded-lg bg-action-primary"
                   transition={reduceMotion ? { duration: 0 } : { type: 'spring', stiffness: 500, damping: 35 }}
                 />
-              )}
+              ) : null}
               <span className="relative z-10">{option}</span>
             </button>
           ))}
@@ -79,26 +76,17 @@ export default function RecentTransactions() {
 
       <div className="divide-y divide-subtle">
         {transactions === undefined || categories === undefined ? (
-          <div aria-busy="true" aria-label="Loading recent transactions">
-            <SkeletonListRows count={4} />
-          </div>
+          <div aria-busy="true" aria-label="Loading recent transactions"><SkeletonListRows count={4} /></div>
         ) : filteredTransactions.length === 0 ? (
           <div className="p-6 text-center">
             <p className="text-sm font-semibold text-secondary">No matching transactions yet.</p>
             <p className="mt-1 text-sm font-medium text-muted">Add one now or choose a different filter.</p>
-            <Link
-              href="/app/add"
-              prefetch={false}
-              className={cn('mt-3 inline-flex min-h-11 items-center rounded-lg px-3 text-sm font-semibold text-accent hover:bg-surface-muted', focusVisibleRing)}
-            >
-              Add transaction
-            </Link>
+            <Link href="/app/add" prefetch={false} className={cn('mt-3 inline-flex min-h-11 items-center rounded-lg px-3 text-sm font-semibold text-accent hover:bg-surface-muted', focusVisibleRing)}>Add transaction</Link>
           </div>
         ) : (
           <AnimatePresence initial={false}>
             {filteredTransactions.slice(0, 10).map((transaction, index) => {
               const category = categoryMap.get(transaction.categoryId);
-
               return (
                 <motion.div
                   key={transaction.id}
@@ -108,26 +96,15 @@ export default function RecentTransactions() {
                   animate={reduceMotion ? undefined : 'visible'}
                   exit={reduceMotion ? undefined : 'exit'}
                   transition={reduceMotion ? { duration: 0 } : { duration: 0.22, ease: 'easeOut', delay: index * 0.025 }}
-                  className="grid grid-cols-[1fr_auto] gap-3 px-4 py-3"
+                  className="flex items-center gap-3 px-4 py-3"
                 >
-                  <div>
-                    <p className="text-sm font-semibold text-primary">{transaction.title}</p>
-                    <div className="mt-1 flex flex-wrap items-center gap-2 text-xs font-medium text-muted">
-                      <span>{transaction.date}</span>
-                      <span>{transaction.method}</span>
-                      <span className="flex items-center gap-1 normal-case text-muted">
-                        <span className="h-2.5 w-2.5 rounded-full" style={{ background: category?.color ?? '#64748b' }} aria-hidden="true" />
-                        {category?.name ?? 'Unknown category'}
-                      </span>
-                    </div>
+                  <CategoryIcon icon={category?.icon} color={category?.color} />
+                  <div className="min-w-0 flex-1">
+                    <p className="truncate text-sm font-semibold text-primary">{transaction.title}</p>
+                    <p className="mt-1 truncate text-xs font-medium text-muted">{transaction.date} · {capitalize(transaction.method)} · {category?.name ?? 'Unknown category'}</p>
                   </div>
-                  <p
-                    className={`text-right text-sm font-bold tabular-nums transition-colors ${
-                      transaction.type === 'income' ? 'text-success' : 'text-danger'
-                    }`}
-                  >
-                    {transaction.type === 'income' ? '+' : '-'}
-                    {formatMoney(transaction.amount, transaction.currency)}
+                  <p className={cn('shrink-0 text-right text-sm font-bold tabular-nums', transaction.type === 'income' ? 'text-success' : 'text-danger')}>
+                    {transaction.type === 'income' ? '+' : '-'}{formatMoney(transaction.amount, transaction.currency)}
                   </p>
                 </motion.div>
               );
@@ -137,14 +114,12 @@ export default function RecentTransactions() {
       </div>
 
       <div className="border-t border-subtle p-4">
-        <Link
-          href="/app/transactions"
-          prefetch={false}
-          className={cn('inline-flex min-h-11 items-center rounded-lg text-sm font-semibold text-accent transition-colors hover:text-accent', focusVisibleRing)}
-        >
-          View all transactions
-        </Link>
+        <Link href="/app/transactions" prefetch={false} className={cn('inline-flex min-h-11 items-center rounded-lg text-sm font-semibold text-accent transition-colors hover:text-accent', focusVisibleRing)}>View all transactions</Link>
       </div>
     </motion.section>
   );
+}
+
+function capitalize(value: string) {
+  return value.charAt(0).toUpperCase() + value.slice(1);
 }
