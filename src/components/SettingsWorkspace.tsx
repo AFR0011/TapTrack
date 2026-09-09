@@ -1,7 +1,7 @@
 'use client';
 
 import Link from 'next/link';
-import { useCallback, useEffect, useRef, useState } from 'react';
+import { useCallback, useEffect, useRef, useState, type ReactNode } from 'react';
 import { useRouter } from 'next/navigation';
 import { useLiveQuery } from 'dexie-react-hooks';
 import { db } from '@/database';
@@ -13,15 +13,8 @@ import {
   restoreSyncedAccount,
 } from '@/exports/linkedRestoreService';
 import { resetOnlyThisDevice, resetSyncedAccount } from '@/exports/resetService';
-import { deleteCategory, updateCategory } from '@/budgets/budgetService';
-import { createCustomCategory } from '@/categories/categoryService';
 import { updateSettingsPreferences } from '@/settings/settingsService';
-import {
-  SUPPORTED_METHODS,
-  type Category,
-  type Method,
-  type TransactionType,
-} from '@/types';
+import { SUPPORTED_METHODS, type Method } from '@/types';
 import { ConfirmDialog } from './ConfirmDialog';
 import { CloudLedgerLink } from './CloudLedgerLink';
 import { CloudDeviceDisconnect } from './CloudDeviceDisconnect';
@@ -29,6 +22,7 @@ import { CurrencySettingsCard } from './CurrencySettingsCard';
 import { QuickCaptureSettings } from './QuickCaptureSettings';
 import { RestoreScopeDialog } from './RestoreScopeDialog';
 import { ResetScopeDialog } from './ResetScopeDialog';
+import { CategoryManager } from './CategoryManager';
 import { toast } from 'sonner';
 import {
   getSyncStatus,
@@ -37,7 +31,6 @@ import {
 } from '@/sync/syncService';
 import { applyTheme, resolveStoredTheme, setStoredTheme, type ThemeMode } from '@/theme';
 import { Button } from '@/components/ui/Button';
-import { Field } from '@/components/ui/Field';
 import { SelectField } from '@/components/ui/SelectField';
 import { PageHeader } from '@/components/ui/PageHeader';
 import { SkeletonCard } from '@/components/ui/Skeleton';
@@ -45,20 +38,6 @@ import { ToggleRow } from '@/components/ui/Toggle';
 import { cn, focusVisibleRing } from '@/lib/cn';
 import { getSignedInEmail, signOutUser } from '@/lib/auth';
 import { downloadText } from '@/lib/download';
-
-const CATEGORY_ICON_OPTIONS = [
-  { value: 'circle', label: 'Circle' },
-  { value: 'utensils', label: 'Utensils' },
-  { value: 'home', label: 'Home' },
-  { value: 'repeat', label: 'Repeat' },
-  { value: 'ticket', label: 'Ticket' },
-  { value: 'arrow-down', label: 'Arrow down' },
-] as const;
-
-const CATEGORY_TYPE_OPTIONS = [
-  { value: 'expense', label: 'Expense' },
-  { value: 'income', label: 'Income' },
-] as const;
 
 type SettingsSection = 'general' | 'categories' | 'capture' | 'account' | 'data';
 
@@ -73,7 +52,7 @@ const SETTINGS_SECTIONS: SettingsSectionConfig[] = [
   {
     id: 'general',
     label: 'General',
-    description: 'Currency, payment defaults, appearance, and smart categories.',
+    description: 'Currency, defaults, appearance, and Smart Categories.',
     icon: 'M4 6h16M7 6a2 2 0 104 0 2 2 0 10-4 0zM4 12h16m-7 0a2 2 0 104 0 2 2 0 10-4 0zM4 18h16M9 18a2 2 0 104 0 2 2 0 10-4 0z',
   },
   {
@@ -91,7 +70,7 @@ const SETTINGS_SECTIONS: SettingsSectionConfig[] = [
   {
     id: 'account',
     label: 'Account & Sync',
-    description: 'Sign in, sync this device, and review connection status.',
+    description: 'Account, device sync, and connection status.',
     icon: 'M12 12a4 4 0 100-8 4 4 0 000 8zm-7 9a7 7 0 0114 0M17 11.5a4.5 4.5 0 110 9h-1',
   },
   {
@@ -108,23 +87,15 @@ function isSettingsSection(value: string | null): value is SettingsSection {
 
 export default function SettingsWorkspace() {
   const router = useRouter();
-  const categories = useLiveQuery(() => db.categories.toArray());
   const settings = useLiveQuery(() => db.settings.get(DEFAULT_SETTINGS_ID));
-  const isLoading = categories === undefined || settings === undefined;
   const importInputRef = useRef<HTMLInputElement | null>(null);
   const [activeSection, setActiveSection] = useState<SettingsSection | null>(null);
-  const [categoryName, setCategoryName] = useState('');
-  const [categoryType, setCategoryType] = useState<TransactionType>('expense');
-  const [categoryColor, setCategoryColor] = useState('#2563eb');
-  const [categoryIcon, setCategoryIcon] = useState('circle');
-  const [editingCategory, setEditingCategory] = useState<Category | null>(null);
   const [syncStatus, setSyncStatus] = useState<SyncStatusSnapshot | null>(null);
   const [syncing, setSyncing] = useState(false);
   const [showResetConfirm, setShowResetConfirm] = useState(false);
   const [showResetScope, setShowResetScope] = useState(false);
   const [showAccountResetConfirm, setShowAccountResetConfirm] = useState(false);
   const [resetBusy, setResetBusy] = useState(false);
-  const [categoryDeleteConfirm, setCategoryDeleteConfirm] = useState<Category | null>(null);
   const [accountEmail, setAccountEmail] = useState<string | null>(null);
   const [accountChecked, setAccountChecked] = useState(false);
   const [signingOut, setSigningOut] = useState(false);
@@ -157,9 +128,7 @@ export default function SettingsWorkspace() {
   }, []);
 
   useEffect(() => {
-    queueMicrotask(() => {
-      void refreshSyncStatus();
-    });
+    queueMicrotask(() => void refreshSyncStatus());
     window.addEventListener('online', refreshSyncStatus);
     window.addEventListener('offline', refreshSyncStatus);
     return () => {
@@ -183,52 +152,6 @@ export default function SettingsWorkspace() {
       router.refresh();
     } finally {
       setSigningOut(false);
-    }
-  };
-
-  const addCategory = async () => {
-    if (!categoryName.trim()) return;
-    await createCustomCategory({
-      name: categoryName,
-      color: categoryColor,
-      icon: categoryIcon,
-      type: categoryType,
-    });
-    setCategoryName('');
-    setCategoryIcon('circle');
-    toast.success('Category added.');
-  };
-
-  const startCategoryEdit = (category: Category) => {
-    setEditingCategory(category);
-    setCategoryName(category.name);
-    setCategoryType(category.type);
-    setCategoryColor(category.color ?? '#2563eb');
-    setCategoryIcon(category.icon ?? 'circle');
-  };
-
-  const cancelCategoryEdit = () => {
-    setEditingCategory(null);
-    setCategoryName('');
-    setCategoryType('expense');
-    setCategoryColor('#2563eb');
-    setCategoryIcon('circle');
-  };
-
-  const saveCategoryEdit = async () => {
-    if (!editingCategory) return;
-    try {
-      await updateCategory({
-        id: editingCategory.id,
-        name: categoryName,
-        type: categoryType,
-        color: categoryColor,
-        icon: categoryIcon,
-      });
-      toast.success('Category updated.');
-      cancelCategoryEdit();
-    } catch (err) {
-      toast.error(err instanceof Error ? err.message : 'Category could not be updated. Try again.');
     }
   };
 
@@ -262,18 +185,15 @@ export default function SettingsWorkspace() {
   const handleImportFile = async (file: File | undefined) => {
     if (!file) return;
     let keepPendingFile = false;
-
     try {
       const jsonData = await file.text();
       normalizeBackupJSON(jsonData);
-
       if (syncStatus?.bindingState === 'linked') {
         setPendingRestoreJson(jsonData);
         setShowRestoreScope(true);
         keepPendingFile = true;
         return;
       }
-
       const result = await importJSON(jsonData, db, {
         beforeReplace: persistPreRestoreSafetyBackup,
       });
@@ -394,22 +314,33 @@ export default function SettingsWorkspace() {
   const handleToggleAI = async () => {
     if (!settings) return;
     const next = !settings.aiCategorizationEnabled;
-
     if (next && !accountEmail) {
       toast.info('Sign in to use Smart Categories.');
       router.push('/login');
       return;
     }
-
     await updateSettingsPreferences({ aiCategorizationEnabled: next });
     toast.success(next ? 'Smart Categories on.' : 'Smart Categories off.');
+  };
+
+  const handleToggleAutoCategorization = async () => {
+    if (!settings) return;
+    await updateSettingsPreferences({
+      aiAutoCategorizationEnabled: !(settings.aiAutoCategorizationEnabled ?? true),
+    });
+  };
+
+  const handleToggleNewCategoryRecommendations = async () => {
+    if (!settings) return;
+    await updateSettingsPreferences({
+      aiRecommendNewCategoriesEnabled: !(settings.aiRecommendNewCategoriesEnabled ?? true),
+    });
   };
 
   const handleToggleDarkMode = async () => {
     if (!settings) return;
     const next = !(settings.darkModeEnabled ?? false);
     await updateSettingsPreferences({ darkModeEnabled: next });
-
     const theme: ThemeMode = next ? 'dark' : 'light';
     setStoredTheme(theme);
     applyTheme(theme);
@@ -433,7 +364,7 @@ export default function SettingsWorkspace() {
     }
   };
 
-  if (isLoading) {
+  if (!settings) {
     return (
       <div className="space-y-5" aria-busy="true" aria-label="Loading settings">
         <PageHeader title="Settings" />
@@ -444,6 +375,8 @@ export default function SettingsWorkspace() {
       </div>
     );
   }
+
+  const aiEnabled = settings.aiCategorizationEnabled ?? false;
 
   return (
     <div className="space-y-5">
@@ -499,6 +432,7 @@ export default function SettingsWorkspace() {
                     }))}
                   />
                 </div>
+
                 <div className="mt-5 divide-y divide-subtle rounded-xl border border-subtle bg-surface-muted px-4">
                   <ToggleRow
                     className="py-4"
@@ -506,19 +440,40 @@ export default function SettingsWorkspace() {
                     checked={darkModeEnabled}
                     onChange={handleToggleDarkMode}
                   />
-                  <ToggleRow
-                    className="py-4"
-                    label="Smart Categories"
-                    description={
-                      accountEmail
-                        ? 'Suggest categories while you type.'
-                        : 'Sign in to use smart suggestions.'
-                    }
-                    checked={settings.aiCategorizationEnabled ?? false}
-                    onChange={handleToggleAI}
-                    disabled={!accountChecked}
-                    variant="ai"
-                  />
+                  <div className="py-4">
+                    <ToggleRow
+                      label="Smart Categories"
+                      description={
+                        accountEmail
+                          ? 'Use AI to help organize transactions.'
+                          : 'Sign in to use Smart Categories.'
+                      }
+                      checked={aiEnabled}
+                      onChange={handleToggleAI}
+                      disabled={!accountChecked}
+                      variant="ai"
+                    />
+                    {aiEnabled ? (
+                      <div className="mt-3 divide-y divide-subtle rounded-xl border border-ai-border bg-ai-muted/40 px-3 sm:ml-4">
+                        <ToggleRow
+                          className="py-3"
+                          label="Auto-categorize"
+                          description="Choose the best existing category while you type."
+                          checked={settings.aiAutoCategorizationEnabled ?? true}
+                          onChange={handleToggleAutoCategorization}
+                          variant="ai"
+                        />
+                        <ToggleRow
+                          className="py-3"
+                          label="Recommend new categories"
+                          description="Suggest a reusable category when none of yours fits well."
+                          checked={settings.aiRecommendNewCategoriesEnabled ?? true}
+                          onChange={handleToggleNewCategoryRecommendations}
+                          variant="ai"
+                        />
+                      </div>
+                    ) : null}
+                  </div>
                 </div>
               </section>
 
@@ -526,114 +481,7 @@ export default function SettingsWorkspace() {
             </div>
           ) : null}
 
-          {selectedSection === 'categories' ? (
-            <section className="rounded-2xl border border-subtle bg-surface p-5">
-              <div>
-                <h2 className="text-lg font-semibold text-primary">Categories</h2>
-                <p className="mt-1 text-sm text-muted">
-                  Organize transactions so budgets and reports stay meaningful.
-                </p>
-              </div>
-
-              <div className="mt-5 grid gap-3 md:grid-cols-2">
-                <Field
-                  label="Category name"
-                  value={categoryName}
-                  onChange={(event) => setCategoryName(event.target.value)}
-                  placeholder="Groceries"
-                  className="md:col-span-2"
-                />
-                <SelectField
-                  label="Type"
-                  value={categoryType}
-                  disabled={editingCategory?.isDefault}
-                  onChange={(event) =>
-                    setCategoryType(event.target.value as TransactionType)
-                  }
-                  options={CATEGORY_TYPE_OPTIONS}
-                />
-                <SelectField
-                  label="Icon"
-                  value={categoryIcon}
-                  onChange={(event) => setCategoryIcon(event.target.value)}
-                  options={CATEGORY_ICON_OPTIONS}
-                />
-                <label htmlFor="category-color" className="grid gap-1.5 md:col-span-2">
-                  <span className="text-sm font-medium text-secondary">Color</span>
-                  <input
-                    id="category-color"
-                    type="color"
-                    value={categoryColor}
-                    onChange={(event) => setCategoryColor(event.target.value)}
-                    className={cn(
-                      'min-h-11 w-full cursor-pointer rounded-lg border border-subtle bg-surface px-2 py-1 outline-none focus-visible:border-accent',
-                      focusVisibleRing
-                    )}
-                    aria-label="Category color"
-                  />
-                </label>
-                <div className="flex flex-col gap-2 sm:flex-row md:col-span-2">
-                  <Button
-                    type="button"
-                    className="w-full sm:w-auto"
-                    onClick={editingCategory ? saveCategoryEdit : addCategory}
-                  >
-                    {editingCategory ? 'Save changes' : 'Add category'}
-                  </Button>
-                  {editingCategory ? (
-                    <Button
-                      type="button"
-                      variant="secondary"
-                      className="w-full sm:w-auto"
-                      onClick={cancelCategoryEdit}
-                    >
-                      Cancel
-                    </Button>
-                  ) : null}
-                </div>
-              </div>
-
-              <div className="mt-6 grid gap-2">
-                {categories.map((category) => (
-                  <div key={category.id} className="rounded-xl border border-subtle bg-surface-muted p-3">
-                    <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
-                      <div className="flex min-w-0 items-center gap-2">
-                        <span
-                          className="h-3 w-3 shrink-0 rounded-full"
-                          style={{ background: category.color ?? '#64748b' }}
-                          aria-hidden
-                        />
-                        <span className="min-w-0 truncate text-sm font-semibold text-primary">
-                          {category.name}
-                        </span>
-                        <CategoryTypeBadge type={category.type} />
-                      </div>
-                      <div className="flex shrink-0 items-center gap-2 self-stretch sm:self-auto">
-                        <Button
-                          type="button"
-                          variant="secondary"
-                          className="min-h-11 min-w-11 flex-1 px-4 sm:flex-none"
-                          onClick={() => startCategoryEdit(category)}
-                        >
-                          Edit
-                        </Button>
-                        {category.isDefault ? null : (
-                          <Button
-                            type="button"
-                            variant="dangerGhost"
-                            className="min-h-11 min-w-11 flex-1 px-4 sm:flex-none"
-                            onClick={() => setCategoryDeleteConfirm(category)}
-                          >
-                            Delete
-                          </Button>
-                        )}
-                      </div>
-                    </div>
-                  </div>
-                ))}
-              </div>
-            </section>
-          ) : null}
+          {selectedSection === 'categories' ? <CategoryManager /> : null}
 
           {selectedSection === 'capture' ? (
             <QuickCaptureSettings signedIn={Boolean(accountEmail)} />
@@ -697,12 +545,7 @@ export default function SettingsWorkspace() {
                     )}
                   >
                     <span>Sync details</span>
-                    <span
-                      aria-hidden="true"
-                      className="ml-auto text-muted transition-transform group-open:rotate-180"
-                    >
-                      ⌄
-                    </span>
+                    <span aria-hidden="true" className="ml-auto text-muted transition-transform group-open:rotate-180">⌄</span>
                   </summary>
                   <dl className="divide-y divide-subtle border-t border-subtle px-3 text-sm">
                     <SyncDetailRow
@@ -734,10 +577,7 @@ export default function SettingsWorkspace() {
                 ) : null}
                 <CloudDeviceDisconnect onDisconnected={refreshSyncStatus} />
                 {syncStatus?.bindingState === 'account-mismatch' ? (
-                  <p
-                    role="alert"
-                    className="mt-4 rounded-lg border border-danger bg-danger-muted p-3 text-sm text-danger"
-                  >
+                  <p role="alert" className="mt-4 rounded-lg border border-danger bg-danger-muted p-3 text-sm text-danger">
                     This device is connected to a different account. Sign in with that account before syncing.
                   </p>
                 ) : null}
@@ -756,12 +596,20 @@ export default function SettingsWorkspace() {
                   <DataAction
                     title="Export transactions"
                     description="Download your transaction history as CSV."
-                    action={<Button type="button" variant="secondary" onClick={handleExportCSV}>Export CSV</Button>}
+                    action={
+                      <Button type="button" variant="secondary" onClick={handleExportCSV}>
+                        Export CSV
+                      </Button>
+                    }
                   />
                   <DataAction
                     title="Backup"
                     description="Download a complete restorable copy of your TapTrack data."
-                    action={<Button type="button" variant="secondary" onClick={handleExportJSON}>Download backup</Button>}
+                    action={
+                      <Button type="button" variant="secondary" onClick={handleExportJSON}>
+                        Download backup
+                      </Button>
+                    }
                   />
                   <DataAction
                     title="Restore"
@@ -818,7 +666,6 @@ export default function SettingsWorkspace() {
         onRestoreDevice={() => void executeDeviceOnlyRestore()}
         onCancel={clearPendingRestore}
       />
-
       <ResetScopeDialog
         open={showResetScope}
         busy={resetBusy}
@@ -829,7 +676,6 @@ export default function SettingsWorkspace() {
         onResetDevice={() => void executeDeviceOnlyReset()}
         onCancel={() => setShowResetScope(false)}
       />
-
       <ConfirmDialog
         open={showAccountRestoreConfirm}
         title="Replace data in your synced account"
@@ -845,7 +691,6 @@ export default function SettingsWorkspace() {
           setShowRestoreScope(true);
         }}
       />
-
       <ConfirmDialog
         open={showAccountResetConfirm}
         title="Reset synced account everywhere"
@@ -861,7 +706,6 @@ export default function SettingsWorkspace() {
           setShowResetScope(true);
         }}
       />
-
       <ConfirmDialog
         open={showResetConfirm}
         title="Reset data on this device"
@@ -870,22 +714,6 @@ export default function SettingsWorkspace() {
         confirmVariant="danger"
         onConfirm={() => void executeDeviceOnlyReset()}
         onCancel={() => setShowResetConfirm(false)}
-      />
-
-      <ConfirmDialog
-        open={categoryDeleteConfirm !== null}
-        title="Delete category"
-        message={`Delete "${categoryDeleteConfirm?.name}"? Transactions using this category will move to the closest matching category.`}
-        confirmLabel="Delete"
-        confirmVariant="danger"
-        onConfirm={async () => {
-          if (categoryDeleteConfirm) {
-            await deleteCategory(categoryDeleteConfirm.id);
-            toast.success('Category deleted.');
-          }
-          setCategoryDeleteConfirm(null);
-        }}
-        onCancel={() => setCategoryDeleteConfirm(null)}
       />
     </div>
   );
@@ -913,7 +741,9 @@ function SettingsSectionLink({
       <span
         className={cn(
           'grid h-9 w-9 shrink-0 place-items-center rounded-lg',
-          active ? 'bg-white/15 text-white' : 'bg-surface-muted text-muted group-hover:text-primary'
+          active
+            ? 'bg-white/15 text-white'
+            : 'bg-surface-muted text-muted group-hover:text-primary'
         )}
         aria-hidden="true"
       >
@@ -931,12 +761,7 @@ function SettingsSectionLink({
       </span>
       <span className="min-w-0">
         <span className="block text-sm font-semibold">{section.label}</span>
-        <span
-          className={cn(
-            'mt-0.5 block text-xs leading-4',
-            active ? 'text-white/75' : 'text-muted'
-          )}
-        >
+        <span className={cn('mt-0.5 block text-xs leading-4', active ? 'text-white/75' : 'text-muted')}>
           {section.description}
         </span>
       </span>
@@ -952,7 +777,7 @@ function DataAction({
 }: {
   title: string;
   description: string;
-  action: React.ReactNode;
+  action: ReactNode;
 }) {
   return (
     <div className="flex min-h-36 flex-col rounded-xl border border-subtle bg-surface-muted p-4">
@@ -965,22 +790,8 @@ function DataAction({
   );
 }
 
-function CategoryTypeBadge({ type }: { type: TransactionType }) {
-  return (
-    <span
-      className={cn(
-        'shrink-0 rounded-full px-2 py-0.5 text-xs font-semibold capitalize',
-        type === 'income' ? 'bg-success-muted text-success' : 'bg-danger-muted text-danger'
-      )}
-    >
-      {type}
-    </span>
-  );
-}
-
 function buildSyncSummary(status: SyncStatusSnapshot | null): string {
   if (!status) return 'Checking sync…';
-
   const stateLabel = {
     'provider-unconfigured': 'Sync is not available on this setup',
     'signed-out': 'Sign in to sync',
@@ -989,7 +800,8 @@ function buildSyncSummary(status: SyncStatusSnapshot | null): string {
     'account-mismatch': 'Different account required',
     'provider-unavailable': 'Sync is temporarily unavailable',
   }[status.bindingState];
-  const pendingPart = status.pendingRetryCount > 0 ? ` · ${status.pendingRetryCount} waiting to sync` : '';
+  const pendingPart =
+    status.pendingRetryCount > 0 ? ` · ${status.pendingRetryCount} waiting to sync` : '';
   return `${stateLabel}${status.online ? '' : ' · Offline'}${pendingPart}`;
 }
 
