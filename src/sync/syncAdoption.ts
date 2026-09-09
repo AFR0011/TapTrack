@@ -168,14 +168,17 @@ export async function inspectCloudAdoption(
 }
 
 /**
- * Use cloud data: validate the complete snapshot before binding or clearing any
- * local canonical rows, then replace atomically and rebuild derived balances.
+ * Use cloud data: validate the complete snapshot first, then run the caller's
+ * local safety step before binding or clearing any canonical rows. If the
+ * safety step fails, the device remains unbound and its local ledger is intact.
  */
 export async function adoptCloudLedger(
-  database: TapTrackDatabase = db
+  database: TapTrackDatabase = db,
+  beforeReplace?: () => void | Promise<void>
 ): Promise<void> {
   const plan = await inspectDeviceLedgerLinkToCurrentUser(database);
   const snapshot = await fetchValidatedCloudSnapshot(plan.userId);
+  await beforeReplace?.();
   await linkDeviceLedgerToCurrentUser(database, 'use-cloud');
   const repairs = await replaceLocalCanonicalSnapshot(snapshot, database);
 
