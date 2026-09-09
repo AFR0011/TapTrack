@@ -51,6 +51,7 @@ describe('completeInitialSetup', () => {
     });
     expect(await database.balanceCheckpoints.count()).toBe(6);
     expect(budget?.totalBudget).toBe(20000);
+    expect(budget?.currency).toBe('TRY');
 
     expect(openingOutbox).toHaveLength(6);
     expect(openingOutbox.every((item) => item.operation === 'upsert')).toBe(true);
@@ -63,10 +64,10 @@ describe('completeInitialSetup', () => {
           recordId: DEFAULT_SETTINGS_ID,
         }),
         expect.objectContaining({
-          id: 'monthlyBudgets:budget-2026-05',
+          id: 'monthlyBudgets:budget-2026-05-TRY',
           tableName: 'monthlyBudgets',
           operation: 'upsert',
-          recordId: 'budget-2026-05',
+          recordId: 'budget-2026-05-TRY',
         }),
       ])
     );
