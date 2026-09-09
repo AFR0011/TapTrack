@@ -1,0 +1,6 @@
+/* Responsive grid children must be allowed to shrink below their min-content width.
+   This keeps intentionally scrollable mobile content from widening the document. */
+[data-layout='dashboard-summary'] > [data-dashboard-column],
+[data-layout='budgets-content'] > * {
+  min-width: 0;
+}

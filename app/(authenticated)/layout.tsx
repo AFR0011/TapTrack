@@ -1,4 +1,5 @@
 import AppShell from "@/components/AppShell";
+import NavigationLoadingOverlay from "@/components/NavigationLoadingOverlay";
 import SetupGate from "@/components/SetupGate";
 import { ServiceWorkerRegister } from "@/components/ServiceWorkerRegister";
 import { ToastProvider } from "@/components/ToastProvider";
@@ -17,6 +18,7 @@ export default function AuthenticatedLayout({
           <ServiceWorkerRegister />
           <SetupGate>
             <AppShell>{children}</AppShell>
+            <NavigationLoadingOverlay />
           </SetupGate>
         </DatabaseProvider>
       </ToastProvider>
