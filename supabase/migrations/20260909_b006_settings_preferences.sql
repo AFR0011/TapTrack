@@ -120,7 +120,8 @@ begin
     default_currency = excluded.default_currency,
     active_currencies = case
       when record ? 'active_currencies' then excluded.active_currencies
-      else public.settings.active_currencies
+      when array_position(public.settings.active_currencies, excluded.default_currency) is not null then public.settings.active_currencies
+      else array_prepend(excluded.default_currency, public.settings.active_currencies)
     end,
     last_used_method = excluded.last_used_method,
     setup_completed = excluded.setup_completed,
