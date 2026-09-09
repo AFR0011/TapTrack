@@ -162,7 +162,7 @@ export default function AppShell({ children }: { children: ReactNode }) {
       {mobileMoreOpen ? (
         <button
           type="button"
-          aria-label="Close navigation menu"
+          aria-label="Close more navigation"
           className="fixed inset-0 z-30 bg-transparent md:hidden"
           onClick={() => setMobileMorePath(null)}
         />
@@ -215,9 +215,8 @@ export default function AppShell({ children }: { children: ReactNode }) {
           <button
             ref={mobileMoreButtonRef}
             type="button"
-            aria-haspopup="menu"
             aria-expanded={mobileMoreOpen}
-            aria-controls="mobile-more-menu"
+            aria-controls="mobile-more-links"
             onClick={() => setMobileMorePath((current) => (current === pathname ? null : pathname))}
             className={cn(
               'relative flex min-h-12 min-w-0 flex-col items-center justify-center gap-0.5 rounded-xl px-0.5 py-1.5 text-[11px] leading-none transition-colors sm:text-xs',
@@ -238,8 +237,9 @@ export default function AppShell({ children }: { children: ReactNode }) {
 
           {mobileMoreOpen ? (
             <div
-              id="mobile-more-menu"
-              role="menu"
+              id="mobile-more-links"
+              role="group"
+              aria-label="More navigation"
               className="absolute right-0 bottom-[calc(100%+0.5rem)] w-52 overflow-hidden rounded-2xl border border-subtle bg-surface p-1.5 shadow-lg"
             >
               {MOBILE_MORE_NAV_ITEMS.map((item) => {
@@ -248,7 +248,6 @@ export default function AppShell({ children }: { children: ReactNode }) {
                   <Link
                     key={item.href}
                     href={item.href}
-                    role="menuitem"
                     prefetch={false}
                     onClick={(event) => {
                       setMobileMorePath(null);
