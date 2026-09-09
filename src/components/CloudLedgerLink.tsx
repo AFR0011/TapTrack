@@ -179,7 +179,7 @@ export function CloudLedgerLink({ onLinked }: CloudLedgerLinkProps) {
                 <div className="rounded-2xl border border-subtle bg-surface-muted p-4">
                   <p className="text-sm font-semibold text-primary">Use synced account only</p>
                   <p className="mt-1 text-xs font-medium leading-5 text-muted">
-                    Replace this device's TapTrack data with the copy already saved to your account. A safety backup of this device will be downloaded first.
+                    Replace the TapTrack data on this device with the copy already saved to your account. A safety backup of this device will be downloaded first.
                   </p>
                   <Button
                     type="button"
