@@ -1,13 +1,24 @@
 'use client';
 
 import { useEffect, useMemo, useState } from 'react';
-import { fetchAICategorySuggestion, type AICategorySuggestionStatus } from '@/categories/categorySuggestion';
+import {
+  fetchAICategorySuggestion,
+  type AICategorySuggestionResult,
+} from '@/categories/categorySuggestion';
 import type { Category, TransactionType } from '@/types';
 
-type SuggestionSnapshot = {
+type SuggestionSnapshot = Omit<AICategorySuggestionResult, 'status'> & {
   key: string;
-  categoryId: string | null;
-  status: AICategorySuggestionStatus | 'loading';
+  status: AICategorySuggestionResult['status'] | 'loading';
+};
+
+const EMPTY: SuggestionSnapshot = {
+  key: '',
+  kind: 'none',
+  categoryId: null,
+  newCategory: null,
+  confidence: null,
+  status: 'none',
 };
 
 export function useAICategorySuggestion({
@@ -15,6 +26,7 @@ export function useAICategorySuggestion({
   type,
   categories,
   enabled,
+  recommendNewCategories = false,
   blocked = false,
   delayMs = 450,
 }: {
@@ -22,6 +34,7 @@ export function useAICategorySuggestion({
   type: TransactionType;
   categories: Category[];
   enabled: boolean;
+  recommendNewCategories?: boolean;
   blocked?: boolean;
   delayMs?: number;
 }) {
@@ -34,27 +47,22 @@ export function useAICategorySuggestion({
     [categories, type]
   );
   const trimmedTitle = title.trim();
-  const requestKey = `${type}|${trimmedTitle.toLowerCase()}|${relevantCategoryKey}`;
+  const requestKey = `${type}|${trimmedTitle.toLowerCase()}|${recommendNewCategories ? 'new' : 'existing'}|${relevantCategoryKey}`;
   const active = enabled && !blocked && trimmedTitle.length >= 2;
-  const [snapshot, setSnapshot] = useState<SuggestionSnapshot>({
-    key: '',
-    categoryId: null,
-    status: 'none',
-  });
+  const [snapshot, setSnapshot] = useState<SuggestionSnapshot>(EMPTY);
 
   useEffect(() => {
     if (!active) return;
 
     const controller = new AbortController();
     const timer = window.setTimeout(() => {
-      setSnapshot({ key: requestKey, categoryId: null, status: 'loading' });
-      void fetchAICategorySuggestion(trimmedTitle, type, categories, controller.signal).then((result) => {
+      setSnapshot({ ...EMPTY, key: requestKey, status: 'loading' });
+      void fetchAICategorySuggestion(trimmedTitle, type, categories, {
+        recommendNewCategories,
+        signal: controller.signal,
+      }).then((result) => {
         if (controller.signal.aborted) return;
-        setSnapshot({
-          key: requestKey,
-          categoryId: result.categoryId,
-          status: result.status,
-        });
+        setSnapshot({ key: requestKey, ...result });
       });
     }, delayMs);
 
@@ -62,11 +70,8 @@ export function useAICategorySuggestion({
       controller.abort();
       window.clearTimeout(timer);
     };
-  }, [active, categories, delayMs, requestKey, trimmedTitle, type]);
+  }, [active, categories, delayMs, recommendNewCategories, requestKey, trimmedTitle, type]);
 
-  if (!active || snapshot.key !== requestKey) {
-    return { categoryId: null, status: 'none' as const };
-  }
-
-  return { categoryId: snapshot.categoryId, status: snapshot.status };
+  if (!active || snapshot.key !== requestKey) return EMPTY;
+  return snapshot;
 }

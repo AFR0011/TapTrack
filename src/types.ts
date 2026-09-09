@@ -123,11 +123,18 @@ export type ConversionKind = 'exchange' | 'transfer';
 
 export interface Settings {
   id: string;
-  /** Currency used for new entries, budgets, dashboard summaries, and reporting conversions. */
+  /** Currency used for new entries, dashboard summaries, and default report views. */
   defaultCurrency: Currency;
+  /** Currencies offered for new entries. Historical currencies remain in the ledger when archived. */
+  activeCurrencies?: Currency[];
   lastUsedMethod: Method;
   setupCompleted: boolean;
+  /** Master switch for hosted Smart Categories. */
   aiCategorizationEnabled?: boolean;
+  /** Automatically select an existing category when AI finds a good fit. */
+  aiAutoCategorizationEnabled?: boolean;
+  /** Allow AI to propose a reusable new category when existing categories do not fit. */
+  aiRecommendNewCategoriesEnabled?: boolean;
   darkModeEnabled?: boolean;
   lastSyncAt?: string;
   createdAt: string;

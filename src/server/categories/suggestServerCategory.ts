@@ -53,10 +53,12 @@ export async function suggestServerCategory({
       name: category.name,
       type: category.type,
     })),
+    recommendNewCategories: false,
   });
-  const aiCategory = ai.categoryId
-    ? typedCategories.find((category) => category.id === ai.categoryId)
-    : undefined;
+  const aiCategory =
+    ai.kind === 'existing'
+      ? typedCategories.find((category) => category.id === ai.categoryId)
+      : undefined;
 
   if (aiCategory) {
     return {

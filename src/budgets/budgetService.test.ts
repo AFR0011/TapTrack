@@ -26,7 +26,7 @@ afterEach(async () => {
 
 describe('budgetService', () => {
   it('calculates total budget status from TRY expenses', async () => {
-    await upsertMonthlyBudget({ month: '2026-05', totalBudget: 20000 }, database);
+    await upsertMonthlyBudget({ month: '2026-05', totalBudget: 20000, currency: 'TRY' }, database);
     await seedOpeningBalance(database, 'TRY-cash', 1000);
     await createTransaction(
       {
@@ -41,15 +41,33 @@ describe('budgetService', () => {
       database
     );
 
-    await expect(getMonthlyBudgetStatus('2026-05', database)).resolves.toMatchObject({
+    await expect(getMonthlyBudgetStatus('2026-05', 'TRY', database)).resolves.toMatchObject({
       totalBudget: 20000,
       totalSpent: 250,
       remaining: 19750,
+      currency: 'TRY',
+    });
+  });
+
+  it('keeps monthly budgets independent by currency', async () => {
+    await upsertMonthlyBudget({ month: '2026-05', totalBudget: 20000, currency: 'TRY' }, database);
+    await upsertMonthlyBudget({ month: '2026-05', totalBudget: 1000, currency: 'USD' }, database);
+
+    await expect(getMonthlyBudgetStatus('2026-05', 'TRY', database)).resolves.toMatchObject({
+      totalBudget: 20000,
+      currency: 'TRY',
+    });
+    await expect(getMonthlyBudgetStatus('2026-05', 'USD', database)).resolves.toMatchObject({
+      totalBudget: 1000,
+      currency: 'USD',
     });
   });
 
   it('calculates category budget status without rollover', async () => {
-    await upsertCategoryBudget({ month: '2026-05', categoryId: 'cat-food', amount: 5000 }, database);
+    await upsertCategoryBudget(
+      { month: '2026-05', categoryId: 'cat-food', amount: 5000, currency: 'TRY' },
+      database
+    );
     await seedOpeningBalance(database, 'TRY-cash', 1000);
     await createTransaction(
       {
@@ -64,15 +82,18 @@ describe('budgetService', () => {
       database
     );
 
-    await expect(getCategoryBudgetStatus('2026-05', 'cat-food', database)).resolves.toMatchObject({
+    await expect(
+      getCategoryBudgetStatus('2026-05', 'cat-food', 'TRY', database)
+    ).resolves.toMatchObject({
       budget: 5000,
       spent: 300,
       remaining: 4700,
+      currency: 'TRY',
     });
   });
 
-  it('rolls unused total budget into the next month', async () => {
-    await upsertMonthlyBudget({ month: '2026-04', totalBudget: 20000 }, database);
+  it('rolls unused total budget into the next month in the same currency', async () => {
+    await upsertMonthlyBudget({ month: '2026-04', totalBudget: 20000, currency: 'TRY' }, database);
     await seedOpeningBalance(database, 'TRY-cash', 30000);
     await createTransaction(
       {
@@ -91,6 +112,7 @@ describe('budgetService', () => {
 
     expect(calculateRollover(20000, 18000)).toBe(2000);
     expect(budget.rolloverFromPreviousMonth).toBe(2000);
+    expect(budget.currency).toBe('TRY');
   });
 
   it('updates custom category details and atomically queues the category snapshot', async () => {

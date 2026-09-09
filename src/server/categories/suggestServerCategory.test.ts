@@ -42,10 +42,15 @@ describe('suggestServerCategory', () => {
     expect(quotaMock).not.toHaveBeenCalled();
   });
 
-  it('uses a valid hosted AI suggestion when quota allows it', async () => {
+  it('uses a valid hosted AI existing-category suggestion when quota allows it', async () => {
     const categories = createDefaultCategories('2026-09-08T00:00:00.000Z');
     quotaMock.mockResolvedValue('allowed');
-    aiMock.mockResolvedValue({ categoryId: 'cat-subscriptions', unavailable: false });
+    aiMock.mockResolvedValue({
+      kind: 'existing',
+      categoryId: 'cat-subscriptions',
+      confidence: 0.9,
+      unavailable: false,
+    });
 
     await expect(
       suggestServerCategory({
@@ -65,7 +70,7 @@ describe('suggestServerCategory', () => {
   it('falls back locally when AI is unavailable or invalid', async () => {
     const categories = createDefaultCategories('2026-09-08T00:00:00.000Z');
     quotaMock.mockResolvedValue('allowed');
-    aiMock.mockResolvedValue({ categoryId: 'cat-income', unavailable: false });
+    aiMock.mockResolvedValue({ kind: 'none', unavailable: false });
 
     await expect(
       suggestServerCategory({
@@ -78,6 +83,7 @@ describe('suggestServerCategory', () => {
     ).resolves.toMatchObject({
       categoryId: 'cat-food',
       source: 'local',
+      aiUnavailable: false,
     });
 
     quotaMock.mockResolvedValue('unavailable');

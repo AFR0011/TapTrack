@@ -41,6 +41,7 @@ export async function completeInitialSetup(
   const now = nowDate.toISOString();
   const date = formatLocalDate(nowDate);
   const month = input.month ?? getCurrentMonth(nowDate);
+  const activeCurrencies = Object.keys(input.balances).filter((currency) => /^[A-Z]{3}$/.test(currency));
 
   const balances: Balance[] = Object.entries(input.balances).flatMap(([currency, methods]) =>
     Object.entries(methods).map(([method, amount]) => ({
@@ -72,13 +73,14 @@ export async function completeInitialSetup(
     ...currentSettings,
     id: DEFAULT_SETTINGS_ID,
     defaultCurrency,
+    activeCurrencies: [...new Set([defaultCurrency, ...activeCurrencies])],
     lastUsedMethod: input.defaultMethod,
     setupCompleted: true,
     updatedAt: now,
   };
 
   const monthlyBudget: MonthlyBudget = {
-    id: getMonthlyBudgetId(month),
+    id: getMonthlyBudgetId(month, defaultCurrency),
     month,
     totalBudget: normalizeAmount(input.monthlyBudget),
     rolloverFromPreviousMonth: 0,

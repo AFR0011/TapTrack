@@ -1,4 +1,9 @@
-import { buildCategoryPrompt, parseCategoryResponse, type CategorizeRequest } from '@/ai/categoryPrompt';
+import {
+  buildCategoryPrompt,
+  parseCategoryResponse,
+  type CategorizeRequest,
+  type ParsedCategorySuggestion,
+} from '@/ai/categoryPrompt';
 
 const DEFAULT_MODEL = 'openai/gpt-oss-20b';
 
@@ -10,8 +15,7 @@ interface GroqChatCompletion {
   }>;
 }
 
-export type ServerCategorySuggestion = {
-  categoryId: string | null;
+export type ServerCategorySuggestion = ParsedCategorySuggestion & {
   unavailable: boolean;
 };
 
@@ -21,15 +25,18 @@ export async function categorizeWithAI(
   const relevantCategories = request.categories.filter(
     (category) => category.type === request.transactionType
   );
-  if (relevantCategories.length === 0) {
-    return { categoryId: null, unavailable: false };
+  if (relevantCategories.length === 0 && request.recommendNewCategories !== true) {
+    return { kind: 'none', unavailable: false };
   }
 
   const apiKey = process.env.GROQ_API_KEY;
-  if (!apiKey) return { categoryId: null, unavailable: true };
+  if (!apiKey) return { kind: 'none', unavailable: true };
 
-  const validIds = new Set(relevantCategories.map((category) => category.id.toLowerCase()));
-  const prompt = buildCategoryPrompt({ ...request, categories: relevantCategories });
+  const normalizedRequest: CategorizeRequest = {
+    ...request,
+    categories: relevantCategories,
+  };
+  const prompt = buildCategoryPrompt(normalizedRequest);
 
   try {
     const response = await fetch('https://api.groq.com/openai/v1/chat/completions', {
@@ -41,11 +48,11 @@ export async function categorizeWithAI(
       body: JSON.stringify({
         model: process.env.GROQ_MODEL ?? DEFAULT_MODEL,
         temperature: 0,
-        max_completion_tokens: 24,
+        max_completion_tokens: 140,
         messages: [
           {
             role: 'system',
-            content: 'Return exactly one category ID from the supplied list and nothing else.',
+            content: 'Return only valid JSON matching one of the schemas in the user prompt. Never add prose or markdown.',
           },
           { role: 'user', content: prompt },
         ],
@@ -53,15 +60,15 @@ export async function categorizeWithAI(
       signal: AbortSignal.timeout(8000),
     });
 
-    if (!response.ok) return { categoryId: null, unavailable: true };
+    if (!response.ok) return { kind: 'none', unavailable: true };
 
     const data = (await response.json()) as GroqChatCompletion;
     const raw = data.choices?.[0]?.message?.content ?? '';
     return {
-      categoryId: parseCategoryResponse(raw, validIds),
+      ...parseCategoryResponse(raw, normalizedRequest),
       unavailable: false,
     };
   } catch {
-    return { categoryId: null, unavailable: true };
+    return { kind: 'none', unavailable: true };
   }
 }

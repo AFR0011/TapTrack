@@ -329,8 +329,14 @@ describe('backupService', () => {
       recurringTransactions: await database.recurringTransactions.toArray(),
       conversions: await database.conversions.toArray(),
       settings: (await database.settings.toArray()).map((settings) => ({
-        ...settings,
+        id: settings.id,
         defaultCurrency: 'GBP',
+        lastUsedMethod: settings.lastUsedMethod,
+        setupCompleted: settings.setupCompleted,
+        aiCategorizationEnabled: settings.aiCategorizationEnabled,
+        darkModeEnabled: settings.darkModeEnabled,
+        createdAt: settings.createdAt,
+        updatedAt: settings.updatedAt,
       })),
     };
 

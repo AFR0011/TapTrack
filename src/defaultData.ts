@@ -44,9 +44,12 @@ export function createDefaultSettings(now = new Date().toISOString()): Settings 
   return {
     id: DEFAULT_SETTINGS_ID,
     defaultCurrency: DEFAULT_CURRENCY,
+    activeCurrencies: [DEFAULT_CURRENCY],
     lastUsedMethod: 'card',
     setupCompleted: false,
     aiCategorizationEnabled: false,
+    aiAutoCategorizationEnabled: true,
+    aiRecommendNewCategoriesEnabled: true,
     darkModeEnabled: false,
     createdAt: now,
     updatedAt: now,

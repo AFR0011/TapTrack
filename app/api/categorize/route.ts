@@ -45,8 +45,8 @@ export async function POST(request: Request): Promise<NextResponse> {
   const relevantCategories = body.categories.filter(
     (category) => category.type === body.transactionType
   );
-  if (relevantCategories.length === 0) {
-    return NextResponse.json({ categoryId: null, unavailable: false });
+  if (relevantCategories.length === 0 && body.recommendNewCategories !== true) {
+    return NextResponse.json({ kind: 'none', unavailable: false });
   }
 
   const quota = await consumeAICategorizationQuota(user.id);
@@ -71,10 +71,12 @@ function isValidRequest(body: CategorizeRequest): boolean {
   ) {
     return false;
   }
+  if (!Array.isArray(body.categories) || body.categories.length > MAX_CATEGORIES) {
+    return false;
+  }
   if (
-    !Array.isArray(body.categories) ||
-    body.categories.length === 0 ||
-    body.categories.length > MAX_CATEGORIES
+    body.recommendNewCategories !== undefined &&
+    typeof body.recommendNewCategories !== 'boolean'
   ) {
     return false;
   }

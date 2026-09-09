@@ -23,23 +23,51 @@ describe('categorySuggestion', () => {
 
   it('accepts only AI category ids for the requested transaction type', async () => {
     const categories = createDefaultCategories('2026-09-08T00:00:00.000Z');
-    vi.stubGlobal('fetch', vi.fn().mockResolvedValue(new Response(
-      JSON.stringify({ categoryId: 'cat-subscriptions' }),
-      { status: 200, headers: { 'Content-Type': 'application/json' } }
-    )));
+    vi.stubGlobal(
+      'fetch',
+      vi.fn().mockResolvedValue(
+        new Response(
+          JSON.stringify({
+            kind: 'existing',
+            categoryId: 'cat-subscriptions',
+            confidence: 0.92,
+            unavailable: false,
+          }),
+          { status: 200, headers: { 'Content-Type': 'application/json' } }
+        )
+      )
+    );
 
-    await expect(fetchAICategorySuggestion('ChatGPT subscription', 'expense', categories)).resolves.toEqual({
+    await expect(
+      fetchAICategorySuggestion('ChatGPT subscription', 'expense', categories)
+    ).resolves.toEqual({
+      kind: 'existing',
       categoryId: 'cat-subscriptions',
+      newCategory: null,
+      confidence: 0.92,
       status: 'suggested',
     });
 
-    vi.stubGlobal('fetch', vi.fn().mockResolvedValue(new Response(
-      JSON.stringify({ categoryId: 'cat-income' }),
-      { status: 200, headers: { 'Content-Type': 'application/json' } }
-    )));
+    vi.stubGlobal(
+      'fetch',
+      vi.fn().mockResolvedValue(
+        new Response(
+          JSON.stringify({
+            kind: 'existing',
+            categoryId: 'cat-income',
+            confidence: 0.95,
+            unavailable: false,
+          }),
+          { status: 200, headers: { 'Content-Type': 'application/json' } }
+        )
+      )
+    );
 
     await expect(fetchAICategorySuggestion('coffee', 'expense', categories)).resolves.toEqual({
+      kind: 'none',
       categoryId: null,
+      newCategory: null,
+      confidence: null,
       status: 'none',
     });
   });
@@ -49,7 +77,10 @@ describe('categorySuggestion', () => {
     vi.stubGlobal('fetch', vi.fn().mockResolvedValue(new Response('{}', { status: 503 })));
 
     await expect(fetchAICategorySuggestion('coffee', 'expense', categories)).resolves.toEqual({
+      kind: 'none',
       categoryId: null,
+      newCategory: null,
+      confidence: null,
       status: 'unavailable',
     });
   });
