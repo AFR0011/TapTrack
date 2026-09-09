@@ -46,7 +46,7 @@ export async function POST(request: Request): Promise<NextResponse> {
     (category) => category.type === body.transactionType
   );
   if (relevantCategories.length === 0 && body.recommendNewCategories !== true) {
-    return NextResponse.json({ kind: 'none', unavailable: false });
+    return NextResponse.json({ existing: null, newCategory: null, unavailable: false });
   }
 
   const quota = await consumeAICategorizationQuota(user.id);

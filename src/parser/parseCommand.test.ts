@@ -6,7 +6,7 @@ const categories = createDefaultCategories('2026-04-30T00:00:00.000Z');
 const today = new Date(2026, 3, 30);
 
 describe('parseCommand', () => {
-  it('parses an expense with legacy TRY default and explicit method', () => {
+  it('parses an expense with a neutral category fallback and explicit method', () => {
     const result = parseCommand('-120 coffee cash', { categories, today });
     expect(result).toEqual({
       ok: true,
@@ -15,7 +15,7 @@ describe('parseCommand', () => {
         amount: 120,
         currency: 'TRY',
         title: 'coffee',
-        categoryId: 'cat-food',
+        categoryId: 'cat-other',
         method: 'cash',
         date: '2026-04-30',
       },
@@ -44,6 +44,7 @@ describe('parseCommand', () => {
     if (result.ok) {
       expect(result.transaction.currency).toBe('GBP');
       expect(result.transaction.title).toBe('lunch');
+      expect(result.transaction.categoryId).toBe('cat-other');
     }
   });
 
@@ -61,7 +62,7 @@ describe('parseCommand', () => {
     });
   });
 
-  it('parses explicit currency and falls back to last used method', () => {
+  it('parses explicit currency without keyword-based categorization', () => {
     const result = parseCommand('-9.99 eur spotify', {
       categories,
       defaultMethod: 'card',
@@ -74,7 +75,7 @@ describe('parseCommand', () => {
         amount: 9.99,
         currency: 'EUR',
         title: 'spotify',
-        categoryId: 'cat-subscriptions',
+        categoryId: 'cat-other',
         method: 'card',
         date: '2026-04-30',
       },
@@ -110,6 +111,8 @@ describe('parseCommands', () => {
     expect(results).toHaveLength(2);
     expect(results[0]?.ok).toBe(true);
     expect(results[1]?.ok).toBe(true);
+    if (results[0]?.ok) expect(results[0].transaction.categoryId).toBe('cat-other');
+    if (results[1]?.ok) expect(results[1].transaction.categoryId).toBe('cat-other');
   });
 
   it('handles mixed income and expense entries', () => {

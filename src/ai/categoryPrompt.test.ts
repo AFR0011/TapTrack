@@ -12,61 +12,84 @@ const request = {
 };
 
 describe('categoryPrompt helpers', () => {
-  it('builds a prompt with only categories that match transaction type', () => {
-    const prompt = buildCategoryPrompt(request);
+  it('builds a prompt that evaluates existing and new-category fit independently', () => {
+    const prompt = buildCategoryPrompt({ ...request, recommendNewCategories: true });
 
     expect(prompt).toContain('cat-subscriptions');
     expect(prompt).toContain('cat-food');
     expect(prompt).not.toContain('cat-income');
     expect(prompt).toContain('Transaction description: "Spotify Premium"');
+    expect(prompt).toContain('Evaluate TWO questions independently');
+    expect(prompt).toContain('newCategory');
+    expect(prompt).toContain('fit');
   });
 
-  it('parses a validated existing-category response', () => {
+  it('parses validated existing and new-category candidates from one response', () => {
     expect(
       parseCategoryResponse(
-        '{"kind":"existing","categoryId":"cat-subscriptions","confidence":0.91}',
-        request
-      )
-    ).toEqual({
-      kind: 'existing',
-      categoryId: 'cat-subscriptions',
-      confidence: 0.91,
-    });
-  });
-
-  it('rejects existing category ids from the wrong transaction type', () => {
-    expect(
-      parseCategoryResponse(
-        '{"kind":"existing","categoryId":"cat-income","confidence":0.9}',
-        request
-      )
-    ).toEqual({ kind: 'none' });
-  });
-
-  it('accepts a constrained reusable new-category proposal when enabled', () => {
-    expect(
-      parseCategoryResponse(
-        '{"kind":"new","name":"Transport","icon":"bus","color":"#2563eb","confidence":0.84}',
+        '{"existing":{"categoryId":"cat-subscriptions","fit":0.91},"newCategory":{"name":"Digital services","icon":"repeat","color":"#2563eb","fit":0.62}}',
         { ...request, recommendNewCategories: true }
       )
     ).toEqual({
-      kind: 'new',
-      suggestion: {
-        name: 'Transport',
-        icon: 'bus',
+      existing: {
+        categoryId: 'cat-subscriptions',
+        fit: 0.91,
+      },
+      newCategory: {
+        name: 'Digital services',
+        icon: 'repeat',
         color: '#2563eb',
         type: 'expense',
+        fit: 0.62,
       },
-      confidence: 0.84,
     });
   });
 
-  it('rejects new-category proposals when recommendations are disabled', () => {
+  it('rejects an invalid existing category without discarding a valid new-category candidate', () => {
     expect(
       parseCategoryResponse(
-        '{"kind":"new","name":"Transport","icon":"bus","color":"#2563eb","confidence":0.84}',
+        '{"existing":{"categoryId":"cat-income","fit":0.9},"newCategory":{"name":"Travel","icon":"plane","color":"#2563eb","fit":0.95}}',
+        { ...request, recommendNewCategories: true }
+      )
+    ).toEqual({
+      existing: null,
+      newCategory: {
+        name: 'Travel',
+        icon: 'plane',
+        color: '#2563eb',
+        type: 'expense',
+        fit: 0.95,
+      },
+    });
+  });
+
+  it('ignores new-category candidates when recommendations are disabled', () => {
+    expect(
+      parseCategoryResponse(
+        '{"existing":{"categoryId":"cat-food","fit":0.77},"newCategory":{"name":"Travel","icon":"plane","color":"#2563eb","fit":0.95}}',
         request
       )
-    ).toEqual({ kind: 'none' });
+    ).toEqual({
+      existing: {
+        categoryId: 'cat-food',
+        fit: 0.77,
+      },
+      newCategory: null,
+    });
+  });
+
+  it('uses zero fit when the model omits or corrupts the score', () => {
+    expect(
+      parseCategoryResponse(
+        '{"existing":{"categoryId":"cat-food"},"newCategory":null}',
+        request
+      )
+    ).toEqual({
+      existing: {
+        categoryId: 'cat-food',
+        fit: 0,
+      },
+      newCategory: null,
+    });
   });
 });

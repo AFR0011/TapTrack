@@ -84,7 +84,7 @@ describe('POST /api/categorize', () => {
     expect(response.status).toBe(503);
   });
 
-  it('returns a structured existing-category result from the allowed list', async () => {
+  it('returns independent existing and new-category fit candidates', async () => {
     vi.stubGlobal(
       'fetch',
       vi.fn(async () =>
@@ -94,9 +94,8 @@ describe('POST /api/categorize', () => {
               {
                 message: {
                   content: JSON.stringify({
-                    kind: 'existing',
-                    categoryId: 'cat-subscriptions',
-                    confidence: 0.94,
+                    existing: { categoryId: 'cat-subscriptions', fit: 0.94 },
+                    newCategory: null,
                   }),
                 },
               },
@@ -112,9 +111,8 @@ describe('POST /api/categorize', () => {
 
     expect(response.status).toBe(200);
     expect(body).toEqual({
-      kind: 'existing',
-      categoryId: 'cat-subscriptions',
-      confidence: 0.94,
+      existing: { categoryId: 'cat-subscriptions', fit: 0.94 },
+      newCategory: null,
       unavailable: false,
     });
     expect(adminRpc).toHaveBeenCalledWith('consume_ai_categorization_quota', {
@@ -122,14 +120,14 @@ describe('POST /api/categorize', () => {
     });
   });
 
-  it('returns a non-blocking unavailable result when Groq fails', async () => {
+  it('returns a non-blocking unavailable evaluation when Groq fails', async () => {
     vi.stubGlobal('fetch', vi.fn(async () => new Response('provider-error', { status: 500 })));
 
     const response = await POST(request());
     const body = await response.json();
 
     expect(response.status).toBe(200);
-    expect(body).toEqual({ kind: 'none', unavailable: true });
+    expect(body).toEqual({ existing: null, newCategory: null, unavailable: true });
   });
 
   it('rejects oversized titles without calling Groq or consuming quota', async () => {

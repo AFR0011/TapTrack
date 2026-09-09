@@ -1,6 +1,9 @@
 import { CATEGORY_COLOR_VALUES, CATEGORY_ICON_IDS } from '@/categories/categoryVisualTokens';
 import type { Category, TransactionType } from '@/types';
 
+export const EXISTING_CATEGORY_AUTO_APPLY_MIN_FIT = 0.8;
+export const NEW_CATEGORY_RECOMMEND_MIN_FIT = 0.75;
+
 export interface CategorizeRequest {
   title: string;
   categories: Pick<Category, 'id' | 'name' | 'type'>[];
@@ -8,38 +11,34 @@ export interface CategorizeRequest {
   recommendNewCategories?: boolean;
 }
 
-export type ExistingCategorySuggestion = {
-  kind: 'existing';
+export type ExistingCategoryFit = {
   categoryId: string;
-  confidence: number;
+  fit: number;
 };
 
-export type NewCategorySuggestion = {
-  kind: 'new';
-  suggestion: {
-    name: string;
-    icon: string;
-    color: string;
-    type: TransactionType;
-  };
-  confidence: number;
+export type NewCategoryFit = {
+  name: string;
+  icon: string;
+  color: string;
+  type: TransactionType;
+  fit: number;
 };
 
-export type ParsedCategorySuggestion =
-  | ExistingCategorySuggestion
-  | NewCategorySuggestion
-  | { kind: 'none' };
+export type ParsedCategoryEvaluation = {
+  existing: ExistingCategoryFit | null;
+  newCategory: NewCategoryFit | null;
+};
 
 export function buildCategoryPrompt(request: CategorizeRequest): string {
   const relevant = request.categories.filter((category) => category.type === request.transactionType);
   const listItems = relevant.length
     ? relevant.map((category) => `- ${category.id}: "${category.name}"`).join('\n')
     : '- none';
-  const recommendationRule = request.recommendNewCategories
-    ? `If none of the existing categories is a natural fit, you may propose ONE reusable category. A new category should be broad enough to use again, not merchant-specific or transaction-specific. Use exactly one allowed icon and color.\nAllowed icons: ${CATEGORY_ICON_IDS.join(', ')}\nAllowed colors: ${CATEGORY_COLOR_VALUES.join(', ')}`
-    : 'You must use an existing category. Do not propose a new category.';
+  const newCategoryRule = request.recommendNewCategories
+    ? `Also evaluate independently whether a distinct reusable category would materially improve classification. A new category must be broad enough to reuse, must not duplicate an existing category, and must not be merchant-specific or transaction-specific. Use exactly one allowed icon and color.\nAllowed icons: ${CATEGORY_ICON_IDS.join(', ')}\nAllowed colors: ${CATEGORY_COLOR_VALUES.join(', ')}`
+    : 'Set newCategory to null. Do not propose a new category.';
 
-  return `You are categorizing one personal-finance transaction.
+  return `You are evaluating one personal-finance transaction.
 
 Transaction type: ${request.transactionType}
 Transaction description: ${JSON.stringify(request.title)}
@@ -47,71 +46,79 @@ Transaction description: ${JSON.stringify(request.title)}
 Existing categories:
 ${listItems}
 
-${recommendationRule}
+Evaluate TWO questions independently:
+1. What is the best existing-category semantic fit? Return its exact id and a fit score from 0 to 1. Fit means how naturally and specifically the transaction belongs in that reusable category. Generic catch-all plausibility is not a strong fit. Do not inflate fit merely because a broad category could technically contain the transaction.
+2. ${newCategoryRule}
 
-Return JSON only, with no markdown or explanation.
-For an existing category:
-{"kind":"existing","categoryId":"<exact id>","confidence":0.0}
+A plausible existing category must NOT suppress a genuinely better new-category proposal. Evaluate both independently.
 
-${request.recommendNewCategories ? `For a genuinely useful new category:
-{"kind":"new","name":"<short reusable name>","icon":"<allowed icon>","color":"<allowed color>","confidence":0.0}
+Return JSON only, with no markdown or explanation, using exactly this shape:
+{"existing":{"categoryId":"<exact id>","fit":0.0},"newCategory":${request.recommendNewCategories ? '{"name":"<short reusable name>","icon":"<allowed icon>","color":"<allowed color>","fit":0.0}' : 'null'}}
 
-` : ''}If the description is too vague to make a useful choice:
-{"kind":"none"}`;
+If no existing category is meaningfully applicable, set existing to null. If no useful new category is warranted, set newCategory to null.`;
 }
 
 export function parseCategoryResponse(
   responseText: string,
   request: CategorizeRequest
-): ParsedCategorySuggestion {
+): ParsedCategoryEvaluation {
   const parsed = parseJsonObject(responseText);
-  if (!parsed) return { kind: 'none' };
+  if (!parsed) return emptyEvaluation();
 
   const relevant = request.categories.filter((category) => category.type === request.transactionType);
   const categoryById = new Map(relevant.map((category) => [category.id.toLowerCase(), category]));
 
-  if (parsed.kind === 'existing' && typeof parsed.categoryId === 'string') {
-    const category = categoryById.get(parsed.categoryId.trim().toLowerCase());
-    if (!category) return { kind: 'none' };
-    return {
-      kind: 'existing',
-      categoryId: category.id,
-      confidence: normalizeConfidence(parsed.confidence),
-    };
+  let existing: ExistingCategoryFit | null = null;
+  if (parsed.existing && typeof parsed.existing === 'object' && !Array.isArray(parsed.existing)) {
+    const candidate = parsed.existing as Record<string, unknown>;
+    if (typeof candidate.categoryId === 'string') {
+      const category = categoryById.get(candidate.categoryId.trim().toLowerCase());
+      if (category) {
+        existing = {
+          categoryId: category.id,
+          fit: normalizeFit(candidate.fit),
+        };
+      }
+    }
   }
 
-  if (parsed.kind !== 'new' || request.recommendNewCategories !== true) {
-    return { kind: 'none' };
+  let newCategory: NewCategoryFit | null = null;
+  if (
+    request.recommendNewCategories === true &&
+    parsed.newCategory &&
+    typeof parsed.newCategory === 'object' &&
+    !Array.isArray(parsed.newCategory)
+  ) {
+    const candidate = parsed.newCategory as Record<string, unknown>;
+    const name = typeof candidate.name === 'string' ? candidate.name.trim().replace(/\s+/g, ' ') : '';
+    const icon = typeof candidate.icon === 'string' ? candidate.icon : '';
+    const color = typeof candidate.color === 'string' ? candidate.color : '';
+    const duplicatesExisting = relevant.some(
+      (category) => category.name.trim().toLowerCase() === name.toLowerCase()
+    );
+
+    if (
+      name.length >= 2 &&
+      name.length <= 40 &&
+      !duplicatesExisting &&
+      CATEGORY_ICON_IDS.some((value) => value === icon) &&
+      CATEGORY_COLOR_VALUES.some((value) => value === color)
+    ) {
+      newCategory = {
+        name,
+        icon,
+        color,
+        type: request.transactionType,
+        fit: normalizeFit(candidate.fit),
+      };
+    }
   }
 
-  const name = typeof parsed.name === 'string' ? parsed.name.trim().replace(/\s+/g, ' ') : '';
-  const icon = typeof parsed.icon === 'string' ? parsed.icon : '';
-  const color = typeof parsed.color === 'string' ? parsed.color : '';
-  if (name.length < 2 || name.length > 40) return { kind: 'none' };
-  if (!CATEGORY_ICON_IDS.some((value) => value === icon)) return { kind: 'none' };
-  if (!CATEGORY_COLOR_VALUES.some((value) => value === color)) return { kind: 'none' };
+  return { existing, newCategory };
+}
 
-  const existingByName = relevant.find(
-    (category) => category.name.trim().toLowerCase() === name.toLowerCase()
-  );
-  if (existingByName) {
-    return {
-      kind: 'existing',
-      categoryId: existingByName.id,
-      confidence: normalizeConfidence(parsed.confidence),
-    };
-  }
-
-  return {
-    kind: 'new',
-    suggestion: {
-      name,
-      icon,
-      color,
-      type: request.transactionType,
-    },
-    confidence: normalizeConfidence(parsed.confidence),
-  };
+function emptyEvaluation(): ParsedCategoryEvaluation {
+  return { existing: null, newCategory: null };
 }
 
 function parseJsonObject(value: string): Record<string, unknown> | null {
@@ -128,7 +135,7 @@ function parseJsonObject(value: string): Record<string, unknown> | null {
   }
 }
 
-function normalizeConfidence(value: unknown): number {
-  if (typeof value !== 'number' || !Number.isFinite(value)) return 0.5;
+function normalizeFit(value: unknown): number {
+  if (typeof value !== 'number' || !Number.isFinite(value)) return 0;
   return Math.max(0, Math.min(1, value));
 }

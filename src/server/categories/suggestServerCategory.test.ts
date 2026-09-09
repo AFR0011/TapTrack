@@ -23,7 +23,7 @@ describe('suggestServerCategory', () => {
     aiMock.mockReset();
   });
 
-  it('uses local categorization when AI is disabled', async () => {
+  it('uses the neutral expense fallback when AI is disabled', async () => {
     const categories = createDefaultCategories('2026-09-08T00:00:00.000Z');
 
     await expect(
@@ -35,20 +35,19 @@ describe('suggestServerCategory', () => {
         aiEnabled: false,
       })
     ).resolves.toMatchObject({
-      categoryId: 'cat-subscriptions',
+      categoryId: 'cat-other',
       source: 'local',
       aiUnavailable: false,
     });
     expect(quotaMock).not.toHaveBeenCalled();
   });
 
-  it('uses a valid hosted AI existing-category suggestion when quota allows it', async () => {
+  it('uses a strong hosted AI existing-category fit when quota allows it', async () => {
     const categories = createDefaultCategories('2026-09-08T00:00:00.000Z');
     quotaMock.mockResolvedValue('allowed');
     aiMock.mockResolvedValue({
-      kind: 'existing',
-      categoryId: 'cat-subscriptions',
-      confidence: 0.9,
+      existing: { categoryId: 'cat-subscriptions', fit: 0.9 },
+      newCategory: null,
       unavailable: false,
     });
 
@@ -67,26 +66,34 @@ describe('suggestServerCategory', () => {
     });
   });
 
-  it('falls back locally when AI is unavailable or invalid', async () => {
+  it('ignores low-fit AI matches and falls back to Other', async () => {
     const categories = createDefaultCategories('2026-09-08T00:00:00.000Z');
     quotaMock.mockResolvedValue('allowed');
-    aiMock.mockResolvedValue({ kind: 'none', unavailable: false });
+    aiMock.mockResolvedValue({
+      existing: { categoryId: 'cat-fun', fit: 0.52 },
+      newCategory: null,
+      unavailable: false,
+    });
 
     await expect(
       suggestServerCategory({
         userId: 'user-1',
-        title: 'coffee',
+        title: 'plane tickets',
         type: 'expense',
         categories,
         aiEnabled: true,
       })
     ).resolves.toMatchObject({
-      categoryId: 'cat-food',
+      categoryId: 'cat-other',
       source: 'local',
       aiUnavailable: false,
     });
+  });
 
+  it('falls back neutrally when AI quota infrastructure is unavailable', async () => {
+    const categories = createDefaultCategories('2026-09-08T00:00:00.000Z');
     quotaMock.mockResolvedValue('unavailable');
+
     await expect(
       suggestServerCategory({
         userId: 'user-1',
@@ -96,7 +103,7 @@ describe('suggestServerCategory', () => {
         aiEnabled: true,
       })
     ).resolves.toMatchObject({
-      categoryId: 'cat-food',
+      categoryId: 'cat-other',
       source: 'local',
       aiUnavailable: true,
     });

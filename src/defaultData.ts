@@ -14,13 +14,6 @@ const DEFAULT_CATEGORY_TEMPLATES: CategoryTemplate[] = [
   { id: 'cat-income', name: 'Income', icon: 'arrow-down', color: '#059669', isDefault: true, type: 'income' },
 ];
 
-const CATEGORY_KEYWORDS: Record<string, string[]> = {
-  Food: ['coffee', 'cafe', 'café', 'breakfast', 'lunch', 'dinner', 'meal', 'food', 'restaurant', 'market', 'grocery', 'groceries'],
-  Rent: ['rent', 'landlord'],
-  Subscriptions: ['subscription', 'spotify', 'netflix', 'youtube', 'chatgpt', 'icloud', 'adobe', 'github'],
-  Fun: ['game', 'gaming', 'cinema', 'movie', 'concert', 'ticket'],
-};
-
 export function createDefaultCategories(now = new Date().toISOString()): Category[] {
   return DEFAULT_CATEGORY_TEMPLATES.map((category) => ({ ...category, createdAt: now, updatedAt: now }));
 }
@@ -60,18 +53,22 @@ export function getBalanceId(currency: Currency, method: Method) {
   return `${currency}-${method}`;
 }
 
-export function findCategoryForTransaction(categories: Category[], type: TransactionType, title: string) {
+export function findCategoryForTransaction(
+  categories: Category[],
+  type: TransactionType,
+  _title: string
+) {
   const typedCategories = categories.filter((category) => category.type === type);
-  if (type === 'income') return typedCategories.find((category) => category.name === 'Income') ?? typedCategories[0];
 
-  const normalizedTitle = title.toLowerCase();
-  for (const [categoryName, keywords] of Object.entries(CATEGORY_KEYWORDS)) {
-    if (keywords.some((keyword) => normalizedTitle.includes(keyword))) {
-      const category = typedCategories.find((item) => item.name === categoryName);
-      if (category) return category;
-    }
+  // Deliberately semantic-free. Smart Categories owns transaction classification;
+  // local/offline behavior only supplies a safe neutral fallback.
+  if (type === 'income') {
+    return typedCategories.find((category) => category.name === 'Income') ??
+      typedCategories.find((category) => category.isDefault) ??
+      typedCategories[0];
   }
 
   return typedCategories.find((category) => category.name === 'Other') ??
-    typedCategories.find((category) => category.isDefault) ?? typedCategories[0];
+    typedCategories.find((category) => category.isDefault) ??
+    typedCategories[0];
 }
