@@ -1,6 +1,7 @@
 import { createHash, randomUUID } from 'node:crypto';
 import { type NextRequest, NextResponse } from 'next/server';
 import { createSupabaseAdminClient } from '@/lib/supabase-admin';
+import { resolveActiveCurrencies } from '@/currencies/activeCurrencySelection';
 import { normalizeCurrencyCode } from '@/currencies/currencyCatalog';
 import { hashCaptureToken, isCaptureToken } from '@/server/capture/captureTokens';
 import { suggestServerCategory } from '@/server/categories/suggestServerCategory';
@@ -39,7 +40,7 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
   if (!parsed.ok) return NextResponse.json({ error: parsed.error }, { status: 400 });
 
   const [{ data: settings, error: settingsError }, { data: rawCategories, error: categoriesError }] = await Promise.all([
-    admin.from('settings').select('last_used_method, default_currency, ai_categorization_enabled, setup_completed').eq('user_id', tokenRow.user_id).eq('id', 'default').is('deleted_at', null).maybeSingle(),
+    admin.from('settings').select('last_used_method, default_currency, active_currencies, ai_categorization_enabled, setup_completed').eq('user_id', tokenRow.user_id).eq('id', 'default').is('deleted_at', null).maybeSingle(),
     admin.from('categories').select('id, name, icon, color, is_default, type, created_at, updated_at').eq('user_id', tokenRow.user_id).is('deleted_at', null),
   ]);
 
@@ -61,15 +62,18 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
   if (!category) return NextResponse.json({ error: 'No matching TapTrack category is available.' }, { status: 409 });
 
   const method: Method = parsed.method ?? (settings.last_used_method === 'cash' ? 'cash' : 'card');
-  const currency: Currency = parsed.currency ?? normalizeCurrencyCode(settings.default_currency) ?? 'TRY';
-  const { count: activeCurrencyCount, error: activeCurrencyError } = await admin
-    .from('balance_checkpoints')
-    .select('id', { count: 'exact', head: true })
-    .eq('user_id', tokenRow.user_id)
-    .eq('currency', currency)
-    .is('deleted_at', null);
-  if (activeCurrencyError) return NextResponse.json({ error: 'TapTrack could not check the selected currency.' }, { status: 503 });
-  if (!activeCurrencyCount) return NextResponse.json({ error: `${currency} is not active in this TapTrack ledger.` }, { status: 409 });
+  const defaultCurrency = normalizeCurrencyCode(settings.default_currency) ?? 'TRY';
+  const configuredCurrencies = Array.isArray(settings.active_currencies)
+    ? settings.active_currencies.filter((value): value is string => typeof value === 'string')
+    : [];
+  const activeCurrencies = resolveActiveCurrencies({
+    defaultCurrency,
+    activeCurrencies: configuredCurrencies,
+  });
+  const currency: Currency = parsed.currency ?? defaultCurrency;
+  if (!activeCurrencies.includes(currency)) {
+    return NextResponse.json({ error: `${currency} is not active in this TapTrack ledger.` }, { status: 409 });
+  }
 
   const requestId = canonicalCaptureRequestId(parsed.requestId);
   const { data, error: rpcError } = await admin.rpc('apply_taptrack_capture', {
