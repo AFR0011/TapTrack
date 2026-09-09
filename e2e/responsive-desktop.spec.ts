@@ -29,7 +29,7 @@ async function expectSideBySide(left: ReturnType<Page['locator']>, right: Return
   expect(Math.abs(rightBox.y - leftBox.y)).toBeLessThan(24);
 }
 
-test('desktop dashboard, transactions, budgets, and reports use responsive compositions', async ({ page }) => {
+test('desktop dashboard, transactions, budgets, reports, and balances use responsive compositions', async ({ page }) => {
   await page.goto('/app');
   await completeFreshOnboarding(page);
 
@@ -68,5 +68,30 @@ test('desktop dashboard, transactions, budgets, and reports use responsive compo
   const reportsLayout = page.locator('[data-layout="reports-summary"]');
   await expect(reportsLayout).toBeVisible();
   await expectSideBySide(reportsLayout.locator(':scope > section').nth(0), reportsLayout.locator(':scope > section').nth(1));
+  await assertNoHorizontalOverflow(page);
+
+  await desktopNav.locator('summary').filter({ hasText: 'More' }).click();
+  const moreNavigation = desktopNav.getByRole('group', { name: 'More navigation' });
+  await expect(moreNavigation).toBeVisible();
+  await moreNavigation.getByRole('link', { name: 'Balances', exact: true }).click();
+  await expect(page.getByRole('heading', { name: 'Balances', exact: true })).toBeVisible();
+
+  const balancesMainBox = await main.boundingBox();
+  expect(balancesMainBox?.width ?? 0).toBeGreaterThan(1000);
+  const balancesGrid = page.locator('[data-layout="balances-grid"]');
+  await expect(balancesGrid).toBeVisible();
+  const balanceCards = balancesGrid.locator('[data-balance-currency]');
+  if ((await balanceCards.count()) > 1) {
+    await expectSideBySide(balanceCards.nth(0), balanceCards.nth(1));
+  }
+
+  const balanceRow = page.locator('[data-balance-method]').first();
+  await expect(balanceRow).toBeVisible();
+  await balanceRow.click();
+  const dialog = page.getByRole('dialog');
+  await expect(dialog).toBeVisible();
+  await expect(dialog.getByText('Current balance', { exact: true })).toBeVisible();
+  await dialog.getByRole('button', { name: 'Close' }).click();
+  await expect(dialog).toBeHidden();
   await assertNoHorizontalOverflow(page);
 });

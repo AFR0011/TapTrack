@@ -1,5 +1,5 @@
-import RouteLoadingFrame from '@/components/RouteLoadingFrame';
+import BalancesLoadingFrame from '@/components/BalancesLoadingFrame';
 
 export default function Loading() {
-  return <RouteLoadingFrame kind="balances" />;
+  return <BalancesLoadingFrame />;
 }
