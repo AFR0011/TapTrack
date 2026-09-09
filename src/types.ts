@@ -123,8 +123,10 @@ export type ConversionKind = 'exchange' | 'transfer';
 
 export interface Settings {
   id: string;
-  /** Currency used for new entries, budgets, dashboard summaries, and reporting conversions. */
+  /** Currency used for new entries, dashboard summaries, and default report views. */
   defaultCurrency: Currency;
+  /** Currencies offered for new entries. Historical currencies remain in the ledger when archived. */
+  activeCurrencies?: Currency[];
   lastUsedMethod: Method;
   setupCompleted: boolean;
   aiCategorizationEnabled?: boolean;
