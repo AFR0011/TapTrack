@@ -107,8 +107,8 @@ export function CategoryManager() {
         toast.success('Category added.');
       }
       setEditor(null);
-    } catch (err) {
-      setError(err instanceof Error ? err.message : 'Category could not be saved.');
+    } catch {
+      setError('This category could not be saved. Check the details and try again.');
     } finally {
       setSaving(false);
     }
@@ -120,8 +120,8 @@ export function CategoryManager() {
       await deleteCategory(deleteTarget.id);
       toast.success('Category deleted.');
       if (editor?.category?.id === deleteTarget.id) setEditor(null);
-    } catch (err) {
-      toast.error(err instanceof Error ? err.message : 'Category could not be deleted.');
+    } catch {
+      toast.error('This category could not be deleted. Try again.');
     } finally {
       setDeleteTarget(null);
     }
@@ -308,7 +308,7 @@ export function CategoryManager() {
       <ConfirmDialog
         open={deleteTarget !== null}
         title="Delete category"
-        message={`Delete "${deleteTarget?.name ?? ''}"? Existing transactions will move to a fallback category, and any budget limits for this category will be removed.`}
+        message={`Delete "${deleteTarget?.name ?? ''}"? Existing transactions will move to ${deleteTarget?.type === 'income' ? 'Income' : 'Other'}, and any budget limits for this category will be removed.`}
         confirmLabel="Delete category"
         confirmVariant="danger"
         onConfirm={() => void confirmDelete()}
