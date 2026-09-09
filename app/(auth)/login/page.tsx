@@ -383,7 +383,10 @@ function formatAuthError(
   if (normalized.includes('rate limit') || normalized.includes('too many')) {
     return 'Too many attempts were made recently. Try again a little later.';
   }
-  if (normalized.includes('expired') || normalized.includes('invalid') && context === 'reset') {
+  if (
+    context === 'reset' &&
+    (normalized.includes('expired') || normalized.includes('invalid'))
+  ) {
     return 'This reset link is no longer valid. Request a new password reset link.';
   }
   if (context === 'recovery') {
