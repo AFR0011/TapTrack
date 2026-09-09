@@ -39,8 +39,8 @@ export default function NavigationLoadingOverlay() {
       setPendingNavigation({ fromPath: pathname, toPath: url.pathname });
     };
 
-    document.addEventListener('click', handleClick);
-    return () => document.removeEventListener('click', handleClick);
+    document.addEventListener('click', handleClick, true);
+    return () => document.removeEventListener('click', handleClick, true);
   }, [pathname]);
 
   useEffect(() => {
