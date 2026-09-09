@@ -59,8 +59,8 @@ type ToggleRowProps = ToggleProps & {
 
 export function ToggleRow({ label, description, checked, onChange, disabled, variant, className }: ToggleRowProps) {
   return (
-    <div className={cn('flex items-center justify-between gap-4 rounded-lg border border-subtle bg-surface-muted p-3', className)}>
-      <div>
+    <div className={cn('flex min-w-0 items-center justify-between gap-4 py-3', className)}>
+      <div className="min-w-0">
         <span className="text-sm font-semibold text-secondary">{label}</span>
         {description ? <p className="mt-0.5 text-xs text-muted">{description}</p> : null}
       </div>
