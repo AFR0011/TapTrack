@@ -72,7 +72,7 @@ function CaptureContent() {
     <div className="space-y-5">
       <div className="flex items-center justify-between gap-3">
         <div>
-          <p className="text-sm font-medium text-muted">Quick capture</p>
+          <p className="text-sm font-medium text-muted">New transaction</p>
           <h1 className="text-2xl font-semibold tracking-tight text-primary">Add transaction</h1>
         </div>
         <Link
@@ -81,6 +81,8 @@ function CaptureContent() {
           onClick={(event) => {
             if (navigator.onLine !== false) return;
             event.preventDefault();
+            // A full document navigation is intentional here so the service worker can serve the warmed route offline.
+            // eslint-disable-next-line @next/next/no-location-assign-relative-destination
             window.location.assign('/app');
           }}
           className="flex min-h-11 items-center rounded-lg px-3 text-sm font-semibold text-secondary hover:bg-surface-muted hover:text-primary"
