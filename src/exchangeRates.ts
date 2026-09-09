@@ -83,7 +83,7 @@ export function findLatestCachedExchangeRate(
     return {
       base: input.base,
       quote: input.quote,
-      dateRequested: input.date,
+      dateRequested: latest.dateRequested,
       dateUsed: latest.dateUsed,
       rate: latest.rate,
       source: EXCHANGE_RATE_SOURCE,
@@ -96,7 +96,7 @@ export function findLatestCachedExchangeRate(
   return {
     base: input.base,
     quote: input.quote,
-    dateRequested: input.date,
+    dateRequested: latest.dateRequested,
     dateUsed: latest.dateUsed,
     rate: 1 / latest.rate,
     source: EXCHANGE_RATE_SOURCE,
