@@ -9,13 +9,16 @@ import RouteLoadingFrame, {
 
 const NAVIGATION_TIMEOUT_MS = 20_000;
 
+type PendingNavigation = {
+  fromPath: string;
+  toPath: string;
+};
+
 export default function NavigationLoadingOverlay() {
   const pathname = usePathname();
-  const [pendingPath, setPendingPath] = useState<string | null>(null);
-
-  useEffect(() => {
-    setPendingPath(null);
-  }, [pathname]);
+  const [pendingNavigation, setPendingNavigation] = useState<PendingNavigation | null>(null);
+  const pendingPath =
+    pendingNavigation?.fromPath === pathname ? pendingNavigation.toPath : null;
 
   useEffect(() => {
     const handleClick = (event: MouseEvent) => {
@@ -33,7 +36,7 @@ export default function NavigationLoadingOverlay() {
       if (!url.pathname.startsWith('/app')) return;
       if (url.pathname === pathname) return;
 
-      setPendingPath(url.pathname);
+      setPendingNavigation({ fromPath: pathname, toPath: url.pathname });
     };
 
     document.addEventListener('click', handleClick);
@@ -42,7 +45,7 @@ export default function NavigationLoadingOverlay() {
 
   useEffect(() => {
     if (!pendingPath) return;
-    const timeout = window.setTimeout(() => setPendingPath(null), NAVIGATION_TIMEOUT_MS);
+    const timeout = window.setTimeout(() => setPendingNavigation(null), NAVIGATION_TIMEOUT_MS);
     return () => window.clearTimeout(timeout);
   }, [pendingPath]);
 
