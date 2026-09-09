@@ -44,7 +44,8 @@ test('recurring editor fits mobile and can save a rule offline', async ({ page, 
   await dialog.getByRole('button', { name: 'Save recurring', exact: true }).click();
 
   await expect(dialog).toBeHidden();
-  await expect(page.getByText('offline recurring test', { exact: true })).toBeVisible();
-  await expect(page.locator('[data-recurring-rule]')).toHaveCount(1);
+  const rule = page.locator('[data-recurring-rule]');
+  await expect(rule).toHaveCount(1);
+  await expect(rule.getByRole('heading', { name: 'offline recurring test', exact: true })).toBeVisible();
   await assertNoHorizontalOverflow(page);
 });
