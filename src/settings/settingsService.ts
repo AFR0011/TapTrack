@@ -4,7 +4,14 @@ import { flushSyncQueueBestEffort, queueRecordForSync } from '@/sync/syncService
 import type { Settings } from '@/types';
 
 export type SettingsPreferenceUpdates = Partial<
-  Pick<Settings, 'lastUsedMethod' | 'aiCategorizationEnabled' | 'darkModeEnabled'>
+  Pick<
+    Settings,
+    | 'lastUsedMethod'
+    | 'aiCategorizationEnabled'
+    | 'aiAutoCategorizationEnabled'
+    | 'aiRecommendNewCategoriesEnabled'
+    | 'darkModeEnabled'
+  >
 >;
 
 /**
