@@ -34,7 +34,7 @@ describe('dashboard finance selection', () => {
   });
 
   it('never exposes rates loaded for a stale quote currency', () => {
-    const rates = { USD: 42 };
+    const rates: Record<string, number> = { USD: 42 };
     expect(ratesForCurrency(rates, 'TRY', 'TRY', {})).toBe(rates);
     expect(ratesForCurrency(rates, 'TRY', 'EUR', {})).toEqual({});
   });
