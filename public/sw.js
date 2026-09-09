@@ -1,5 +1,5 @@
 const CACHE_PREFIX = 'taptrack-shell-';
-const CACHE_NAME = `${CACHE_PREFIX}2026-09-09-v10`;
+const CACHE_NAME = `${CACHE_PREFIX}2026-09-09-v11`;
 const NAVIGATION_TIMEOUT_MS = 3500;
 const APP_ROUTES = [
   '/app',
