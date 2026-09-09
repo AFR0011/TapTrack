@@ -29,7 +29,7 @@ async function expectSideBySide(left: ReturnType<Page['locator']>, right: Return
   expect(Math.abs(rightBox.y - leftBox.y)).toBeLessThan(24);
 }
 
-test('desktop dashboard, transactions, and budgets use responsive compositions', async ({ page }) => {
+test('desktop dashboard, transactions, budgets, and reports use responsive compositions', async ({ page }) => {
   await page.goto('/app');
   await completeFreshOnboarding(page);
 
@@ -61,5 +61,12 @@ test('desktop dashboard, transactions, and budgets use responsive compositions',
   const budgetsLayout = page.locator('[data-layout="budgets-content"]');
   await expect(budgetsLayout).toBeVisible();
   await expectSideBySide(budgetsLayout.locator(':scope > section').nth(0), budgetsLayout.locator(':scope > section').nth(1));
+  await assertNoHorizontalOverflow(page);
+
+  await desktopNav.getByRole('link', { name: 'Reports', exact: true }).click();
+  await expect(page.getByRole('heading', { name: 'Reports', exact: true })).toBeVisible();
+  const reportsLayout = page.locator('[data-layout="reports-summary"]');
+  await expect(reportsLayout).toBeVisible();
+  await expectSideBySide(reportsLayout.locator(':scope > section').nth(0), reportsLayout.locator(':scope > section').nth(1));
   await assertNoHorizontalOverflow(page);
 });

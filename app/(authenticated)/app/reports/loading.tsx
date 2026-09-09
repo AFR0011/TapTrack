@@ -1,5 +1,5 @@
-import RouteLoadingFrame from '@/components/RouteLoadingFrame';
+import ReportsLoadingFrame from '@/components/ReportsLoadingFrame';
 
 export default function Loading() {
-  return <RouteLoadingFrame kind="reports" />;
+  return <ReportsLoadingFrame />;
 }
