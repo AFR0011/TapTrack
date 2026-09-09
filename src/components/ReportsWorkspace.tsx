@@ -37,7 +37,7 @@ import {
 } from '@/reports/historicalReportRates';
 import { calculateIncomeVsExpense } from '@/reports/reportService';
 import { getBudgetPerformance } from '@/reports/reportTransforms';
-import type { Currency, Transaction } from '@/types';
+import type { Category, Currency, Transaction } from '@/types';
 
 type ReportMode = 'month' | 'range' | 'year';
 type ReportSection = 'overview' | 'spending' | 'budgets';
@@ -75,15 +75,16 @@ function totalsFor(
   conversionAvailable: boolean
 ) {
   if (!conversionAvailable) return calculateIncomeVsExpense(transactions, reportCurrency);
-  let income = 0;
-  let expense = 0;
-  for (const transaction of transactions) {
-    const amount = convertedAmount(transaction, reportCurrency, rates, true);
-    if (amount === null) continue;
-    if (transaction.type === 'income') income += amount;
-    else expense += amount;
-  }
-  return { income, expense, net: income - expense };
+  return transactions.reduce(
+    (totals, transaction) => {
+      const amount = convertedAmount(transaction, reportCurrency, rates, true);
+      if (amount === null) return totals;
+      return transaction.type === 'income'
+        ? { ...totals, income: totals.income + amount, net: totals.net + amount }
+        : { ...totals, expense: totals.expense + amount, net: totals.net - amount };
+    },
+    { income: 0, expense: 0, net: 0 }
+  );
 }
 
 export default function ReportsWorkspace() {
@@ -242,36 +243,29 @@ export default function ReportsWorkspace() {
       const signed = transaction.type === 'income' ? amount : -amount;
       daily.set(transaction.date, (daily.get(transaction.date) ?? 0) + signed);
     }
-
     const dates = [...daily.keys()].sort((a, b) => a.localeCompare(b));
-    let running = 0;
-    return dates.map((date) => {
-      running += daily.get(date) ?? 0;
-      return { date, label: date.slice(5), amount: running };
-    });
+    return dates.map((date, index) => ({
+      date,
+      label: date.slice(5),
+      amount: dates
+        .slice(0, index + 1)
+        .reduce((sum, itemDate) => sum + (daily.get(itemDate) ?? 0), 0),
+    }));
   }, [activeTransactions, conversionAvailable, rates, reportCurrency]);
 
-  const comparisonData = useMemo<ComparisonRow[]>(() => {
-    if (mode === 'month') {
-      return [
-        { label: getPreviousMonth(month), income: previousTotals.income, expense: previousTotals.expense },
-        { label: month, income: totals.income, expense: totals.expense },
-      ];
-    }
-    if (mode === 'year') {
-      return Array.from({ length: 12 }, (_, index) => {
-        const itemMonth = `${year}-${String(index + 1).padStart(2, '0')}`;
-        const itemTotals = totalsFor(
-          (transactions ?? []).filter((transaction) => transaction.date.startsWith(itemMonth)),
-          reportCurrency,
-          rates,
-          conversionAvailable
-        );
-        return { label: itemMonth.slice(5), income: itemTotals.income, expense: itemTotals.expense };
-      });
-    }
-    return [{ label: 'Selected range', income: totals.income, expense: totals.expense }];
-  }, [conversionAvailable, mode, month, previousTotals, rates, reportCurrency, totals, transactions, year]);
+  const yearComparisonData = useMemo<ComparisonRow[]>(() => {
+    if (mode !== 'year') return [];
+    return Array.from({ length: 12 }, (_, index) => {
+      const itemMonth = `${year}-${String(index + 1).padStart(2, '0')}`;
+      const itemTotals = totalsFor(
+        (transactions ?? []).filter((transaction) => transaction.date.startsWith(itemMonth)),
+        reportCurrency,
+        rates,
+        conversionAvailable
+      );
+      return { label: itemMonth.slice(5), income: itemTotals.income, expense: itemTotals.expense };
+    });
+  }, [conversionAvailable, mode, rates, reportCurrency, transactions, year]);
 
   const budgetPerformance = getBudgetPerformance(
     month,
@@ -444,14 +438,14 @@ export default function ReportsWorkspace() {
           {ratesLoading ? (
             <Skeleton className="mt-5 h-56 w-full rounded-2xl sm:h-64" />
           ) : mode === 'year' ? (
-            comparisonData.every((row) => row.income === 0 && row.expense === 0) ? (
+            yearComparisonData.every((row) => row.income === 0 && row.expense === 0) ? (
               <EmptyState title="Nothing to chart yet." description="Transactions in this year will appear here." compact className="mt-5" />
             ) : (
               <>
                 <ChartLegend />
                 <div className="mt-3 h-56 sm:h-64" aria-hidden="true">
                   <ResponsiveContainer width="100%" height="100%">
-                    <BarChart data={comparisonData} margin={{ top: 8, right: 4, bottom: 0, left: 0 }}>
+                    <BarChart data={yearComparisonData} margin={{ top: 8, right: 4, bottom: 0, left: 0 }}>
                       <XAxis dataKey="label" tick={{ fill: 'var(--text-muted)', fontSize: 11 }} tickLine={false} axisLine={false} />
                       <YAxis {...yAxis} />
                       <Tooltip content={<ChartTooltip currency={reportCurrency} />} {...TOOLTIP_PROPS} />
@@ -461,7 +455,7 @@ export default function ReportsWorkspace() {
                   </ResponsiveContainer>
                 </div>
                 <DataDisclosure label="View income and expense data">
-                  <ComparisonTable rows={comparisonData} currency={reportCurrency} />
+                  <ComparisonTable rows={yearComparisonData} currency={reportCurrency} />
                 </DataDisclosure>
               </>
             )
@@ -511,9 +505,7 @@ export default function ReportsWorkspace() {
             onClick={() => setSection(tab.id)}
             className={cn(
               'min-h-11 rounded-xl px-2 text-sm font-semibold transition-colors sm:px-4',
-              section === tab.id
-                ? 'bg-surface text-primary shadow-sm'
-                : 'text-muted hover:text-secondary',
+              section === tab.id ? 'bg-surface text-primary shadow-sm' : 'text-muted hover:text-secondary',
               focusVisibleRing
             )}
           >
@@ -618,9 +610,7 @@ export default function ReportsWorkspace() {
                         </AreaChart>
                       </ResponsiveContainer>
                     </div>
-                    <DataDisclosure label="View spending data">
-                      <SpendingTable rows={spendingOverTime} currency={reportCurrency} />
-                    </DataDisclosure>
+                    <DataDisclosure label="View spending data"><SpendingTable rows={spendingOverTime} currency={reportCurrency} /></DataDisclosure>
                   </>
                 )}
               </ReportPanel>
@@ -635,9 +625,7 @@ export default function ReportsWorkspace() {
                 <p className="text-xs font-semibold uppercase tracking-[0.16em] text-muted">Guardrails</p>
                 <h2 className="mt-1 text-lg font-semibold tracking-tight text-primary">Budget performance</h2>
               </div>
-              <Link href="/app/budgets" prefetch={false} className={cn(buttonVariants({ variant: 'secondary', size: 'sm' }), 'rounded-xl')}>
-                Manage budgets
-              </Link>
+              <Link href="/app/budgets" prefetch={false} className={cn(buttonVariants({ variant: 'secondary', size: 'sm' }), 'rounded-xl')}>Manage budgets</Link>
             </div>
 
             {mode !== 'month' ? (
@@ -655,18 +643,14 @@ export default function ReportsWorkspace() {
                 />
               </ReportPanel>
             ) : budgetPerformance.available <= 0 && budgetPerformance.categoryBudgets.length === 0 ? (
-              <ReportPanel>
-                <EmptyState title={`No ${reportCurrency} budget for ${formatMonthLabel(month)}.`} description="Create a monthly total or category limit on Budgets." compact />
-              </ReportPanel>
+              <ReportPanel><EmptyState title={`No ${reportCurrency} budget for ${formatMonthLabel(month)}.`} description="Create a monthly total or category limit on Budgets." compact /></ReportPanel>
             ) : (
               <div className="grid gap-5 lg:grid-cols-[minmax(0,0.9fr)_minmax(0,1.2fr)] lg:items-start">
                 <ReportPanel>
                   <div className="flex items-end justify-between gap-4">
                     <div>
                       <p className="text-xs font-medium text-muted">Remaining</p>
-                      <p className={cn('mt-1 text-3xl font-semibold tracking-tight tabular-nums', budgetPerformance.remaining >= 0 ? 'text-primary' : 'text-danger')}>
-                        {formatCurrency(budgetPerformance.remaining, reportCurrency)}
-                      </p>
+                      <p className={cn('mt-1 text-3xl font-semibold tracking-tight tabular-nums', budgetPerformance.remaining >= 0 ? 'text-primary' : 'text-danger')}>{formatCurrency(budgetPerformance.remaining, reportCurrency)}</p>
                     </div>
                     <span className="text-sm font-semibold text-muted">{Math.round(budgetPercent)}% used</span>
                   </div>
@@ -702,12 +686,8 @@ export default function ReportsWorkspace() {
                                 <span className="truncate text-sm font-semibold text-primary">{category?.name ?? item.categoryId}</span>
                                 <span className="shrink-0 text-sm font-semibold tabular-nums text-primary">{formatCurrency(item.spent, item.currency)} / {formatCurrency(item.budget, item.currency)}</span>
                               </div>
-                              <div className="mt-2 h-1.5 overflow-hidden rounded-full bg-surface-muted">
-                                <div className={cn('h-full rounded-full', item.remaining >= 0 ? 'bg-accent' : 'bg-danger')} style={{ width: `${percent}%` }} />
-                              </div>
-                              <p className={cn('mt-1.5 text-xs font-medium', item.remaining >= 0 ? 'text-muted' : 'text-danger')}>
-                                {item.remaining >= 0 ? `${formatCurrency(item.remaining, item.currency)} left` : `${formatCurrency(Math.abs(item.remaining), item.currency)} over`}
-                              </p>
+                              <div className="mt-2 h-1.5 overflow-hidden rounded-full bg-surface-muted"><div className={cn('h-full rounded-full', item.remaining >= 0 ? 'bg-accent' : 'bg-danger')} style={{ width: `${percent}%` }} /></div>
+                              <p className={cn('mt-1.5 text-xs font-medium', item.remaining >= 0 ? 'text-muted' : 'text-danger')}>{item.remaining >= 0 ? `${formatCurrency(item.remaining, item.currency)} left` : `${formatCurrency(Math.abs(item.remaining), item.currency)} over`}</p>
                             </div>
                           </div>
                         );
@@ -727,12 +707,7 @@ export default function ReportsWorkspace() {
         description="Choose the time window and currency used for this report."
         onClose={() => setContextOpen(false)}
         size="sm"
-        footer={
-          <div className="grid grid-cols-2 gap-2">
-            <Button variant="ghost" onClick={() => setContextOpen(false)}>Cancel</Button>
-            <Button onClick={applyContext} disabled={!contextValid}>Apply report</Button>
-          </div>
-        }
+        footer={<div className="grid grid-cols-2 gap-2"><Button variant="ghost" onClick={() => setContextOpen(false)}>Cancel</Button><Button onClick={applyContext} disabled={!contextValid}>Apply report</Button></div>}
       >
         <div className="space-y-5">
           <div>
@@ -745,31 +720,16 @@ export default function ReportsWorkspace() {
                   data-sheet-autofocus={value === draftMode ? '' : undefined}
                   aria-pressed={draftMode === value}
                   onClick={() => setDraftMode(value)}
-                  className={cn(
-                    'min-h-11 rounded-xl px-2 text-sm font-semibold transition-colors',
-                    draftMode === value ? 'bg-surface text-primary shadow-sm' : 'text-muted hover:text-secondary',
-                    focusVisibleRing
-                  )}
+                  className={cn('min-h-11 rounded-xl px-2 text-sm font-semibold transition-colors', draftMode === value ? 'bg-surface text-primary shadow-sm' : 'text-muted hover:text-secondary', focusVisibleRing)}
                 >
                   {value === 'month' ? 'Month' : value === 'year' ? 'Year' : 'Range'}
                 </button>
               ))}
             </div>
           </div>
-
-          {draftMode === 'month' ? (
-            <Field label="Month" type="month" value={draftMonth} onChange={(event) => setDraftMonth(event.target.value)} />
-          ) : null}
-          {draftMode === 'year' ? (
-            <Field label="Year" type="number" min="2000" max="2100" value={draftYear} onChange={(event) => setDraftYear(event.target.value)} />
-          ) : null}
-          {draftMode === 'range' ? (
-            <div className="grid gap-3 sm:grid-cols-2">
-              <Field label="From" type="date" value={draftRangeStart} onChange={(event) => setDraftRangeStart(event.target.value)} />
-              <Field label="To" type="date" value={draftRangeEnd} onChange={(event) => setDraftRangeEnd(event.target.value)} />
-            </div>
-          ) : null}
-
+          {draftMode === 'month' ? <Field label="Month" type="month" value={draftMonth} onChange={(event) => setDraftMonth(event.target.value)} /> : null}
+          {draftMode === 'year' ? <Field label="Year" type="number" min="2000" max="2100" value={draftYear} onChange={(event) => setDraftYear(event.target.value)} /> : null}
+          {draftMode === 'range' ? <div className="grid gap-3 sm:grid-cols-2"><Field label="From" type="date" value={draftRangeStart} onChange={(event) => setDraftRangeStart(event.target.value)} /><Field label="To" type="date" value={draftRangeEnd} onChange={(event) => setDraftRangeEnd(event.target.value)} /></div> : null}
           <div>
             <p className="mb-2 text-sm font-semibold text-secondary">Report currency</p>
             <div className="flex flex-wrap gap-2">
@@ -779,13 +739,7 @@ export default function ReportsWorkspace() {
                   type="button"
                   aria-pressed={draftCurrency === currency}
                   onClick={() => setDraftCurrency(currency)}
-                  className={cn(
-                    'min-h-11 rounded-xl px-4 text-sm font-semibold ring-1 transition-colors',
-                    draftCurrency === currency
-                      ? 'bg-accent text-white ring-accent'
-                      : 'bg-surface text-secondary ring-subtle hover:bg-surface-muted hover:text-primary',
-                    focusVisibleRing
-                  )}
+                  className={cn('min-h-11 rounded-xl px-4 text-sm font-semibold ring-1 transition-colors', draftCurrency === currency ? 'bg-accent text-white ring-accent' : 'bg-surface text-secondary ring-subtle hover:bg-surface-muted hover:text-primary', focusVisibleRing)}
                 >
                   {currency}
                 </button>
@@ -795,17 +749,9 @@ export default function ReportsWorkspace() {
         </div>
       </AdaptiveSheet>
 
-      <AdaptiveSheet
-        open={actionsOpen}
-        title="Report actions"
-        onClose={() => setActionsOpen(false)}
-        size="sm"
-      >
+      <AdaptiveSheet open={actionsOpen} title="Report actions" onClose={() => setActionsOpen(false)} size="sm">
         <div className="space-y-3">
-          <Button fullWidth onClick={() => void handleExportPDF()} loading={exporting} disabled={ratesLoading}>
-            <DownloadIcon />
-            Export PDF
-          </Button>
+          <Button fullWidth onClick={() => void handleExportPDF()} loading={exporting} disabled={ratesLoading}><DownloadIcon />Export PDF</Button>
           <p className="text-sm font-medium text-muted">Exports the currently selected report period and currency.</p>
           {exportError ? <p className="rounded-xl bg-danger-muted px-3 py-2 text-sm font-medium text-danger" role="alert">{exportError}</p> : null}
         </div>
@@ -815,24 +761,10 @@ export default function ReportsWorkspace() {
 }
 
 function ReportPanel({ children, className }: { children: ReactNode; className?: string }) {
-  return (
-    <div className={cn('rounded-[1.5rem] bg-surface p-4 shadow-[0_8px_28px_rgba(15,23,42,0.05)] ring-1 ring-subtle/70 dark:shadow-none sm:p-5', className)}>
-      {children}
-    </div>
-  );
+  return <div className={cn('rounded-[1.5rem] bg-surface p-4 shadow-[0_8px_28px_rgba(15,23,42,0.05)] ring-1 ring-subtle/70 dark:shadow-none sm:p-5', className)}>{children}</div>;
 }
 
-function CategorySpendList({
-  rows,
-  total,
-  categoryById,
-  currency,
-}: {
-  rows: Array<{ categoryId: string; amount: number }>;
-  total: number;
-  categoryById: Map<string, { name: string; icon?: string; color?: string }>;
-  currency: Currency;
-}) {
+function CategorySpendList({ rows, total, categoryById, currency }: { rows: Array<{ categoryId: string; amount: number }>; total: number; categoryById: Map<string, Category>; currency: Currency }) {
   return (
     <div className="mt-3 divide-y divide-subtle">
       {rows.map((item, index) => {
@@ -843,15 +775,10 @@ function CategorySpendList({
             <CategoryIcon icon={category?.icon} color={category?.color} />
             <div className="min-w-0 flex-1">
               <div className="flex items-baseline justify-between gap-3">
-                <div className="min-w-0">
-                  <p className="truncate text-sm font-semibold text-primary">{category?.name ?? 'Other'}</p>
-                  <p className="mt-0.5 text-xs font-medium text-muted">{Math.round(share)}% of spending · #{index + 1}</p>
-                </div>
+                <div className="min-w-0"><p className="truncate text-sm font-semibold text-primary">{category?.name ?? 'Other'}</p><p className="mt-0.5 text-xs font-medium text-muted">{Math.round(share)}% of spending · #{index + 1}</p></div>
                 <p className="shrink-0 text-sm font-semibold tabular-nums text-primary">{formatCurrency(item.amount, currency)}</p>
               </div>
-              <div className="mt-2 h-1.5 overflow-hidden rounded-full bg-surface-muted">
-                <div className="h-full rounded-full bg-accent" style={{ width: `${share}%` }} />
-              </div>
+              <div className="mt-2 h-1.5 overflow-hidden rounded-full bg-surface-muted"><div className="h-full rounded-full bg-accent" style={{ width: `${share}%` }} /></div>
             </div>
           </div>
         );
@@ -860,123 +787,37 @@ function CategorySpendList({
   );
 }
 
-function InsightBlock({
-  label,
-  value,
-  detail,
-  tone = 'neutral',
-}: {
-  label: string;
-  value: string;
-  detail?: string;
-  tone?: 'neutral' | 'good' | 'bad';
-}) {
-  return (
-    <div className="border-b border-subtle pb-5 last:border-b-0 last:pb-0">
-      <p className="text-xs font-medium text-muted">{label}</p>
-      <div className="mt-1 flex flex-wrap items-baseline justify-between gap-2">
-        <p className={cn('text-lg font-semibold tracking-tight', tone === 'good' ? 'text-success' : tone === 'bad' ? 'text-danger' : 'text-primary')}>{value}</p>
-        {detail ? <p className="text-sm font-semibold tabular-nums text-secondary">{detail}</p> : null}
-      </div>
-    </div>
-  );
+function InsightBlock({ label, value, detail, tone = 'neutral' }: { label: string; value: string; detail?: string; tone?: 'neutral' | 'good' | 'bad' }) {
+  return <div className="border-b border-subtle pb-5 last:border-b-0 last:pb-0"><p className="text-xs font-medium text-muted">{label}</p><div className="mt-1 flex flex-wrap items-baseline justify-between gap-2"><p className={cn('text-lg font-semibold tracking-tight', tone === 'good' ? 'text-success' : tone === 'bad' ? 'text-danger' : 'text-primary')}>{value}</p>{detail ? <p className="text-sm font-semibold tabular-nums text-secondary">{detail}</p> : null}</div></div>;
 }
 
-function ReportHeroMetric({
-  label,
-  value,
-  currency,
-  loading,
-  tone,
-}: {
-  label: string;
-  value: number;
-  currency: Currency;
-  loading: boolean;
-  tone: 'neutral' | 'good';
-}) {
-  return (
-    <div>
-      <p className="text-xs font-medium text-blue-100/60">{label}</p>
-      <p className={cn('mt-1 text-lg font-semibold tracking-tight tabular-nums', tone === 'good' ? 'text-emerald-300' : 'text-white')}>
-        {loading ? '…' : formatCurrency(value, currency)}
-      </p>
-    </div>
-  );
+function ReportHeroMetric({ label, value, currency, loading, tone }: { label: string; value: number; currency: Currency; loading: boolean; tone: 'neutral' | 'good' }) {
+  return <div><p className="text-xs font-medium text-blue-100/60">{label}</p><p className={cn('mt-1 text-lg font-semibold tracking-tight tabular-nums', tone === 'good' ? 'text-emerald-300' : 'text-white')}>{loading ? '…' : formatCurrency(value, currency)}</p></div>;
 }
 
 function ChartTooltip({ active, payload, label, currency }: { active?: boolean; payload?: Array<{ name?: string; value?: number | string }>; label?: string | number; currency: Currency }) {
   if (!active || !payload?.length) return null;
-  return (
-    <div className="rounded-xl bg-surface px-3 py-2 text-sm shadow-[var(--shadow-overlay)] ring-1 ring-subtle">
-      {label ? <p className="mb-1.5 font-medium text-muted">{label}</p> : null}
-      <div className="space-y-1">
-        {payload.map((entry) => (
-          <div key={entry.name} className="flex items-center justify-between gap-4">
-            <span className="font-medium text-secondary">{entry.name ?? 'Amount'}</span>
-            <span className="font-semibold tabular-nums text-primary">{formatCurrency(Number(entry.value), currency)}</span>
-          </div>
-        ))}
-      </div>
-    </div>
-  );
+  return <div className="rounded-xl bg-surface px-3 py-2 text-sm shadow-[var(--shadow-overlay)] ring-1 ring-subtle">{label ? <p className="mb-1.5 font-medium text-muted">{label}</p> : null}<div className="space-y-1">{payload.map((entry) => <div key={entry.name} className="flex items-center justify-between gap-4"><span className="font-medium text-secondary">{entry.name ?? 'Amount'}</span><span className="font-semibold tabular-nums text-primary">{formatCurrency(Number(entry.value), currency)}</span></div>)}</div></div>;
 }
 
 function ChartLegend() {
-  return (
-    <div className="mt-4 flex flex-wrap gap-4 text-xs font-medium text-secondary" aria-label="Chart legend">
-      <span className="inline-flex items-center gap-2"><span className="h-2.5 w-2.5 rounded-sm" style={{ background: 'var(--chart-2)' }} aria-hidden="true" />Income</span>
-      <span className="inline-flex items-center gap-2"><span className="h-2.5 w-2.5 rounded-sm" style={{ background: 'var(--chart-3)' }} aria-hidden="true" />Expenses</span>
-    </div>
-  );
+  return <div className="mt-4 flex flex-wrap gap-4 text-xs font-medium text-secondary" aria-label="Chart legend"><span className="inline-flex items-center gap-2"><span className="h-2.5 w-2.5 rounded-sm" style={{ background: 'var(--chart-2)' }} aria-hidden="true" />Income</span><span className="inline-flex items-center gap-2"><span className="h-2.5 w-2.5 rounded-sm" style={{ background: 'var(--chart-3)' }} aria-hidden="true" />Expenses</span></div>;
 }
 
 function DataDisclosure({ label, children }: { label: string; children: ReactNode }) {
-  return (
-    <details className="group mt-4 rounded-xl bg-surface-muted ring-1 ring-subtle/70">
-      <summary className={cn('flex min-h-11 cursor-pointer list-none items-center rounded-xl px-3 py-2 text-sm font-semibold text-secondary select-none [&::-webkit-details-marker]:hidden', focusVisibleRing)}>
-        <span>{label}</span>
-        <span aria-hidden="true" className="ml-auto text-muted transition-transform group-open:rotate-180">⌄</span>
-      </summary>
-      <div className="overflow-x-auto border-t border-subtle p-3">{children}</div>
-    </details>
-  );
+  return <details className="group mt-4 rounded-xl bg-surface-muted ring-1 ring-subtle/70"><summary className={cn('flex min-h-11 cursor-pointer list-none items-center rounded-xl px-3 py-2 text-sm font-semibold text-secondary select-none [&::-webkit-details-marker]:hidden', focusVisibleRing)}><span>{label}</span><span aria-hidden="true" className="ml-auto text-muted transition-transform group-open:rotate-180">⌄</span></summary><div className="overflow-x-auto border-t border-subtle p-3">{children}</div></details>;
 }
 
 function SpendingTable({ rows, currency }: { rows: SpendingRow[]; currency: Currency }) {
-  return (
-    <table className="w-full min-w-64 text-left text-sm">
-      <caption className="sr-only">Spending by date</caption>
-      <thead><tr className="text-xs text-muted"><th scope="col" className="pb-2 pr-4 font-semibold">Date</th><th scope="col" className="pb-2 text-right font-semibold">Spent</th></tr></thead>
-      <tbody className="divide-y divide-subtle">
-        {rows.map((row) => <tr key={row.date}><th scope="row" className="py-2 pr-4 font-medium text-secondary">{row.date}</th><td className="py-2 text-right font-semibold tabular-nums text-primary">{formatCurrency(row.amount, currency)}</td></tr>)}
-      </tbody>
-    </table>
-  );
+  return <table className="w-full min-w-64 text-left text-sm"><caption className="sr-only">Spending by date</caption><thead><tr className="text-xs text-muted"><th scope="col" className="pb-2 pr-4 font-semibold">Date</th><th scope="col" className="pb-2 text-right font-semibold">Spent</th></tr></thead><tbody className="divide-y divide-subtle">{rows.map((row) => <tr key={row.date}><th scope="row" className="py-2 pr-4 font-medium text-secondary">{row.date}</th><td className="py-2 text-right font-semibold tabular-nums text-primary">{formatCurrency(row.amount, currency)}</td></tr>)}</tbody></table>;
 }
 
 function CashFlowTable({ rows, currency }: { rows: CashFlowRow[]; currency: Currency }) {
-  return (
-    <table className="w-full min-w-64 text-left text-sm">
-      <caption className="sr-only">Cumulative net movement by date</caption>
-      <thead><tr className="text-xs text-muted"><th scope="col" className="pb-2 pr-4 font-semibold">Date</th><th scope="col" className="pb-2 text-right font-semibold">Net movement</th></tr></thead>
-      <tbody className="divide-y divide-subtle">
-        {rows.map((row) => <tr key={row.date}><th scope="row" className="py-2 pr-4 font-medium text-secondary">{row.date}</th><td className="py-2 text-right font-semibold tabular-nums text-primary">{formatSignedCurrency(row.amount, currency)}</td></tr>)}
-      </tbody>
-    </table>
-  );
+  return <table className="w-full min-w-64 text-left text-sm"><caption className="sr-only">Cumulative net movement by date</caption><thead><tr className="text-xs text-muted"><th scope="col" className="pb-2 pr-4 font-semibold">Date</th><th scope="col" className="pb-2 text-right font-semibold">Net movement</th></tr></thead><tbody className="divide-y divide-subtle">{rows.map((row) => <tr key={row.date}><th scope="row" className="py-2 pr-4 font-medium text-secondary">{row.date}</th><td className="py-2 text-right font-semibold tabular-nums text-primary">{formatSignedCurrency(row.amount, currency)}</td></tr>)}</tbody></table>;
 }
 
 function ComparisonTable({ rows, currency }: { rows: ComparisonRow[]; currency: Currency }) {
-  return (
-    <table className="w-full min-w-80 text-left text-sm">
-      <caption className="sr-only">Income and expenses by period</caption>
-      <thead><tr className="text-xs text-muted"><th scope="col" className="pb-2 pr-4 font-semibold">Period</th><th scope="col" className="pb-2 text-right font-semibold">Income</th><th scope="col" className="pb-2 text-right font-semibold">Expenses</th></tr></thead>
-      <tbody className="divide-y divide-subtle">
-        {rows.map((row) => <tr key={row.label}><th scope="row" className="py-2 pr-4 font-medium text-secondary">{row.label}</th><td className="py-2 text-right font-semibold tabular-nums text-primary">{formatCurrency(row.income, currency)}</td><td className="py-2 text-right font-semibold tabular-nums text-primary">{formatCurrency(row.expense, currency)}</td></tr>)}
-      </tbody>
-    </table>
-  );
+  return <table className="w-full min-w-80 text-left text-sm"><caption className="sr-only">Income and expenses by period</caption><thead><tr className="text-xs text-muted"><th scope="col" className="pb-2 pr-4 font-semibold">Period</th><th scope="col" className="pb-2 text-right font-semibold">Income</th><th scope="col" className="pb-2 text-right font-semibold">Expenses</th></tr></thead><tbody className="divide-y divide-subtle">{rows.map((row) => <tr key={row.label}><th scope="row" className="py-2 pr-4 font-medium text-secondary">{row.label}</th><td className="py-2 text-right font-semibold tabular-nums text-primary">{formatCurrency(row.income, currency)}</td><td className="py-2 text-right font-semibold tabular-nums text-primary">{formatCurrency(row.expense, currency)}</td></tr>)}</tbody></table>;
 }
 
 function CalendarIcon() {
