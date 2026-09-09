@@ -66,6 +66,7 @@ export default function AppShell({ children }: { children: ReactNode }) {
   const [mobileMorePath, setMobileMorePath] = useState<string | null>(null);
   const mobileMoreOpen = mobileMorePath === pathname;
   const mobileMoreButtonRef = useRef<HTMLButtonElement | null>(null);
+  const previousPathRef = useRef(pathname);
 
   useEffect(() => {
     if (!mobileMoreOpen) return;
@@ -78,6 +79,15 @@ export default function AppShell({ children }: { children: ReactNode }) {
     document.addEventListener('keydown', handleKeyDown);
     return () => document.removeEventListener('keydown', handleKeyDown);
   }, [mobileMoreOpen]);
+
+  useEffect(() => {
+    if (previousPathRef.current === pathname) return;
+    previousPathRef.current = pathname;
+    const frame = requestAnimationFrame(() => {
+      document.getElementById('main-content')?.focus({ preventScroll: true });
+    });
+    return () => cancelAnimationFrame(frame);
+  }, [pathname]);
 
   const forceDocumentNavigationOffline = (event: MouseEvent<HTMLAnchorElement>, href: string) => {
     if (navigator.onLine !== false) return;
