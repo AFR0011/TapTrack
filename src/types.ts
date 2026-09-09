@@ -129,7 +129,12 @@ export interface Settings {
   activeCurrencies?: Currency[];
   lastUsedMethod: Method;
   setupCompleted: boolean;
+  /** Master switch for hosted Smart Categories. */
   aiCategorizationEnabled?: boolean;
+  /** Automatically select an existing category when AI finds a good fit. */
+  aiAutoCategorizationEnabled?: boolean;
+  /** Allow AI to propose a reusable new category when existing categories do not fit. */
+  aiRecommendNewCategoriesEnabled?: boolean;
   darkModeEnabled?: boolean;
   lastSyncAt?: string;
   createdAt: string;
