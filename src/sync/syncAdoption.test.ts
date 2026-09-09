@@ -96,6 +96,33 @@ describe('cloud ledger adoption', () => {
     expect(linkDeviceLedgerToCurrentUser).not.toHaveBeenCalled();
   });
 
+  it('leaves the local ledger untouched when the pre-replacement safety step fails', async () => {
+    await database.transactions.add({
+      id: 'local-before-replace',
+      type: 'expense',
+      amount: 45,
+      currency: 'TRY',
+      title: 'keep me safe',
+      categoryId: 'cat-other',
+      method: 'card',
+      date: '2026-09-07',
+      createdAt: '2026-09-07T11:00:00.000Z',
+      updatedAt: '2026-09-07T11:00:00.000Z',
+    });
+    vi.mocked(createSupabaseBrowserClient).mockReturnValue(createCloudClient() as never);
+    const beforeReplace = vi.fn(async () => {
+      await expect(database.transactions.get('local-before-replace')).resolves.toBeDefined();
+      expect(linkDeviceLedgerToCurrentUser).not.toHaveBeenCalled();
+      throw new Error('safety backup failed');
+    });
+
+    await expect(adoptCloudLedger(database, beforeReplace)).rejects.toThrow('safety backup failed');
+
+    expect(beforeReplace).toHaveBeenCalledTimes(1);
+    await expect(database.transactions.get('local-before-replace')).resolves.toBeDefined();
+    expect(linkDeviceLedgerToCurrentUser).not.toHaveBeenCalled();
+  });
+
   it('repairs only seed rows missing from a legacy cloud snapshot', async () => {
     vi.mocked(createSupabaseBrowserClient).mockReturnValue(
       createCloudClient({
