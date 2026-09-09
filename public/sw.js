@@ -1,5 +1,6 @@
 const CACHE_PREFIX = 'taptrack-shell-';
-const CACHE_NAME = `${CACHE_PREFIX}2026-09-09-v9`;
+const CACHE_NAME = `${CACHE_PREFIX}2026-09-09-v10`;
+const NAVIGATION_TIMEOUT_MS = 3500;
 const APP_ROUTES = [
   '/app',
   '/app/add',
@@ -18,18 +19,25 @@ const STATIC_SHELL_ASSETS = [
 ];
 
 self.addEventListener('install', (event) => {
-  event.waitUntil(cacheAppShell());
+  event.waitUntil(
+    (async () => {
+      await cacheAppShell();
+      await self.skipWaiting();
+    })()
+  );
 });
 
 self.addEventListener('activate', (event) => {
   event.waitUntil(
-    caches.keys().then((keys) =>
-      Promise.all(
+    (async () => {
+      const keys = await caches.keys();
+      await Promise.all(
         keys
           .filter((key) => key.startsWith(CACHE_PREFIX) && key !== CACHE_NAME)
           .map((key) => caches.delete(key))
-      )
-    )
+      );
+      await self.clients.claim();
+    })()
   );
 });
 
@@ -38,18 +46,42 @@ function canonicalRouteRequest(request) {
   return new Request(`${url.origin}${url.pathname}`);
 }
 
+function isAppPath(pathname) {
+  return pathname === '/app' || pathname.startsWith('/app/');
+}
+
+function isCacheableAppResponse(request, response) {
+  if (!response.ok || response.redirected) return false;
+  const requestedUrl = new URL(request.url);
+  const responseUrl = new URL(response.url);
+  return (
+    responseUrl.origin === requestedUrl.origin &&
+    responseUrl.pathname === requestedUrl.pathname &&
+    (response.headers.get('content-type') ?? '').includes('text/html')
+  );
+}
+
 async function cacheAppShell() {
   const cache = await caches.open(CACHE_NAME);
-  await cache.addAll(STATIC_SHELL_ASSETS);
+
+  for (const asset of STATIC_SHELL_ASSETS) {
+    const request = new Request(new URL(asset, self.location.origin), { credentials: 'same-origin' });
+    const response = await fetch(request, { cache: 'no-store' });
+    if (!response.ok) throw new Error(`Could not cache ${asset}`);
+    await cache.put(request, response);
+  }
 
   for (const route of APP_ROUTES) {
-    const response = await fetch(route, { cache: 'no-store' });
-    if (!response.ok) throw new Error(`Could not cache ${route}`);
-    await cacheNavigationResponse(cache, new Request(new URL(route, self.location.origin)), response);
+    const request = new Request(new URL(route, self.location.origin), { credentials: 'same-origin' });
+    const response = await fetch(request, { cache: 'no-store' });
+    if (!isCacheableAppResponse(request, response)) {
+      throw new Error(`Could not cache authenticated app route ${route}`);
+    }
+    await cacheNavigationResponse(cache, request, response, true);
   }
 }
 
-async function cacheNavigationResponse(cache, request, response) {
+async function cacheNavigationResponse(cache, request, response, strictAssets = false) {
   await cache.put(canonicalRouteRequest(request), response.clone());
 
   const contentType = response.headers.get('content-type') ?? '';
@@ -67,11 +99,19 @@ async function cacheNavigationResponse(cache, request, response) {
         return;
       }
 
-      const assetRequest = new Request(absoluteUrl.href);
+      const assetRequest = new Request(absoluteUrl.href, { credentials: 'same-origin' });
       if (await cache.match(assetRequest)) return;
 
-      const assetResponse = await fetch(assetRequest, { cache: 'no-store' });
-      if (assetResponse.ok) await cache.put(assetRequest, assetResponse);
+      try {
+        const assetResponse = await fetch(assetRequest, { cache: 'no-store' });
+        if (!assetResponse.ok) {
+          if (strictAssets) throw new Error(`Could not cache ${absoluteUrl.pathname}`);
+          return;
+        }
+        await cache.put(assetRequest, assetResponse);
+      } catch (error) {
+        if (strictAssets) throw error;
+      }
     })
   );
 }
@@ -86,14 +126,55 @@ function extractNextStaticAssetUrls(html) {
   return [...urls];
 }
 
-async function precachedResponse(request, fallbackToApp = false) {
+async function cachedNavigationResponse(request) {
+  const cache = await caches.open(CACHE_NAME);
+  return (
+    (await cache.match(canonicalRouteRequest(request))) ??
+    (await cache.match(new Request(`${self.location.origin}/app`))) ??
+    offlineFallbackResponse()
+  );
+}
+
+async function networkFirstNavigation(event, request) {
+  if (self.navigator.onLine === false) return cachedNavigationResponse(request);
+
+  try {
+    const response = await fetchWithTimeout(request, NAVIGATION_TIMEOUT_MS);
+    if (isCacheableAppResponse(request, response)) {
+      const cache = await caches.open(CACHE_NAME);
+      event.waitUntil(cacheNavigationResponse(cache, request, response.clone(), false));
+    }
+    return response;
+  } catch {
+    return cachedNavigationResponse(request);
+  }
+}
+
+async function cacheFirstResponse(request) {
   const cache = await caches.open(CACHE_NAME);
   const matched = await cache.match(request);
   if (matched) return matched;
-  if (fallbackToApp) {
-    return (await cache.match(new Request(`${self.location.origin}/app`))) ?? Response.error();
+
+  try {
+    const response = await fetch(request);
+    if (response.ok) await cache.put(request, response.clone());
+    return response;
+  } catch {
+    return Response.error();
   }
-  return Response.error();
+}
+
+function fetchWithTimeout(request, timeoutMs) {
+  const controller = new AbortController();
+  const timeout = setTimeout(() => controller.abort(), timeoutMs);
+  return fetch(request, { signal: controller.signal }).finally(() => clearTimeout(timeout));
+}
+
+function offlineFallbackResponse() {
+  return new Response(
+    `<!doctype html><html><head><meta name="viewport" content="width=device-width,initial-scale=1"><title>TapTrack offline</title></head><body style="font-family:system-ui,sans-serif;margin:0;padding:32px;background:#f8fafc;color:#0f172a"><main style="max-width:560px;margin:auto"><h1>TapTrack is offline</h1><p>The local app shell was not available for this page yet. Reconnect once so TapTrack can finish preparing offline access.</p></main></body></html>`,
+    { status: 503, headers: { 'content-type': 'text/html; charset=utf-8', 'cache-control': 'no-store' } }
+  );
 }
 
 self.addEventListener('fetch', (event) => {
@@ -104,15 +185,13 @@ self.addEventListener('fetch', (event) => {
   if (url.origin !== self.location.origin) return;
   if (url.pathname.startsWith('/api/') || url.pathname.startsWith('/auth/')) return;
 
-  if (self.navigator.onLine !== false) return;
-
-  if (request.mode === 'navigate') {
-    event.respondWith(precachedResponse(canonicalRouteRequest(request), true));
+  if (request.mode === 'navigate' && isAppPath(url.pathname)) {
+    event.respondWith(networkFirstNavigation(event, request));
     return;
   }
 
   if (url.pathname.startsWith('/_next/static/')) {
-    event.respondWith(precachedResponse(request));
+    event.respondWith(cacheFirstResponse(request));
     return;
   }
 
@@ -122,5 +201,5 @@ self.addEventListener('fetch', (event) => {
     ['font', 'image'].includes(request.destination);
 
   if (!cacheableStatic) return;
-  event.respondWith(precachedResponse(request));
+  event.respondWith(cacheFirstResponse(request));
 });
