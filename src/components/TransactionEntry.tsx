@@ -44,7 +44,7 @@ export function TransactionEntry({
           </p>
         </div>
         <div className="flex items-center gap-2">
-          <div className="flex rounded-lg border border-subtle bg-surface-muted p-1" aria-label="Transaction input mode">
+          <div className="flex rounded-lg border border-subtle bg-surface-muted p-1" role="group" aria-label="Transaction input mode">
             {(['quick', 'command'] as const).map((option) => (
               <button
                 key={option}
@@ -67,11 +67,13 @@ export function TransactionEntry({
             onClick={(event) => {
               if (navigator.onLine !== false) return;
               event.preventDefault();
+              // A full document navigation is intentional here so the service worker can serve the warmed route offline.
+              // eslint-disable-next-line @next/next/no-location-assign-relative-destination
               window.location.assign('/app/transactions');
             }}
             className="flex min-h-11 items-center px-2 text-xs font-semibold text-accent hover:underline"
           >
-            Open full editor
+            View transactions
           </Link>
         </div>
       </div>
