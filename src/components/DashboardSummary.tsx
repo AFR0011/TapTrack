@@ -14,8 +14,8 @@ import { formatCurrency } from '@/currencies/currencyCatalog';
 import { resolveActiveCurrencies } from '@/currencies/activeCurrencySelection';
 import { fetchHistoricalExchangeRate } from '@/exchangeRates';
 import {
+  ratesForCurrency,
   selectMonthlyBudgetForCurrency,
-  useRatesForCurrency,
 } from '@/dashboard/dashboardFinance';
 import {
   getTransactionAmountInCurrency,
@@ -134,13 +134,13 @@ export default function DashboardSummary() {
     return <DashboardSkeleton />;
   }
 
-  const currentRates = useRatesForCurrency(
+  const currentRates = ratesForCurrency(
     rates,
     ratesQuoteCurrency,
     defaultCurrency,
     {} as HistoricalReportRateMap
   );
-  const currentBalanceRates = useRatesForCurrency(
+  const currentBalanceRates = ratesForCurrency(
     balanceRates,
     ratesQuoteCurrency,
     defaultCurrency,

@@ -8,7 +8,7 @@ export function selectMonthlyBudgetForCurrency(
   return budgets.find((budget) => budget.currency === currency) ?? null;
 }
 
-export function useRatesForCurrency<T>(
+export function ratesForCurrency<T>(
   rates: T,
   loadedQuoteCurrency: Currency | null,
   currentQuoteCurrency: Currency,

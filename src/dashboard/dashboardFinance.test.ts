@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import type { MonthlyBudget } from '@/types';
-import { selectMonthlyBudgetForCurrency, useRatesForCurrency } from './dashboardFinance';
+import { ratesForCurrency, selectMonthlyBudgetForCurrency } from './dashboardFinance';
 
 const budgets: MonthlyBudget[] = [
   {
@@ -35,7 +35,7 @@ describe('dashboard finance selection', () => {
 
   it('never exposes rates loaded for a stale quote currency', () => {
     const rates = { USD: 42 };
-    expect(useRatesForCurrency(rates, 'TRY', 'TRY', {})).toBe(rates);
-    expect(useRatesForCurrency(rates, 'TRY', 'EUR', {})).toEqual({});
+    expect(ratesForCurrency(rates, 'TRY', 'TRY', {})).toBe(rates);
+    expect(ratesForCurrency(rates, 'TRY', 'EUR', {})).toEqual({});
   });
 });
