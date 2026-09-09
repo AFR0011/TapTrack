@@ -3,10 +3,11 @@ import { expect, test } from '@playwright/test';
 const CORE_ROUTES = [
   { path: '/app', heading: 'Dashboard', nav: 'Dashboard', placement: 'primary' },
   { path: '/app/transactions', heading: 'Transactions', nav: 'Transactions', placement: 'primary' },
-  { path: '/app/conversions', heading: 'Transfers & exchanges', nav: 'Transfers', placement: 'primary' },
-  { path: '/app/budgets', heading: 'Budgets', nav: 'Budgets', placement: 'more' },
-  { path: '/app/recurring', heading: 'Recurring', nav: 'Recurring', placement: 'more' },
+  { path: '/app/budgets', heading: 'Budgets', nav: 'Budgets', placement: 'primary' },
   { path: '/app/reports', heading: 'Reports', nav: 'Reports', placement: 'primary' },
+  { path: '/app/balances', heading: 'Balances', nav: 'Balances', placement: 'more' },
+  { path: '/app/conversions', heading: 'Transfers & exchanges', nav: 'Transfers', placement: 'more' },
+  { path: '/app/recurring', heading: 'Recurring', nav: 'Recurring', placement: 'more' },
   { path: '/app/settings', heading: 'Settings', nav: 'Settings', placement: 'more' },
 ] as const;
 
@@ -178,8 +179,6 @@ test('device-local ledger works across warmed offline mobile routes', async ({ p
     await assertMobileLayout(page);
   }
 
-  // B004 moved transaction capture from the dashboard to its own route. Warm that
-  // route explicitly so the actual capture workflow is available after going offline.
   await page.goto('/app/add');
   await expectHeadingWithDiagnostics(page, 'Add transaction', 'Warmed capture route', diagnostics, 1);
   await assertNoHorizontalOverflow(page);
