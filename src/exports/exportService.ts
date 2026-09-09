@@ -133,7 +133,7 @@ export async function exportPDF(
       ),
       '',
       '================================================================================',
-      'End of report - Page 1 of 1',
+      'End of report',
     ]);
   }
 
@@ -211,7 +211,7 @@ export async function exportPDF(
       : ['No transactions for this report period.']),
     '',
     '================================================================================',
-    'End of report - Page 1 of 1',
+    'End of report',
   ];
 
   return createSimplePdf(lines);
@@ -332,38 +332,146 @@ function getFxBasisLines(
   ];
 }
 
+const PDF_PAGE_WIDTH = 612;
+const PDF_PAGE_HEIGHT = 792;
+const PDF_MARGIN_X = 54;
+const PDF_BODY_FONT_SIZE = 10;
+const PDF_TITLE_FONT_SIZE = 16;
+const PDF_LINE_HEIGHT = 14;
+const PDF_TOP = 756;
+const PDF_BOTTOM = 54;
+const PDF_MAX_CHARS = 90;
+
+/**
+ * Tiny dependency-free report PDF writer with deterministic line wrapping and
+ * real pagination. It deliberately keeps streams uncompressed so automated
+ * regression tests can verify that the first and last report rows are present.
+ */
 function createSimplePdf(lines: string[]) {
-  const escapedLines = lines.map(escapePdfText);
-  const contentLines = escapedLines.flatMap((line, index) => {
-    if (index === 0) return ['BT /F1 16 Tf 54 760 Td', `(${line}) Tj`];
-    return ['0 -18 Td', `(${line}) Tj`];
-  });
-  const content = `${contentLines.join('\n')}\nET`;
-  const objects = [
+  const wrapped = lines.flatMap((line) => wrapPdfLine(normalizePdfText(line), PDF_MAX_CHARS));
+  const linesPerPage = Math.max(1, Math.floor((PDF_TOP - PDF_BOTTOM - 24) / PDF_LINE_HEIGHT));
+  const pages: string[][] = [];
+  for (let index = 0; index < wrapped.length; index += linesPerPage) {
+    pages.push(wrapped.slice(index, index + linesPerPage));
+  }
+  if (pages.length === 0) pages.push(['']);
+
+  const catalogObject = 1;
+  const pagesObject = 2;
+  const fontObject = 3;
+  const pageObjectNumber = (index: number) => 4 + index * 2;
+  const contentObjectNumber = (index: number) => 5 + index * 2;
+  const pageRefs = pages.map((_, index) => `${pageObjectNumber(index)} 0 R`).join(' ');
+  const objects: string[] = [
     '<< /Type /Catalog /Pages 2 0 R >>',
-    '<< /Type /Pages /Kids [3 0 R] /Count 1 >>',
-    '<< /Type /Page /Parent 2 0 R /MediaBox [0 0 612 792] /Resources << /Font << /F1 4 0 R >> >> /Contents 5 0 R >>',
-    '<< /Type /Font /Subtype /Type1 /BaseFont /Helvetica >>',
-    `<< /Length ${content.length} >>\nstream\n${content}\nendstream`,
+    `<< /Type /Pages /Kids [${pageRefs}] /Count ${pages.length} >>`,
+    '<< /Type /Font /Subtype /Type1 /BaseFont /Helvetica /Encoding /WinAnsiEncoding >>',
   ];
+
+  pages.forEach((pageLines, pageIndex) => {
+    const pageNumber = pageObjectNumber(pageIndex);
+    const contentNumber = contentObjectNumber(pageIndex);
+    void pageNumber;
+    objects.push(
+      `<< /Type /Page /Parent ${pagesObject} 0 R /MediaBox [0 0 ${PDF_PAGE_WIDTH} ${PDF_PAGE_HEIGHT}] /Resources << /Font << /F1 ${fontObject} 0 R >> >> /Contents ${contentNumber} 0 R >>`
+    );
+
+    const contentLines: string[] = ['BT'];
+    pageLines.forEach((line, lineIndex) => {
+      const fontSize = pageIndex === 0 && lineIndex === 0 ? PDF_TITLE_FONT_SIZE : PDF_BODY_FONT_SIZE;
+      const y = PDF_TOP - lineIndex * PDF_LINE_HEIGHT;
+      contentLines.push(`/F1 ${fontSize} Tf ${PDF_MARGIN_X} ${y} Td (${escapePdfText(line)}) Tj`);
+      if (lineIndex < pageLines.length - 1) contentLines.push(`-${PDF_MARGIN_X} -${y} Td`);
+    });
+    const footer = `Page ${pageIndex + 1} of ${pages.length}`;
+    contentLines.push(`/F1 9 Tf ${PDF_MARGIN_X} 32 Td (${escapePdfText(footer)}) Tj`, 'ET');
+    const content = contentLines.join('\n');
+    objects.push(`<< /Length ${byteLength(content)} >>\nstream\n${content}\nendstream`);
+  });
 
   let pdf = '%PDF-1.4\n';
   const offsets = [0];
   objects.forEach((object, index) => {
-    offsets.push(pdf.length);
+    offsets.push(byteLength(pdf));
     pdf += `${index + 1} 0 obj\n${object}\nendobj\n`;
   });
-  const xrefOffset = pdf.length;
+  const xrefOffset = byteLength(pdf);
   pdf += `xref\n0 ${objects.length + 1}\n`;
   pdf += '0000000000 65535 f \n';
   offsets.slice(1).forEach((offset) => {
     pdf += `${String(offset).padStart(10, '0')} 00000 n \n`;
   });
-  pdf += `trailer\n<< /Size ${objects.length + 1} /Root 1 0 R >>\nstartxref\n${xrefOffset}\n%%EOF`;
+  pdf += `trailer\n<< /Size ${objects.length + 1} /Root ${catalogObject} 0 R >>\nstartxref\n${xrefOffset}\n%%EOF`;
 
   return new Blob([pdf], { type: 'application/pdf' });
 }
 
+function wrapPdfLine(value: string, maxChars: number): string[] {
+  if (value.length <= maxChars) return [value];
+  const words = value.split(/\s+/);
+  const lines: string[] = [];
+  let current = '';
+
+  for (const word of words) {
+    if (!current) {
+      if (word.length <= maxChars) {
+        current = word;
+      } else {
+        for (let index = 0; index < word.length; index += maxChars) {
+          lines.push(word.slice(index, index + maxChars));
+        }
+      }
+      continue;
+    }
+
+    const candidate = `${current} ${word}`;
+    if (candidate.length <= maxChars) {
+      current = candidate;
+    } else {
+      lines.push(current);
+      if (word.length <= maxChars) {
+        current = word;
+      } else {
+        for (let index = 0; index < word.length; index += maxChars) {
+          lines.push(word.slice(index, index + maxChars));
+        }
+        current = '';
+      }
+    }
+  }
+  if (current || lines.length === 0) lines.push(current);
+  return lines;
+}
+
+/**
+ * Helvetica/WinAnsi cannot faithfully render every Unicode code point. Map the
+ * common Turkish characters TapTrack is likely to contain and strip remaining
+ * combining marks rather than writing malformed PDF strings or silently losing
+ * whole rows. The JSON/CSV exports remain the lossless Unicode representations.
+ */
+function normalizePdfText(value: string): string {
+  const mapped = value
+    .replace(/ı/g, 'i')
+    .replace(/İ/g, 'I')
+    .replace(/ş/g, 's')
+    .replace(/Ş/g, 'S')
+    .replace(/ğ/g, 'g')
+    .replace(/Ğ/g, 'G');
+  return mapped
+    .normalize('NFKD')
+    .replace(/[\u0300-\u036f]/g, '')
+    .replace(/[^\x20-\x7E\xA0-\xFF]/g, '?');
+}
+
 function escapePdfText(value: string) {
-  return value.replace(/\\/g, '\\\\').replace(/\(/g, '\\(').replace(/\)/g, '\\)');
+  return value
+    .replace(/\\/g, '\\\\')
+    .replace(/\(/g, '\\(')
+    .replace(/\)/g, '\\)')
+    .replace(/\r/g, ' ')
+    .replace(/\n/g, ' ');
+}
+
+function byteLength(value: string): number {
+  return new TextEncoder().encode(value).length;
 }

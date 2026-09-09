@@ -14,6 +14,10 @@ import { formatCurrency } from '@/currencies/currencyCatalog';
 import { resolveActiveCurrencies } from '@/currencies/activeCurrencySelection';
 import { fetchHistoricalExchangeRate } from '@/exchangeRates';
 import {
+  selectMonthlyBudgetForCurrency,
+  useRatesForCurrency,
+} from '@/dashboard/dashboardFinance';
+import {
   getTransactionAmountInCurrency,
   loadHistoricalReportRatesInCurrency,
   type HistoricalReportRateMap,
@@ -47,17 +51,19 @@ export default function DashboardSummary() {
   const categories = useLiveQuery(() => db.categories.toArray());
   const settings = useLiveQuery(() => db.settings.get(DEFAULT_SETTINGS_ID));
   const currentMonth = getCurrentMonth();
-  const monthlyBudget = useLiveQuery(
-    () => db.monthlyBudgets.where('month').equals(currentMonth).first(),
+  const defaultCurrency = settings?.defaultCurrency ?? 'TRY';
+  const monthlyBudgets = useLiveQuery(
+    () => db.monthlyBudgets.where('month').equals(currentMonth).toArray(),
     [currentMonth]
   );
+  const monthlyBudget = selectMonthlyBudgetForCurrency(monthlyBudgets, defaultCurrency);
   const [rates, setRates] = useState<HistoricalReportRateMap>({});
   const [balanceRates, setBalanceRates] = useState<BalanceRateMap>({});
+  const [ratesQuoteCurrency, setRatesQuoteCurrency] = useState<Currency | null>(null);
   const [ratesLoading, setRatesLoading] = useState(true);
   const [rateError, setRateError] = useState(false);
   const [analyticsTab, setAnalyticsTab] = useState<AnalyticsTab>('spending');
 
-  const defaultCurrency = settings?.defaultCurrency ?? 'TRY';
   const activeCurrencies = useMemo(
     () => (settings ? resolveActiveCurrencies(settings, balances ?? []) : []),
     [balances, settings]
@@ -98,6 +104,7 @@ export default function DashboardSummary() {
     queueMicrotask(() => {
       setRatesLoading(true);
       setRateError(false);
+      setRatesQuoteCurrency(null);
     });
 
     const load = async () => {
@@ -109,8 +116,12 @@ export default function DashboardSummary() {
         if (controller.signal.aborted) return;
         setRates(defaultRates);
         setBalanceRates(currentBalanceRates);
+        setRatesQuoteCurrency(defaultCurrency);
       } catch {
-        if (!controller.signal.aborted) setRateError(true);
+        if (!controller.signal.aborted) {
+          setRatesQuoteCurrency(null);
+          setRateError(true);
+        }
       } finally {
         if (!controller.signal.aborted) setRatesLoading(false);
       }
@@ -123,8 +134,21 @@ export default function DashboardSummary() {
     return <DashboardSkeleton />;
   }
 
+  const currentRates = useRatesForCurrency(
+    rates,
+    ratesQuoteCurrency,
+    defaultCurrency,
+    {} as HistoricalReportRateMap
+  );
+  const currentBalanceRates = useRatesForCurrency(
+    balanceRates,
+    ratesQuoteCurrency,
+    defaultCurrency,
+    {} as BalanceRateMap
+  );
+  const financialRatesLoading = ratesLoading || ratesQuoteCurrency !== defaultCurrency;
   const convert = (transaction: Transaction) =>
-    getTransactionAmountInCurrency(transaction, rates, defaultCurrency);
+    getTransactionAmountInCurrency(transaction, currentRates, defaultCurrency);
   const monthIncome = sumTransactions(
     monthTransactions.filter((transaction) => transaction.type === 'income'),
     convert
@@ -136,7 +160,7 @@ export default function DashboardSummary() {
   const monthNet = monthIncome - monthExpenses;
   const totalBalance = activeBalances.reduce((sum, balance) => {
     if (balance.currency === defaultCurrency) return sum + balance.amount;
-    const rate = balanceRates[balance.currency];
+    const rate = currentBalanceRates[balance.currency];
     return rate ? sum + balance.amount * rate : sum;
   }, 0);
 
@@ -205,7 +229,7 @@ export default function DashboardSummary() {
               <div className="min-w-0">
                 <p className="text-xs font-semibold uppercase tracking-[0.18em] text-blue-200/80">Available</p>
                 <p className="mt-2 text-4xl font-semibold tracking-[-0.04em] tabular-nums sm:text-5xl">
-                  {ratesLoading ? '…' : (
+                  {financialRatesLoading ? '…' : (
                     <AnimatedNumber value={totalBalance} format={(amount) => formatCurrency(amount, defaultCurrency)} />
                   )}
                 </p>
@@ -219,7 +243,7 @@ export default function DashboardSummary() {
                         : 'text-blue-100/70'
                   )}
                 >
-                  {ratesLoading
+                  {financialRatesLoading
                     ? '…'
                     : monthNet === 0
                       ? 'No net change this month'
@@ -237,14 +261,14 @@ export default function DashboardSummary() {
                 value={monthIncome}
                 currency={defaultCurrency}
                 tone="good"
-                loading={ratesLoading}
+                loading={financialRatesLoading}
               />
               <HeroMetric
                 label="Spent"
                 value={monthExpenses}
                 currency={defaultCurrency}
                 tone="neutral"
-                loading={ratesLoading}
+                loading={financialRatesLoading}
               />
             </div>
           </div>
@@ -379,7 +403,7 @@ export default function DashboardSummary() {
                       monthIncome={monthIncome}
                       monthNet={monthNet}
                       currency={defaultCurrency}
-                      loading={ratesLoading}
+                      loading={financialRatesLoading}
                       trendData={trendData}
                       trendTotal={trendTotal}
                     />
