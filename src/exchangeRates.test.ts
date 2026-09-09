@@ -30,7 +30,7 @@ afterEach(() => {
 });
 
 describe('exchange-rate cache', () => {
-  it('uses the most recently fetched cached rate for a pair', () => {
+  it('uses the most recently fetched cached rate for a pair without inventing a request date', () => {
     expect(
       findLatestCachedExchangeRate([directOlder, directNewer], {
         base: 'TRY',
@@ -40,7 +40,7 @@ describe('exchange-rate cache', () => {
     ).toMatchObject({
       base: 'TRY',
       quote: 'USD',
-      dateRequested: '2026-09-10',
+      dateRequested: '2026-09-09',
       dateUsed: '2026-09-09',
       rate: 0.024,
       cached: true,
@@ -69,6 +69,7 @@ describe('exchange-rate cache', () => {
     ).toMatchObject({
       rate: 0.025,
       cached: true,
+      dateRequested: '2026-09-09',
       dateUsed: '2026-09-09',
     });
   });
@@ -89,7 +90,12 @@ describe('exchange-rate cache', () => {
 
     await expect(
       fetchHistoricalExchangeRate({ base: 'TRY', quote: 'USD', date: '2026-09-10' })
-    ).resolves.toMatchObject({ rate: 0.024, cached: true, dateUsed: '2026-09-09' });
+    ).resolves.toMatchObject({
+      rate: 0.024,
+      cached: true,
+      dateRequested: '2026-09-09',
+      dateUsed: '2026-09-09',
+    });
     expect(fetchSpy).not.toHaveBeenCalled();
   });
 
