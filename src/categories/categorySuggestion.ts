@@ -1,3 +1,7 @@
+import {
+  EXISTING_CATEGORY_AUTO_APPLY_MIN_FIT,
+  NEW_CATEGORY_RECOMMEND_MIN_FIT,
+} from '@/ai/categoryPrompt';
 import { findCategoryForTransaction } from '@/defaultData';
 import { isCategoryColor, isCategoryIconId } from '@/categories/categoryVisualTokens';
 import type { Category, TransactionType } from '@/types';
@@ -67,49 +71,29 @@ export async function fetchAICategorySuggestion(
     const body = (await response.json()) as Record<string, unknown>;
     if (body.unavailable === true) return { ...NONE, status: 'unavailable' };
 
-    if (body.kind === 'existing' && typeof body.categoryId === 'string') {
-      const allowed = categories.some(
-        (category) => category.type === transactionType && category.id === body.categoryId
-      );
-      if (!allowed) return NONE;
+    const existing = parseExistingCandidate(body.existing, transactionType, categories);
+    if (existing && existing.fit >= EXISTING_CATEGORY_AUTO_APPLY_MIN_FIT) {
       return {
         kind: 'existing',
-        categoryId: body.categoryId,
+        categoryId: existing.categoryId,
         newCategory: null,
-        confidence: normalizeConfidence(body.confidence),
+        confidence: existing.fit,
         status: 'suggested',
       };
     }
 
-    if (
-      body.kind === 'new' &&
-      options.recommendNewCategories === true &&
-      body.suggestion &&
-      typeof body.suggestion === 'object' &&
-      !Array.isArray(body.suggestion)
-    ) {
-      const suggestion = body.suggestion as Record<string, unknown>;
-      const name = typeof suggestion.name === 'string' ? suggestion.name.trim() : '';
-      const icon = suggestion.icon;
-      const color = suggestion.color;
-      const type = suggestion.type;
-      if (
-        name.length >= 2 &&
-        name.length <= 40 &&
-        typeof icon === 'string' &&
-        isCategoryIconId(icon) &&
-        typeof color === 'string' &&
-        isCategoryColor(color) &&
-        type === transactionType
-      ) {
-        return {
-          kind: 'new',
-          categoryId: null,
-          newCategory: { name, icon, color, type: transactionType },
-          confidence: normalizeConfidence(body.confidence),
-          status: 'suggested',
-        };
-      }
+    const newCategory =
+      options.recommendNewCategories === true
+        ? parseNewCategoryCandidate(body.newCategory, transactionType)
+        : null;
+    if (newCategory && newCategory.fit >= NEW_CATEGORY_RECOMMEND_MIN_FIT) {
+      return {
+        kind: 'new',
+        categoryId: null,
+        newCategory: newCategory.suggestion,
+        confidence: newCategory.fit,
+        status: 'suggested',
+      };
     }
 
     return NONE;
@@ -119,7 +103,53 @@ export async function fetchAICategorySuggestion(
   }
 }
 
-function normalizeConfidence(value: unknown): number | null {
-  if (typeof value !== 'number' || !Number.isFinite(value)) return null;
+function parseExistingCandidate(
+  value: unknown,
+  transactionType: TransactionType,
+  categories: Category[]
+): { categoryId: string; fit: number } | null {
+  if (!value || typeof value !== 'object' || Array.isArray(value)) return null;
+  const candidate = value as Record<string, unknown>;
+  if (typeof candidate.categoryId !== 'string') return null;
+  const allowed = categories.some(
+    (category) => category.type === transactionType && category.id === candidate.categoryId
+  );
+  if (!allowed) return null;
+  return {
+    categoryId: candidate.categoryId,
+    fit: normalizeFit(candidate.fit),
+  };
+}
+
+function parseNewCategoryCandidate(
+  value: unknown,
+  transactionType: TransactionType
+): { suggestion: SuggestedNewCategory; fit: number } | null {
+  if (!value || typeof value !== 'object' || Array.isArray(value)) return null;
+  const candidate = value as Record<string, unknown>;
+  const name = typeof candidate.name === 'string' ? candidate.name.trim() : '';
+  const icon = candidate.icon;
+  const color = candidate.color;
+  const type = candidate.type;
+  if (
+    name.length < 2 ||
+    name.length > 40 ||
+    typeof icon !== 'string' ||
+    !isCategoryIconId(icon) ||
+    typeof color !== 'string' ||
+    !isCategoryColor(color) ||
+    type !== transactionType
+  ) {
+    return null;
+  }
+
+  return {
+    suggestion: { name, icon, color, type: transactionType },
+    fit: normalizeFit(candidate.fit),
+  };
+}
+
+function normalizeFit(value: unknown): number {
+  if (typeof value !== 'number' || !Number.isFinite(value)) return 0;
   return Math.max(0, Math.min(1, value));
 }

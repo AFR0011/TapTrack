@@ -1,3 +1,6 @@
+import {
+  EXISTING_CATEGORY_AUTO_APPLY_MIN_FIT,
+} from '@/ai/categoryPrompt';
 import { findCategoryForTransaction } from '@/defaultData';
 import { consumeAICategorizationQuota } from '@/server/categories/aiQuota';
 import { categorizeWithAI } from '@/server/categories/categorizeWithAI';
@@ -56,8 +59,8 @@ export async function suggestServerCategory({
     recommendNewCategories: false,
   });
   const aiCategory =
-    ai.kind === 'existing'
-      ? typedCategories.find((category) => category.id === ai.categoryId)
+    ai.existing && ai.existing.fit >= EXISTING_CATEGORY_AUTO_APPLY_MIN_FIT
+      ? typedCategories.find((category) => category.id === ai.existing?.categoryId)
       : undefined;
 
   if (aiCategory) {
