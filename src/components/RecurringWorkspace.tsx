@@ -1,8 +1,9 @@
 'use client';
 
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import { useLiveQuery } from 'dexie-react-hooks';
 import { db } from '@/database';
+import { useActiveCurrencies } from '@/currencies/useActiveCurrencies';
 import { formatLocalDate } from '@/dates';
 import { formatMoney, parseAmountInput } from '@/format';
 import {
@@ -14,7 +15,6 @@ import {
 } from '@/recurring/recurringService';
 import {
   RECURRING_FREQUENCIES,
-  SUPPORTED_CURRENCIES,
   SUPPORTED_METHODS,
   TRANSACTION_TYPES,
   type Currency,
@@ -45,30 +45,54 @@ type RecurringFormState = {
   endDate: string;
 };
 
-export default function RecurringWorkspace() {
-  const categories = useLiveQuery(() => db.categories.toArray());
-  const recurringTransactions = useLiveQuery(() => db.recurringTransactions.toArray());
-  const isLoading = categories === undefined || recurringTransactions === undefined;
-  const [form, setForm] = useState<RecurringFormState>({
+function emptyForm(defaultCurrency: Currency): RecurringFormState {
+  return {
     type: 'expense',
     amount: '',
-    currency: 'TRY',
+    currency: defaultCurrency,
     title: '',
     categoryId: 'cat-other',
     method: 'card',
     frequency: 'monthly',
     startDate: formatLocalDate(new Date()),
     endDate: '',
-  });
+  };
+}
+
+export default function RecurringWorkspace() {
+  const categories = useLiveQuery(() => db.categories.toArray());
+  const recurringTransactions = useLiveQuery(() => db.recurringTransactions.toArray());
+  const { currencies: activeCurrencies, defaultCurrency, loading: currenciesLoading } = useActiveCurrencies();
+  const isLoading = categories === undefined || recurringTransactions === undefined || currenciesLoading;
+  const [form, setForm] = useState<RecurringFormState>(() => emptyForm('TRY'));
   const [saving, setSaving] = useState(false);
   const [status, setStatus] = useState('');
   const [editing, setEditing] = useState<RecurringTransaction | null>(null);
   const [confirmDelete, setConfirmDelete] = useState<RecurringTransaction | null>(null);
-  const { success, error: toastError } = { success: (msg: string) => toast.success(msg), error: (msg: string) => toast.error(msg) };
+  const { success, error: toastError } = {
+    success: (msg: string) => toast.success(msg),
+    error: (msg: string) => toast.error(msg),
+  };
   const typedCategories = (categories ?? []).filter((category) => category.type === form.type);
   const selectedCategoryId = typedCategories.some((category) => category.id === form.categoryId)
     ? form.categoryId
     : typedCategories[0]?.id ?? form.categoryId;
+
+  useEffect(() => {
+    if (editing || currenciesLoading) return;
+    let cancelled = false;
+    queueMicrotask(() => {
+      if (cancelled) return;
+      setForm((current) =>
+        current.currency === 'TRY' && defaultCurrency !== 'TRY'
+          ? { ...current, currency: defaultCurrency }
+          : current
+      );
+    });
+    return () => {
+      cancelled = true;
+    };
+  }, [currenciesLoading, defaultCurrency, editing]);
 
   const setField = <K extends keyof RecurringFormState>(field: K, value: RecurringFormState[K]) => {
     setForm((current) => ({ ...current, [field]: value }));
@@ -99,7 +123,7 @@ export default function RecurringWorkspace() {
         nextRunDate: getInitialNextRunDate(form.startDate),
         isActive: true,
       });
-      setForm((current) => ({ ...current, amount: '', title: '', endDate: '' }));
+      setForm(emptyForm(defaultCurrency));
       setEditing(null);
       success('Recurring transaction saved.');
     } catch (err) {
@@ -128,17 +152,7 @@ export default function RecurringWorkspace() {
         endDate: form.endDate || undefined,
         nextRunDate: editing.nextRunDate,
       });
-      setForm({
-        type: 'expense',
-        amount: '',
-        currency: 'TRY',
-        title: '',
-        categoryId: 'cat-other',
-        method: 'card',
-        frequency: 'monthly',
-        startDate: formatLocalDate(new Date()),
-        endDate: '',
-      });
+      setForm(emptyForm(defaultCurrency));
       setEditing(null);
       success('Recurring transaction updated.');
     } catch (err) {
@@ -184,9 +198,7 @@ export default function RecurringWorkspace() {
   const handleDelete = async (item: RecurringTransaction) => {
     await deleteRecurringTransaction(item.id);
     setConfirmDelete(null);
-    if (editing?.id === item.id) {
-      setEditing(null);
-    }
+    if (editing?.id === item.id) setEditing(null);
     success('Recurring transaction deleted.');
   };
 
@@ -217,8 +229,10 @@ export default function RecurringWorkspace() {
         }
       />
 
-      <section className="rounded-2xl border border-subtle bg-surface p-5 ">
-        <h2 className="text-base font-semibold text-primary">{editing ? 'Edit recurring transaction' : 'New recurring transaction'}</h2>
+      <section className="rounded-2xl border border-subtle bg-surface p-5">
+        <h2 className="text-base font-semibold text-primary">
+          {editing ? 'Edit recurring transaction' : 'New recurring transaction'}
+        </h2>
         <div className="mt-4 grid gap-3 md:grid-cols-4">
           <SelectField
             label="Type"
@@ -229,17 +243,12 @@ export default function RecurringWorkspace() {
               label: type.charAt(0).toUpperCase() + type.slice(1),
             }))}
           />
-          <Field
-            label="Amount"
-            value={form.amount}
-            onChange={(event) => setField('amount', event.target.value)}
-            inputMode="decimal"
-          />
+          <Field label="Amount" value={form.amount} onChange={(event) => setField('amount', event.target.value)} inputMode="decimal" />
           <SelectField
             label="Currency"
             value={form.currency}
-            onChange={(event) => setField('currency', event.target.value as Currency)}
-            options={SUPPORTED_CURRENCIES}
+            onChange={(event) => setField('currency', event.target.value)}
+            options={activeCurrencies.map((currency) => ({ value: currency, label: currency }))}
           />
           <SelectField
             label="Method"
@@ -266,25 +275,11 @@ export default function RecurringWorkspace() {
               label: formatFrequencyLabel(frequency),
             }))}
           />
-          <Field
-            label="Start date"
-            type="date"
-            value={form.startDate}
-            onChange={(event) => setField('startDate', event.target.value)}
-          />
-          <Field
-            label="End date (optional)"
-            type="date"
-            value={form.endDate}
-            onChange={(event) => setField('endDate', event.target.value)}
-          />
+          <Field label="Start date" type="date" value={form.startDate} onChange={(event) => setField('startDate', event.target.value)} />
+          <Field label="End date (optional)" type="date" value={form.endDate} onChange={(event) => setField('endDate', event.target.value)} />
         </div>
         {status ? (
-          <p
-            role="alert"
-            aria-live="polite"
-            className="mt-3 rounded-lg border border-danger bg-danger-muted px-3 py-2 text-sm font-medium text-danger"
-          >
+          <p role="alert" aria-live="polite" className="mt-3 rounded-lg border border-danger bg-danger-muted px-3 py-2 text-sm font-medium text-danger">
             {status}
           </p>
         ) : null}
@@ -292,19 +287,28 @@ export default function RecurringWorkspace() {
           <Button type="button" onClick={editing ? handleUpdate : handleCreate} loading={saving} disabled={saving}>
             {editing ? 'Update recurring' : 'Save recurring'}
           </Button>
-          {editing && (
-            <Button type="button" variant="ghost" onClick={() => { setEditing(null); setForm({ type: 'expense', amount: '', currency: 'TRY', title: '', categoryId: 'cat-other', method: 'card', frequency: 'monthly', startDate: formatLocalDate(new Date()), endDate: '' }); }}>
+          {editing ? (
+            <Button
+              type="button"
+              variant="ghost"
+              onClick={() => {
+                setEditing(null);
+                setForm(emptyForm(defaultCurrency));
+              }}
+            >
               Cancel
             </Button>
-          )}
+          ) : null}
         </div>
       </section>
 
-      <section className="overflow-hidden rounded-2xl border border-subtle bg-surface ">
+      <section className="overflow-hidden rounded-2xl border border-subtle bg-surface">
         {recurringTransactions.length === 0 ? (
           <div className="p-8 text-center">
             <p className="text-sm font-semibold text-secondary">No recurring transactions yet.</p>
-            <p className="mt-1 text-sm font-medium text-muted">Use the form above for rent, subscriptions, salary, or other repeated entries.</p>
+            <p className="mt-1 text-sm font-medium text-muted">
+              Use the form above for rent, subscriptions, salary, or other repeated entries.
+            </p>
           </div>
         ) : (
           <div className="divide-y divide-subtle">
@@ -321,29 +325,13 @@ export default function RecurringWorkspace() {
                       Next run {item.nextRunDate} · {formatFrequencyLabel(item.frequency)} · {item.method}
                     </p>
                   </div>
-                  <p
-                    className={`text-right text-sm font-semibold tabular-nums ${item.type === 'income' ? 'text-success' : 'text-danger'}`}
-                  >
-                    {item.type === 'income' ? '+' : '-'}
-                    {formatMoney(item.amount, item.currency)}
+                  <p className={`text-right text-sm font-semibold tabular-nums ${item.type === 'income' ? 'text-success' : 'text-danger'}`}>
+                    {item.type === 'income' ? '+' : '-'}{formatMoney(item.amount, item.currency)}
                   </p>
                   <div className="flex items-center gap-2 md:justify-end">
-                    <Toggle
-                      checked={item.isActive}
-                      onChange={() => void toggleActive(item)}
-                      label={item.isActive ? `Pause ${item.title}` : `Resume ${item.title}`}
-                    />
-                    <Button type="button" variant="secondary" className="min-h-11 min-w-11 px-4" onClick={() => openEdit(item)}>
-                      Edit
-                    </Button>
-                    <Button
-                      type="button"
-                      variant="dangerGhost"
-                      className="min-h-11 min-w-11 px-4"
-                      onClick={() => setConfirmDelete(item)}
-                    >
-                      Delete
-                    </Button>
+                    <Toggle checked={item.isActive} onChange={() => void toggleActive(item)} label={item.isActive ? `Pause ${item.title}` : `Resume ${item.title}`} />
+                    <Button type="button" variant="secondary" className="min-h-11 min-w-11 px-4" onClick={() => openEdit(item)}>Edit</Button>
+                    <Button type="button" variant="dangerGhost" className="min-h-11 min-w-11 px-4" onClick={() => setConfirmDelete(item)}>Delete</Button>
                   </div>
                 </div>
               ))}
@@ -366,12 +354,8 @@ export default function RecurringWorkspace() {
 
 function formatDueCheckMessage(result: { created: number; skipped: number; failed: number }) {
   const parts = [`Added ${result.created} scheduled transaction${result.created === 1 ? '' : 's'}`];
-  if (result.skipped > 0) {
-    parts.push(`skipped ${result.skipped}`);
-  }
-  if (result.failed > 0) {
-    parts.push(`failed ${result.failed}`);
-  }
+  if (result.skipped > 0) parts.push(`skipped ${result.skipped}`);
+  if (result.failed > 0) parts.push(`failed ${result.failed}`);
   return parts.join(' · ');
 }
 
@@ -381,14 +365,11 @@ function formatFrequencyLabel(frequency: Frequency) {
 
 function RecurringStatusBadge({ isActive }: { isActive: boolean }) {
   return (
-    <span
-      className={cn(
-        'shrink-0 rounded-full px-2 py-0.5 text-xs font-semibold',
-        isActive ? 'bg-success-muted text-success' : 'bg-surface-raised text-muted'
-      )}
-    >
+    <span className={cn(
+      'shrink-0 rounded-full px-2 py-0.5 text-xs font-semibold',
+      isActive ? 'bg-success-muted text-success' : 'bg-surface-raised text-muted'
+    )}>
       {isActive ? 'Active' : 'Paused'}
     </span>
   );
 }
-

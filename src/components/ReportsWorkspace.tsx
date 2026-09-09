@@ -15,11 +15,12 @@ import {
 } from 'recharts';
 import { useLiveQuery } from 'dexie-react-hooks';
 import { db } from '@/database';
+import { DEFAULT_SETTINGS_ID } from '@/defaultData';
 import { getCurrentMonth, getPreviousMonth } from '@/dates';
 import { exportPDF, type ReportExportOptions } from '@/exports/exportService';
 import { clampPercent, formatMoney } from '@/format';
 import {
-  getTransactionAmountInTRY,
+  getTransactionAmountInCurrency,
   loadHistoricalReportRates,
   type HistoricalReportRateMap,
 } from '@/reports/historicalReportRates';
@@ -34,7 +35,7 @@ import { SkeletonCard, SkeletonMetric } from '@/components/ui/Skeleton';
 import { StatCard, StatRow } from '@/components/ui/StatRow';
 import { ToggleRow } from '@/components/ui/Toggle';
 import { downloadBlob } from '@/lib/download';
-import type { Transaction } from '@/types';
+import type { Currency, Transaction } from '@/types';
 
 const COLORS = [
   'var(--chart-1)',
@@ -44,14 +45,6 @@ const COLORS = [
   'var(--chart-5)',
   'var(--chart-6)',
 ];
-
-const CHART_Y_AXIS = {
-  tick: { fill: 'var(--text-muted)', fontSize: 12 },
-  tickLine: false,
-  axisLine: false,
-  width: 56,
-  tickFormatter: (value: number) => formatCompactAxisMoney(Number(value)),
-} as const;
 
 const CHART_TOOLTIP_PROPS = {
   contentStyle: {
@@ -80,27 +73,28 @@ type ReportMode = 'month' | 'range' | 'year';
 
 function getReportTransactionAmount(
   transaction: Transaction,
-  unifyToTRY: boolean,
+  convertAll: boolean,
+  reportCurrency: Currency,
   historicalRates: HistoricalReportRateMap
 ): number | null {
-  if (!unifyToTRY) {
-    return transaction.currency === 'TRY' ? transaction.amount : null;
+  if (!convertAll) {
+    return transaction.currency === reportCurrency ? transaction.amount : null;
   }
-
-  return getTransactionAmountInTRY(transaction, historicalRates);
+  return getTransactionAmountInCurrency(transaction, historicalRates, reportCurrency);
 }
 
 function calculateReportTotals(
   transactions: Transaction[],
-  unifyToTRY: boolean,
+  convertAll: boolean,
+  reportCurrency: Currency,
   historicalRates: HistoricalReportRateMap
 ) {
-  if (!unifyToTRY) return calculateIncomeVsExpense(transactions);
+  if (!convertAll) return calculateIncomeVsExpense(transactions, reportCurrency);
 
   let income = 0;
   let expense = 0;
   for (const transaction of transactions) {
-    const amount = getTransactionAmountInTRY(transaction, historicalRates);
+    const amount = getTransactionAmountInCurrency(transaction, historicalRates, reportCurrency);
     if (amount === null) continue;
     if (transaction.type === 'income') income += amount;
     else expense += amount;
@@ -116,7 +110,7 @@ export default function ReportsWorkspace() {
   const [rangeStart, setRangeStart] = useState(`${currentMonth}-01`);
   const [rangeEnd, setRangeEnd] = useState(new Date().toISOString().slice(0, 10));
   const [year, setYear] = useState(currentMonth.slice(0, 4));
-  const [unifyToTRY, setUnifyToTRY] = useState(false);
+  const [convertAll, setConvertAll] = useState(false);
   const [historicalRates, setHistoricalRates] = useState<HistoricalReportRateMap>({});
   const [ratesLoading, setRatesLoading] = useState(false);
   const [rateError, setRateError] = useState('');
@@ -125,6 +119,7 @@ export default function ReportsWorkspace() {
 
   const transactions = useLiveQuery(() => db.transactions.toArray());
   const categories = useLiveQuery(() => db.categories.toArray());
+  const settings = useLiveQuery(() => db.settings.get(DEFAULT_SETTINGS_ID));
   const monthlyBudget = useLiveQuery(
     async () => (await db.monthlyBudgets.where('month').equals(month).first()) ?? null,
     [month]
@@ -136,8 +131,10 @@ export default function ReportsWorkspace() {
   const isLoading =
     transactions === undefined ||
     categories === undefined ||
+    settings === undefined ||
     categoryBudgets === undefined ||
     monthlyBudget === undefined;
+  const reportCurrency = settings?.defaultCurrency ?? 'TRY';
 
   const categoryById = useMemo(
     () => new Map((categories ?? []).map((category) => [category.id, category])),
@@ -152,13 +149,15 @@ export default function ReportsWorkspace() {
     if (reportMode === 'year') {
       return rows.filter((transaction) => transaction.date.startsWith(year));
     }
-
     const [start, end] = rangeStart <= rangeEnd ? [rangeStart, rangeEnd] : [rangeEnd, rangeStart];
     return rows.filter((transaction) => transaction.date >= start && transaction.date <= end);
   }, [month, rangeEnd, rangeStart, reportMode, transactions, year]);
 
   const previousMonthTransactions = useMemo(
-    () => (transactions ?? []).filter((transaction) => transaction.date.startsWith(getPreviousMonth(month))),
+    () =>
+      (transactions ?? []).filter((transaction) =>
+        transaction.date.startsWith(getPreviousMonth(month))
+      ),
     [month, transactions]
   );
 
@@ -171,7 +170,7 @@ export default function ReportsWorkspace() {
   );
 
   useEffect(() => {
-    if (!unifyToTRY) return;
+    if (!convertAll) return;
 
     const controller = new AbortController();
     queueMicrotask(() => {
@@ -181,15 +180,14 @@ export default function ReportsWorkspace() {
       setHistoricalRates({});
     });
 
-    void loadHistoricalReportRates(rateTransactions, controller.signal)
+    void loadHistoricalReportRates(rateTransactions, controller.signal, reportCurrency)
       .then((loadedRates) => {
-        if (controller.signal.aborted) return;
-        setHistoricalRates(loadedRates);
+        if (!controller.signal.aborted) setHistoricalRates(loadedRates);
       })
       .catch((error: unknown) => {
         if (controller.signal.aborted) return;
         setHistoricalRates({});
-        setUnifyToTRY(false);
+        setConvertAll(false);
         setRateError(
           error instanceof Error
             ? error.message
@@ -201,23 +199,34 @@ export default function ReportsWorkspace() {
       });
 
     return () => controller.abort();
-  }, [rateTransactions, unifyToTRY]);
+  }, [convertAll, rateTransactions, reportCurrency]);
 
   const incomeVsExpense = useMemo(
-    () => calculateReportTotals(activeTransactions, unifyToTRY, historicalRates),
-    [activeTransactions, historicalRates, unifyToTRY]
+    () => calculateReportTotals(activeTransactions, convertAll, reportCurrency, historicalRates),
+    [activeTransactions, convertAll, historicalRates, reportCurrency]
   );
 
   const previousIncomeVsExpense = useMemo(
-    () => calculateReportTotals(previousMonthTransactions, unifyToTRY, historicalRates),
-    [historicalRates, previousMonthTransactions, unifyToTRY]
+    () =>
+      calculateReportTotals(
+        previousMonthTransactions,
+        convertAll,
+        reportCurrency,
+        historicalRates
+      ),
+    [convertAll, historicalRates, previousMonthTransactions, reportCurrency]
   );
 
   const categoryData = useMemo(() => {
     const spending = new Map<string, number>();
     for (const transaction of activeTransactions) {
       if (transaction.type !== 'expense') continue;
-      const amount = getReportTransactionAmount(transaction, unifyToTRY, historicalRates);
+      const amount = getReportTransactionAmount(
+        transaction,
+        convertAll,
+        reportCurrency,
+        historicalRates
+      );
       if (amount === null) continue;
       spending.set(transaction.categoryId, (spending.get(transaction.categoryId) ?? 0) + amount);
     }
@@ -229,13 +238,18 @@ export default function ReportsWorkspace() {
         amount,
       }))
       .sort((a, b) => b.amount - a.amount);
-  }, [activeTransactions, categoryById, historicalRates, unifyToTRY]);
+  }, [activeTransactions, categoryById, convertAll, historicalRates, reportCurrency]);
 
   const spendingOverTime = useMemo(() => {
     const spending = new Map<string, number>();
     for (const transaction of activeTransactions) {
       if (transaction.type !== 'expense') continue;
-      const amount = getReportTransactionAmount(transaction, unifyToTRY, historicalRates);
+      const amount = getReportTransactionAmount(
+        transaction,
+        convertAll,
+        reportCurrency,
+        historicalRates
+      );
       if (amount === null) continue;
       spending.set(transaction.date, (spending.get(transaction.date) ?? 0) + amount);
     }
@@ -246,12 +260,16 @@ export default function ReportsWorkspace() {
         amount,
       }))
       .sort((a, b) => a.date.localeCompare(b.date));
-  }, [activeTransactions, historicalRates, reportMode, unifyToTRY]);
+  }, [activeTransactions, convertAll, historicalRates, reportCurrency, reportMode]);
 
   const comparisonData = useMemo(() => {
     if (reportMode === 'month') {
       return [
-        { label: getPreviousMonth(month), income: previousIncomeVsExpense.income, expense: previousIncomeVsExpense.expense },
+        {
+          label: getPreviousMonth(month),
+          income: previousIncomeVsExpense.income,
+          expense: previousIncomeVsExpense.expense,
+        },
         { label: month, income: incomeVsExpense.income, expense: incomeVsExpense.expense },
       ];
     }
@@ -261,7 +279,8 @@ export default function ReportsWorkspace() {
         const itemMonth = `${year}-${String(index + 1).padStart(2, '0')}`;
         const totals = calculateReportTotals(
           (transactions ?? []).filter((transaction) => transaction.date.startsWith(itemMonth)),
-          unifyToTRY,
+          convertAll,
+          reportCurrency,
           historicalRates
         );
         return { label: itemMonth.slice(5), income: totals.income, expense: totals.expense };
@@ -269,13 +288,24 @@ export default function ReportsWorkspace() {
     }
 
     return [{ label: 'Range', income: incomeVsExpense.income, expense: incomeVsExpense.expense }];
-  }, [historicalRates, incomeVsExpense, month, previousIncomeVsExpense, reportMode, transactions, unifyToTRY, year]);
+  }, [
+    convertAll,
+    historicalRates,
+    incomeVsExpense,
+    month,
+    previousIncomeVsExpense,
+    reportCurrency,
+    reportMode,
+    transactions,
+    year,
+  ]);
 
   const budgetPerformance = getBudgetPerformance(
     month,
     monthlyBudget ?? null,
     categoryBudgets ?? [],
-    transactions ?? []
+    transactions ?? [],
+    reportCurrency
   );
   const budgetPercent =
     budgetPerformance.available > 0
@@ -287,10 +317,10 @@ export default function ReportsWorkspace() {
     (rate) => rate.status === 'prior-available'
   ).length;
   const rateLabel =
-    unifyToTRY && !ratesLoading
+    convertAll && !ratesLoading
       ? historicalRateCount === 0
-        ? 'No USD/EUR transactions need conversion for these calculations.'
-        : `Using ${historicalRateCount} historical TCMB rate${historicalRateCount === 1 ? '' : 's'} by transaction date${
+        ? `No foreign-currency transactions need conversion into ${reportCurrency}.`
+        : `Using ${historicalRateCount} historical Frankfurter rate${historicalRateCount === 1 ? '' : 's'} into ${reportCurrency}${
             priorAvailableRateCount > 0
               ? `; ${priorAvailableRateCount} used the most recent prior published date`
               : ''
@@ -301,9 +331,16 @@ export default function ReportsWorkspace() {
     setExporting(true);
     setExportError('');
 
-    const fxExportOptions = unifyToTRY
-      ? { convertToTRY: true as const, historicalRates }
-      : { convertToTRY: false as const };
+    const fxExportOptions = convertAll
+      ? {
+          convertToReportCurrency: true as const,
+          reportCurrency,
+          historicalRates,
+        }
+      : {
+          convertToReportCurrency: false as const,
+          reportCurrency,
+        };
     const options: ReportExportOptions =
       reportMode === 'month'
         ? { mode: 'month', month, ...fxExportOptions }
@@ -343,11 +380,19 @@ export default function ReportsWorkspace() {
     );
   }
 
+  const yAxis = {
+    tick: { fill: 'var(--text-muted)', fontSize: 12 },
+    tickLine: false,
+    axisLine: false,
+    width: 64,
+    tickFormatter: (value: number) => formatCompactAxisMoney(Number(value), reportCurrency),
+  } as const;
+
   return (
     <div className="space-y-5">
       <PageHeader
         title="Reports"
-        description="Income, spending, and budgets."
+        description={`Income, spending, and budgets · ${reportCurrency}`}
         action={
           <div className="flex flex-wrap items-center gap-2">
             <ModeButton mode="month" activeMode={reportMode} onClick={setReportMode} />
@@ -359,11 +404,19 @@ export default function ReportsWorkspace() {
 
       <div className="flex flex-col gap-5">
         <section className="order-1 grid gap-4 md:order-2 md:grid-cols-3">
-          <StatCard label="Income" value={ratesLoading ? '…' : formatMoney(incomeVsExpense.income)} tone="good" />
-          <StatCard label="Expenses" value={ratesLoading ? '…' : formatMoney(incomeVsExpense.expense)} tone="bad" />
+          <StatCard
+            label="Income"
+            value={ratesLoading ? '…' : formatMoney(incomeVsExpense.income, reportCurrency)}
+            tone="good"
+          />
+          <StatCard
+            label="Expenses"
+            value={ratesLoading ? '…' : formatMoney(incomeVsExpense.expense, reportCurrency)}
+            tone="bad"
+          />
           <StatCard
             label="Net"
-            value={ratesLoading ? '…' : formatMoney(incomeVsExpense.net)}
+            value={ratesLoading ? '…' : formatMoney(incomeVsExpense.net, reportCurrency)}
             tone={incomeVsExpense.net >= 0 ? 'good' : 'bad'}
           />
         </section>
@@ -372,12 +425,27 @@ export default function ReportsWorkspace() {
           <div className="flex flex-col gap-3 sm:flex-row sm:items-end sm:justify-between">
             <div className="grid flex-1 gap-3 sm:grid-cols-3">
               {reportMode === 'month' ? (
-                <Field label="Month" type="month" value={month} onChange={(event) => setMonth(event.target.value)} />
+                <Field
+                  label="Month"
+                  type="month"
+                  value={month}
+                  onChange={(event) => setMonth(event.target.value)}
+                />
               ) : null}
               {reportMode === 'range' ? (
                 <>
-                  <Field label="Start" type="date" value={rangeStart} onChange={(event) => setRangeStart(event.target.value)} />
-                  <Field label="End" type="date" value={rangeEnd} onChange={(event) => setRangeEnd(event.target.value)} />
+                  <Field
+                    label="Start"
+                    type="date"
+                    value={rangeStart}
+                    onChange={(event) => setRangeStart(event.target.value)}
+                  />
+                  <Field
+                    label="End"
+                    type="date"
+                    value={rangeEnd}
+                    onChange={(event) => setRangeEnd(event.target.value)}
+                  />
                 </>
               ) : null}
               {reportMode === 'year' ? (
@@ -396,7 +464,7 @@ export default function ReportsWorkspace() {
               type="button"
               variant="secondary"
               size="sm"
-              onClick={handleExportPDF}
+              onClick={() => void handleExportPDF()}
               loading={exporting}
               disabled={exporting}
             >
@@ -406,134 +474,192 @@ export default function ReportsWorkspace() {
 
           <ToggleRow
             className="mt-4"
-            label="Convert all to TRY"
+            label={`Include all currencies in ${reportCurrency}`}
             description={
               ratesLoading
                 ? 'Loading exchange rates…'
-                : unifyToTRY && rateLabel
+                : convertAll && rateLabel
                   ? rateLabel
                   : undefined
             }
-            checked={unifyToTRY}
+            checked={convertAll}
             onChange={() => {
-              if (unifyToTRY) {
-                setUnifyToTRY(false);
+              if (convertAll) {
+                setConvertAll(false);
                 setHistoricalRates({});
                 setRateError('');
                 setRatesLoading(false);
                 return;
               }
-
               setHistoricalRates({});
               setRateError('');
               setRatesLoading(true);
-              setUnifyToTRY(true);
+              setConvertAll(true);
             }}
             disabled={ratesLoading}
           />
 
           <p className="mt-3 text-sm font-medium text-muted" role="status">
-            {unifyToTRY
+            {convertAll
               ? ratesLoading
-                ? 'Loading historical rates for each USD/EUR transaction date…'
-                : 'USD and EUR are converted using the rate published for each transaction date; if none was published that day, the most recent prior rate is used.'
-              : 'Showing TRY transactions only. Enable "Convert all to TRY" to include USD/EUR.'}
+                ? `Loading historical rates into ${reportCurrency}…`
+                : `Foreign transactions are converted into ${reportCurrency} using each transaction date; when a date has no published rate, the most recent prior rate is used.`
+              : `Showing ${reportCurrency} transactions only. Turn on conversion to include the rest.`}
           </p>
 
           {rateError ? (
             <p className="mt-3 text-sm font-medium text-danger" role="alert">
-              {rateError} TRY-only reporting was restored; no estimated FX fallback was used.
+              {rateError} {reportCurrency}-only reporting was restored; no estimated FX fallback was used.
             </p>
           ) : null}
           {exportError ? <p className="mt-3 text-sm font-medium text-danger">{exportError}</p> : null}
         </section>
 
         <section className="order-3 grid gap-4 lg:grid-cols-2">
-        <ChartPanel title="Spending by category" empty={categoryData.length === 0}>
-          <CategorySpendingList items={categoryData} />
-        </ChartPanel>
+          <ChartPanel title="Spending by category" empty={categoryData.length === 0}>
+            <CategorySpendingList items={categoryData} currency={reportCurrency} />
+          </ChartPanel>
 
-        <ChartPanel title="Spending over time" empty={spendingOverTime.length === 0}>
-          <ResponsiveContainer width="100%" height={260}>
-            <LineChart data={spendingOverTime}>
-              <XAxis dataKey="date" tick={{ fill: 'var(--text-muted)', fontSize: 12 }} tickLine={false} axisLine={false} minTickGap={18} />
-              <YAxis {...CHART_Y_AXIS} />
-              <Tooltip content={<ChartTooltip />} {...CHART_TOOLTIP_PROPS} />
-              <Line type="monotone" dataKey="amount" name="Spent" stroke="var(--chart-1)" strokeWidth={3} dot={false} />
-            </LineChart>
-          </ResponsiveContainer>
-        </ChartPanel>
-
-        <ChartPanel
-          title={reportMode === 'year' ? 'Monthly income vs expense' : 'Income vs expense'}
-          empty={comparisonData.every((item) => item.income === 0 && item.expense === 0)}
-        >
-          <ResponsiveContainer width="100%" height={260}>
-            <BarChart data={comparisonData}>
-              <XAxis dataKey="label" tick={{ fill: 'var(--text-muted)', fontSize: 12 }} tickLine={false} axisLine={false} />
-              <YAxis {...CHART_Y_AXIS} />
-              <Tooltip content={<ChartTooltip />} {...CHART_TOOLTIP_PROPS} />
-              <Bar dataKey="income" name="Income" fill="var(--chart-2)" radius={[4, 4, 0, 0]} />
-              <Bar dataKey="expense" name="Expenses" fill="var(--chart-3)" radius={[4, 4, 0, 0]} />
-            </BarChart>
-          </ResponsiveContainer>
-        </ChartPanel>
-
-        <div className="rounded-2xl border border-subtle bg-surface p-5 ">
-          <div className="flex items-center justify-between gap-3">
-            <h2 className="text-base font-semibold text-primary">Budget performance</h2>
-            <Button type="button" variant="secondary" size="sm" className="shrink-0" onClick={() => router.push('/app/budgets')}>
-              Manage budgets
-            </Button>
-          </div>
-          {reportMode !== 'month' ? (
-            <EmptyState
-              title="Budget view is monthly."
-              description="Switch to Month to review TRY budgets and rollover."
-              className="mt-4"
-            />
-          ) : (
-            <>
-              <ProgressBar
-                className="mt-4"
-                percent={budgetPercent}
-                usedLabel={
-                  budgetPerformance.available > 0
-                    ? `${Math.round(budgetPercent)}% used`
-                    : undefined
-                }
-                remainingLabel={
-                  budgetPerformance.available > 0
-                    ? `${formatMoney(Math.max(budgetPerformance.remaining, 0))} remaining`
-                    : 'Set a monthly total on Budgets'
-                }
-              />
-              <div className="mt-4 grid gap-2">
-                <StatRow label="Available" value={formatMoney(budgetPerformance.available)} />
-                <StatRow label="Spent" value={formatMoney(budgetPerformance.totalSpent)} />
-                <StatRow
-                  label="Remaining"
-                  value={formatMoney(budgetPerformance.remaining)}
-                  tone={budgetPerformance.remaining >= 0 ? 'good' : 'bad'}
+          <ChartPanel title="Spending over time" empty={spendingOverTime.length === 0}>
+            <ResponsiveContainer width="100%" height={260}>
+              <LineChart data={spendingOverTime}>
+                <XAxis
+                  dataKey="date"
+                  tick={{ fill: 'var(--text-muted)', fontSize: 12 }}
+                  tickLine={false}
+                  axisLine={false}
+                  minTickGap={18}
                 />
-              </div>
-              <div className="mt-4 divide-y divide-subtle">
-                {budgetPerformance.categoryBudgets.length === 0 ? (
-                  <EmptyState title="No category budgets yet." description="Set category limits on Budgets." compact />
-                ) : (
-                  budgetPerformance.categoryBudgets.map((item) => (
-                    <div key={item.categoryId} className="flex items-center justify-between py-3 text-sm">
-                      <span className="font-medium text-secondary">{categoryById.get(item.categoryId)?.name ?? item.categoryId}</span>
-                      <span className="font-semibold text-primary">
-                        {formatMoney(item.spent)} / {formatMoney(item.budget)}
-                      </span>
-                    </div>
-                  ))
-                )}
-              </div>
-            </>
-          )}
-        </div>
+                <YAxis {...yAxis} />
+                <Tooltip
+                  content={<ChartTooltip currency={reportCurrency} />}
+                  {...CHART_TOOLTIP_PROPS}
+                />
+                <Line
+                  type="monotone"
+                  dataKey="amount"
+                  name="Spent"
+                  stroke="var(--chart-1)"
+                  strokeWidth={3}
+                  dot={false}
+                />
+              </LineChart>
+            </ResponsiveContainer>
+          </ChartPanel>
+
+          <ChartPanel
+            title={reportMode === 'year' ? 'Monthly income vs expense' : 'Income vs expense'}
+            empty={comparisonData.every((item) => item.income === 0 && item.expense === 0)}
+          >
+            <ResponsiveContainer width="100%" height={260}>
+              <BarChart data={comparisonData}>
+                <XAxis
+                  dataKey="label"
+                  tick={{ fill: 'var(--text-muted)', fontSize: 12 }}
+                  tickLine={false}
+                  axisLine={false}
+                />
+                <YAxis {...yAxis} />
+                <Tooltip
+                  content={<ChartTooltip currency={reportCurrency} />}
+                  {...CHART_TOOLTIP_PROPS}
+                />
+                <Bar
+                  dataKey="income"
+                  name="Income"
+                  fill="var(--chart-2)"
+                  radius={[4, 4, 0, 0]}
+                />
+                <Bar
+                  dataKey="expense"
+                  name="Expenses"
+                  fill="var(--chart-3)"
+                  radius={[4, 4, 0, 0]}
+                />
+              </BarChart>
+            </ResponsiveContainer>
+          </ChartPanel>
+
+          <div className="rounded-2xl border border-subtle bg-surface p-5">
+            <div className="flex items-center justify-between gap-3">
+              <h2 className="text-base font-semibold text-primary">Budget performance</h2>
+              <Button
+                type="button"
+                variant="secondary"
+                size="sm"
+                className="shrink-0"
+                onClick={() => router.push('/app/budgets')}
+              >
+                Manage budgets
+              </Button>
+            </div>
+            {reportMode !== 'month' ? (
+              <EmptyState
+                title="Budget view is monthly."
+                description="Switch to Month to review the budget stored for that period."
+                className="mt-4"
+              />
+            ) : (
+              <>
+                <ProgressBar
+                  className="mt-4"
+                  percent={budgetPercent}
+                  usedLabel={
+                    budgetPerformance.available > 0
+                      ? `${Math.round(budgetPercent)}% used`
+                      : undefined
+                  }
+                  remainingLabel={
+                    budgetPerformance.available > 0
+                      ? `${formatMoney(
+                          Math.max(budgetPerformance.remaining, 0),
+                          budgetPerformance.currency
+                        )} remaining`
+                      : 'Set a monthly total on Budgets'
+                  }
+                />
+                <div className="mt-4 grid gap-2">
+                  <StatRow
+                    label="Available"
+                    value={formatMoney(budgetPerformance.available, budgetPerformance.currency)}
+                  />
+                  <StatRow
+                    label="Spent"
+                    value={formatMoney(budgetPerformance.totalSpent, budgetPerformance.currency)}
+                  />
+                  <StatRow
+                    label="Remaining"
+                    value={formatMoney(budgetPerformance.remaining, budgetPerformance.currency)}
+                    tone={budgetPerformance.remaining >= 0 ? 'good' : 'bad'}
+                  />
+                </div>
+                <div className="mt-4 divide-y divide-subtle">
+                  {budgetPerformance.categoryBudgets.length === 0 ? (
+                    <EmptyState
+                      title="No category budgets yet."
+                      description="Set category limits on Budgets."
+                      compact
+                    />
+                  ) : (
+                    budgetPerformance.categoryBudgets.map((item) => (
+                      <div
+                        key={item.categoryId}
+                        className="flex items-center justify-between py-3 text-sm"
+                      >
+                        <span className="font-medium text-secondary">
+                          {categoryById.get(item.categoryId)?.name ?? item.categoryId}
+                        </span>
+                        <span className="font-semibold text-primary">
+                          {formatMoney(item.spent, item.currency)} /{' '}
+                          {formatMoney(item.budget, item.currency)}
+                        </span>
+                      </div>
+                    ))
+                  )}
+                </div>
+              </>
+            )}
+          </div>
         </section>
       </div>
     </div>
@@ -551,7 +677,6 @@ function ModeButton({
 }) {
   const active = mode === activeMode;
   const label = mode === 'month' ? 'Month' : mode === 'range' ? 'Range' : 'Year';
-
   return (
     <Button
       type="button"
@@ -564,17 +689,20 @@ function ModeButton({
   );
 }
 
-function formatCompactAxisMoney(amount: number) {
+function formatCompactAxisMoney(amount: number, currency: Currency) {
   const abs = Math.abs(amount);
   const sign = amount < 0 ? '-' : '';
-
   if (abs >= 1_000_000) {
-    return `${sign}${(abs / 1_000_000).toLocaleString(undefined, { maximumFractionDigits: 1 })}M ₺`;
+    return `${sign}${(abs / 1_000_000).toLocaleString(undefined, {
+      maximumFractionDigits: 1,
+    })}M ${currency}`;
   }
   if (abs >= 1_000) {
-    return `${sign}${(abs / 1_000).toLocaleString(undefined, { maximumFractionDigits: 1 })}k ₺`;
+    return `${sign}${(abs / 1_000).toLocaleString(undefined, {
+      maximumFractionDigits: 1,
+    })}k ${currency}`;
   }
-  return `${sign}${abs.toLocaleString(undefined, { maximumFractionDigits: 0 })} ₺`;
+  return `${sign}${abs.toLocaleString(undefined, { maximumFractionDigits: 0 })} ${currency}`;
 }
 
 function formatTooltipSeriesName(name?: string) {
@@ -589,10 +717,12 @@ function ChartTooltip({
   active,
   payload,
   label,
+  currency,
 }: {
   active?: boolean;
   payload?: Array<{ name?: string; value?: number | string; color?: string }>;
   label?: string | number;
+  currency: Currency;
 }) {
   if (!active || !payload?.length) return null;
 
@@ -613,14 +743,24 @@ function ChartTooltip({
       <div className="space-y-1">
         {payload.map((entry) => (
           <div key={entry.name} className="flex items-center justify-between gap-4">
-            <span className="flex items-center gap-2 font-medium" style={{ color: 'var(--text-secondary)' }}>
+            <span
+              className="flex items-center gap-2 font-medium"
+              style={{ color: 'var(--text-secondary)' }}
+            >
               {entry.color ? (
-                <span className="h-2 w-2 rounded-full" style={{ background: entry.color }} aria-hidden />
+                <span
+                  className="h-2 w-2 rounded-full"
+                  style={{ background: entry.color }}
+                  aria-hidden
+                />
               ) : null}
               {formatTooltipSeriesName(entry.name)}
             </span>
-            <span className="font-semibold tabular-nums" style={{ color: 'var(--text-primary)' }}>
-              {formatMoney(Number(entry.value))}
+            <span
+              className="font-semibold tabular-nums"
+              style={{ color: 'var(--text-primary)' }}
+            >
+              {formatMoney(Number(entry.value), currency)}
             </span>
           </div>
         ))}
@@ -631,8 +771,10 @@ function ChartTooltip({
 
 function CategorySpendingList({
   items,
+  currency,
 }: {
   items: Array<{ categoryId: string; name: string; amount: number }>;
+  currency: Currency;
 }) {
   const total = items.reduce((sum, item) => sum + item.amount, 0);
 
@@ -641,13 +783,16 @@ function CategorySpendingList({
       {items.map((item, index) => {
         const percent = total > 0 ? (item.amount / total) * 100 : 0;
         const barColor = COLORS[index % COLORS.length];
-
         return (
           <div key={item.categoryId}>
             <div className="flex items-baseline justify-between gap-3">
-              <span className="min-w-0 truncate text-sm font-semibold text-primary">{item.name}</span>
+              <span className="min-w-0 truncate text-sm font-semibold text-primary">
+                {item.name}
+              </span>
               <div className="flex shrink-0 items-baseline gap-2 text-sm tabular-nums">
-                <span className="font-semibold text-primary">{formatMoney(item.amount)}</span>
+                <span className="font-semibold text-primary">
+                  {formatMoney(item.amount, currency)}
+                </span>
                 <span className="font-medium text-muted">{Math.round(percent)}%</span>
               </div>
             </div>
@@ -666,10 +811,14 @@ function CategorySpendingList({
 
 function ChartPanel({ title, empty, children }: { title: string; empty: boolean; children: ReactNode }) {
   return (
-    <div className="rounded-2xl border border-subtle bg-surface p-5 ">
+    <div className="rounded-2xl border border-subtle bg-surface p-5">
       <h2 className="text-base font-semibold text-primary">{title}</h2>
       {empty ? (
-        <EmptyState title="No report data yet." description="Log a transaction for this period." className="mt-4" />
+        <EmptyState
+          title="No report data yet."
+          description="Log a transaction for this period."
+          className="mt-4"
+        />
       ) : (
         <div className="mt-4">{children}</div>
       )}

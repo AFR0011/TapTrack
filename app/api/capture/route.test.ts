@@ -1,7 +1,8 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
-import { parseCaptureBody } from './route';
+import { canonicalCaptureRequestId, parseCaptureBody } from './route';
 
 const REQUEST_ID = '123e4567-e89b-42d3-a456-426614174000';
+const UUID_PATTERN = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
 
 describe('Quick Capture request validation', () => {
   beforeEach(() => {
@@ -35,9 +36,39 @@ describe('Quick Capture request validation', () => {
     });
   });
 
-  it('rejects malformed identity, amount, and historical capture attempts', () => {
+  it('accepts arbitrary supported three-letter currencies', () => {
+    const parsed = parseCaptureBody({
+      type: 'expense',
+      amount: 25,
+      currency: 'gbp',
+      title: 'lunch',
+    });
+    expect(parsed.ok).toBe(true);
+    if (parsed.ok) expect(parsed.currency).toBe('GBP');
+  });
+
+  it('allows an omitted request marker for the simplified Shortcut flow', () => {
+    const parsed = parseCaptureBody({ type: 'expense', amount: 1, title: 'coffee' });
+    expect(parsed.ok).toBe(true);
+    if (parsed.ok) expect(parsed.requestId).toBe('');
+  });
+
+  it('canonicalizes a stable non-UUID marker deterministically', () => {
+    const first = canonicalCaptureRequestId('shortcut-run-123');
+    const second = canonicalCaptureRequestId('shortcut-run-123');
+    expect(first).toBe(second);
+    expect(first).toMatch(UUID_PATTERN);
+    expect(first[14]).toBe('5');
+  });
+
+  it('preserves a supplied UUID and generates one when no marker is supplied', () => {
+    expect(canonicalCaptureRequestId(REQUEST_ID)).toBe(REQUEST_ID);
+    expect(canonicalCaptureRequestId('')).toMatch(UUID_PATTERN);
+  });
+
+  it('rejects invalid amounts, overlong request markers, and historical capture attempts', () => {
     expect(
-      parseCaptureBody({ requestId: 'retry-me', type: 'expense', amount: 1, title: 'coffee' })
+      parseCaptureBody({ requestId: 'x'.repeat(201), type: 'expense', amount: 1, title: 'coffee' })
     ).toMatchObject({ ok: false });
     expect(
       parseCaptureBody({ requestId: REQUEST_ID, type: 'expense', amount: 0, title: 'coffee' })

@@ -1,6 +1,6 @@
 import type { Currency } from '@/types';
 
-export const EXCHANGE_RATE_SOURCE = 'TCMB via Frankfurter' as const;
+export const EXCHANGE_RATE_SOURCE = 'Frankfurter' as const;
 
 export type HistoricalExchangeRateResponse = {
   base: Currency;
@@ -22,22 +22,14 @@ export async function fetchHistoricalExchangeRate(input: {
     throw new Error('Exchange rates require an internet connection.');
   }
 
-  const params = new URLSearchParams({
-    base: input.base,
-    quote: input.quote,
-    date: input.date,
-  });
+  const params = new URLSearchParams({ base: input.base, quote: input.quote, date: input.date });
   const response = await fetch(`/api/exchange-rates?${params.toString()}`, {
     signal: input.signal,
     cache: 'no-store',
   });
-  const data = (await response.json()) as Partial<HistoricalExchangeRateResponse> & {
-    error?: string;
-  };
+  const data = (await response.json()) as Partial<HistoricalExchangeRateResponse> & { error?: string };
 
-  if (!response.ok) {
-    throw new Error(data.error || 'Exchange rates are temporarily unavailable.');
-  }
+  if (!response.ok) throw new Error(data.error || 'Exchange rates are temporarily unavailable.');
 
   if (
     data.base !== input.base ||

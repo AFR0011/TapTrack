@@ -12,6 +12,7 @@ import {
   type Category,
   type CategoryBudget,
   type Conversion,
+  type Currency,
   type MonthlyBudget,
   type RecurringTransaction,
   type Settings,
@@ -337,7 +338,7 @@ function validateLegacyData(root: UnknownRow): LegacyBackupData {
   };
 
   assertUniqueIds('balances', data.balances);
-  const expectedBalanceIds = getExpectedBalanceIds();
+  const expectedBalanceIds = getLegacyExpectedBalanceIds();
   const actualBalanceIds = new Set(data.balances.map((balance) => balance.id));
   if (
     data.balances.length !== expectedBalanceIds.size ||
@@ -347,6 +348,7 @@ function validateLegacyData(root: UnknownRow): LegacyBackupData {
       'Legacy backup must contain exactly one saved balance for every supported currency and payment method.'
     );
   }
+  assertLegacyCurrencyCompatibility(data);
 
   return data;
 }
@@ -461,22 +463,50 @@ function validateRelationships(data: CanonicalBackupData): void {
     }
   }
 
-  const expectedBalanceIds = getExpectedBalanceIds();
   const openingBalanceIds = new Set<string>();
+  const activeCurrencies = new Set<Currency>();
+  for (const checkpoint of data.balanceCheckpoints) {
+    if (checkpoint.kind === 'opening') {
+      openingBalanceIds.add(checkpoint.balanceId);
+      activeCurrencies.add(checkpoint.currency);
+    }
+  }
+
+  const expectedBalanceIds = getExpectedBalanceIdsForCurrencies(activeCurrencies);
   for (const checkpoint of data.balanceCheckpoints) {
     if (!expectedBalanceIds.has(checkpoint.balanceId)) {
       throw new BackupValidationError(
-        `Checkpoint ${checkpoint.id} references unsupported balance ${checkpoint.balanceId}.`
+        `Checkpoint ${checkpoint.id} references a balance without an opening checkpoint: ${checkpoint.balanceId}.`
       );
     }
-    if (checkpoint.kind === 'opening') openingBalanceIds.add(checkpoint.balanceId);
   }
 
-  if (data.settings[0].setupCompleted) {
-    const missingOpenings = [...expectedBalanceIds].filter((id) => !openingBalanceIds.has(id));
+  const settings = data.settings[0];
+  if (settings.setupCompleted) {
+    if (activeCurrencies.size === 0) {
+      throw new BackupValidationError('Completed backup must contain at least one active currency.');
+    }
+    if (!activeCurrencies.has(settings.defaultCurrency)) {
+      throw new BackupValidationError(
+        `Default currency ${settings.defaultCurrency} is missing opening checkpoints.`
+      );
+    }
+
+    const missingOpenings = [...expectedBalanceIds]
+      .filter((id) => !openingBalanceIds.has(id))
+      .sort();
     if (missingOpenings.length > 0) {
       throw new BackupValidationError(
         `Completed backup is missing opening checkpoints for: ${missingOpenings.join(', ')}.`
+      );
+    }
+
+    const inactiveReferencedCurrencies = [...collectReferencedCurrencies(data)]
+      .filter((currency) => !activeCurrencies.has(currency))
+      .sort();
+    if (inactiveReferencedCurrencies.length > 0) {
+      throw new BackupValidationError(
+        `Completed backup references currencies without opening checkpoints: ${inactiveReferencedCurrencies.join(', ')}.`
       );
     }
   }
@@ -489,7 +519,7 @@ function validateTransaction(value: unknown, label: string): Transaction {
     id: requireId(row.id, `${label}.id`),
     type,
     amount: requirePositiveMoney(row.amount, `${label}.amount`),
-    currency: requireOneOf(row.currency, SUPPORTED_CURRENCIES, `${label}.currency`),
+    currency: requireCurrencyCode(row.currency, `${label}.currency`),
     title: requireString(row.title, `${label}.title`, MAX_TITLE_LENGTH),
     categoryId: requireId(row.categoryId, `${label}.categoryId`),
     method: requireOneOf(row.method, SUPPORTED_METHODS, `${label}.method`),
@@ -504,7 +534,7 @@ function validateTransaction(value: unknown, label: string): Transaction {
 
 function validateBalance(value: unknown, label: string): Balance {
   const row = requireObject(value, label);
-  const currency = requireOneOf(row.currency, SUPPORTED_CURRENCIES, `${label}.currency`);
+  const currency = requireCurrencyCode(row.currency, `${label}.currency`);
   const method = requireOneOf(row.method, SUPPORTED_METHODS, `${label}.method`);
   const id = requireId(row.id, `${label}.id`);
   if (id !== getBalanceId(currency, method)) {
@@ -521,7 +551,7 @@ function validateBalance(value: unknown, label: string): Balance {
 
 function validateBalanceCheckpoint(value: unknown, label: string): BalanceCheckpoint {
   const row = requireObject(value, label);
-  const currency = requireOneOf(row.currency, SUPPORTED_CURRENCIES, `${label}.currency`);
+  const currency = requireCurrencyCode(row.currency, `${label}.currency`);
   const method = requireOneOf(row.method, SUPPORTED_METHODS, `${label}.method`);
   const balanceId = requireId(row.balanceId, `${label}.balanceId`);
   if (balanceId !== getBalanceId(currency, method)) {
@@ -561,7 +591,6 @@ function validateCategory(value: unknown, label: string): Category {
 
 function validateMonthlyBudget(value: unknown, label: string): MonthlyBudget {
   const row = requireObject(value, label);
-  if (row.currency !== 'TRY') throw new BackupValidationError(`${label}.currency must be TRY.`);
   return {
     id: requireId(row.id, `${label}.id`),
     month: requireMonth(row.month, `${label}.month`),
@@ -570,7 +599,7 @@ function validateMonthlyBudget(value: unknown, label: string): MonthlyBudget {
       row.rolloverFromPreviousMonth,
       `${label}.rolloverFromPreviousMonth`
     ),
-    currency: 'TRY',
+    currency: requireCurrencyCode(row.currency, `${label}.currency`),
     createdAt: requireTimestamp(row.createdAt, `${label}.createdAt`),
     updatedAt: requireTimestamp(row.updatedAt, `${label}.updatedAt`),
   };
@@ -578,13 +607,12 @@ function validateMonthlyBudget(value: unknown, label: string): MonthlyBudget {
 
 function validateCategoryBudget(value: unknown, label: string): CategoryBudget {
   const row = requireObject(value, label);
-  if (row.currency !== 'TRY') throw new BackupValidationError(`${label}.currency must be TRY.`);
   return {
     id: requireId(row.id, `${label}.id`),
     month: requireMonth(row.month, `${label}.month`),
     categoryId: requireId(row.categoryId, `${label}.categoryId`),
     amount: requireNonNegativeMoney(row.amount, `${label}.amount`),
-    currency: 'TRY',
+    currency: requireCurrencyCode(row.currency, `${label}.currency`),
     createdAt: requireTimestamp(row.createdAt, `${label}.createdAt`),
     updatedAt: requireTimestamp(row.updatedAt, `${label}.updatedAt`),
   };
@@ -603,7 +631,7 @@ function validateRecurringTransaction(value: unknown, label: string): RecurringT
     id: requireId(row.id, `${label}.id`),
     type,
     amount: requirePositiveMoney(row.amount, `${label}.amount`),
-    currency: requireOneOf(row.currency, SUPPORTED_CURRENCIES, `${label}.currency`),
+    currency: requireCurrencyCode(row.currency, `${label}.currency`),
     title: requireString(row.title, `${label}.title`, MAX_TITLE_LENGTH),
     categoryId: requireId(row.categoryId, `${label}.categoryId`),
     method: requireOneOf(row.method, SUPPORTED_METHODS, `${label}.method`),
@@ -621,8 +649,8 @@ function validateConversion(value: unknown, label: string): Conversion {
   const row = requireObject(value, label);
   return {
     id: requireId(row.id, `${label}.id`),
-    fromCurrency: requireOneOf(row.fromCurrency, SUPPORTED_CURRENCIES, `${label}.fromCurrency`),
-    toCurrency: requireOneOf(row.toCurrency, SUPPORTED_CURRENCIES, `${label}.toCurrency`),
+    fromCurrency: requireCurrencyCode(row.fromCurrency, `${label}.fromCurrency`),
+    toCurrency: requireCurrencyCode(row.toCurrency, `${label}.toCurrency`),
     fromMethod: requireOneOf(row.fromMethod, SUPPORTED_METHODS, `${label}.fromMethod`),
     toMethod: requireOneOf(row.toMethod, SUPPORTED_METHODS, `${label}.toMethod`),
     fromAmount: requirePositiveMoney(row.fromAmount, `${label}.fromAmount`),
@@ -637,12 +665,9 @@ function validateConversion(value: unknown, label: string): Conversion {
 
 function validateSettings(value: unknown, label: string): Settings {
   const row = requireObject(value, label);
-  if (row.defaultCurrency !== 'TRY') {
-    throw new BackupValidationError(`${label}.defaultCurrency must be TRY.`);
-  }
   return {
     id: requireId(row.id, `${label}.id`),
-    defaultCurrency: 'TRY',
+    defaultCurrency: requireCurrencyCode(row.defaultCurrency, `${label}.defaultCurrency`),
     lastUsedMethod: requireOneOf(row.lastUsedMethod, SUPPORTED_METHODS, `${label}.lastUsedMethod`),
     setupCompleted: requireBoolean(row.setupCompleted, `${label}.setupCompleted`),
     ...optionalBooleanField(row, 'aiCategorizationEnabled', label),
@@ -745,6 +770,13 @@ function requireMonth(value: unknown, label: string): string {
   return month;
 }
 
+function requireCurrencyCode(value: unknown, label: string): Currency {
+  if (typeof value !== 'string' || !/^[A-Z]{3}$/.test(value)) {
+    throw new BackupValidationError(`${label} must be an uppercase three-letter currency code.`);
+  }
+  return value;
+}
+
 function requireOneOf<const T extends readonly string[]>(
   value: unknown,
   allowed: T,
@@ -805,12 +837,59 @@ function assertUniqueIds<T extends { id: string }>(label: string, rows: T[]): vo
   }
 }
 
-function getExpectedBalanceIds(): Set<string> {
-  return new Set(
-    SUPPORTED_CURRENCIES.flatMap((currency) =>
-      SUPPORTED_METHODS.map((method) => getBalanceId(currency, method))
-    )
-  );
+function getExpectedBalanceIdsForCurrencies(currencies: Iterable<Currency>): Set<string> {
+  const ids = new Set<string>();
+  for (const currency of currencies) {
+    for (const method of SUPPORTED_METHODS) ids.add(getBalanceId(currency, method));
+  }
+  return ids;
+}
+
+function getLegacyExpectedBalanceIds(): Set<string> {
+  return getExpectedBalanceIdsForCurrencies(SUPPORTED_CURRENCIES);
+}
+
+function isLegacyCurrency(currency: string): boolean {
+  return (SUPPORTED_CURRENCIES as readonly string[]).includes(currency);
+}
+
+function assertLegacyCurrencyCompatibility(data: LegacyBackupData): void {
+  const currencies = new Set<string>();
+  for (const transaction of data.transactions) currencies.add(transaction.currency);
+  for (const balance of data.balances) currencies.add(balance.currency);
+  for (const budget of data.monthlyBudgets) currencies.add(budget.currency);
+  for (const budget of data.categoryBudgets) currencies.add(budget.currency);
+  for (const recurring of data.recurringTransactions) currencies.add(recurring.currency);
+  for (const conversion of data.conversions) {
+    currencies.add(conversion.fromCurrency);
+    currencies.add(conversion.toCurrency);
+  }
+
+  if ([...currencies].some((currency) => !isLegacyCurrency(currency))) {
+    throw new BackupValidationError('Legacy backup contains a currency unsupported by the legacy format.');
+  }
+  if (data.settings.some((settings) => settings.defaultCurrency !== 'TRY')) {
+    throw new BackupValidationError('Legacy backup default currency must be TRY.');
+  }
+  if (data.monthlyBudgets.some((budget) => budget.currency !== 'TRY')) {
+    throw new BackupValidationError('Legacy backup monthly budgets must use TRY.');
+  }
+  if (data.categoryBudgets.some((budget) => budget.currency !== 'TRY')) {
+    throw new BackupValidationError('Legacy backup category budgets must use TRY.');
+  }
+}
+
+function collectReferencedCurrencies(data: CanonicalBackupData): Set<Currency> {
+  const currencies = new Set<Currency>([data.settings[0].defaultCurrency]);
+  for (const transaction of data.transactions) currencies.add(transaction.currency);
+  for (const budget of data.monthlyBudgets) currencies.add(budget.currency);
+  for (const budget of data.categoryBudgets) currencies.add(budget.currency);
+  for (const recurring of data.recurringTransactions) currencies.add(recurring.currency);
+  for (const conversion of data.conversions) {
+    currencies.add(conversion.fromCurrency);
+    currencies.add(conversion.toCurrency);
+  }
+  return currencies;
 }
 
 function sortById<T extends { id: string }>(rows: T[]): T[] {

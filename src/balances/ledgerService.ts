@@ -1,12 +1,10 @@
 import { db, type TapTrackDatabase } from '@/database';
 import { getBalanceId } from '@/defaultData';
-import {
-  SUPPORTED_CURRENCIES,
-  SUPPORTED_METHODS,
-  type Balance,
-  type BalanceCheckpoint,
-  type Conversion,
-  type Transaction,
+import type {
+  Balance,
+  BalanceCheckpoint,
+  Conversion,
+  Transaction,
 } from '@/types';
 
 export class AmbiguousLedgerOrderingError extends Error {
@@ -36,8 +34,9 @@ type LedgerActivity = {
  *
  * For each balance bucket, the latest absolute checkpoint is the base. Only
  * transactions/conversions that happened after that checkpoint are applied.
- * This makes balances deterministic across devices and removes mutable balance
- * rows from the set of records that need conflict resolution.
+ * Balance buckets are derived from the ledger itself rather than a static
+ * currency catalog, so newly activated currencies remain first-class across
+ * restore, sync, and ordinary local mutations.
  */
 export async function rebuildDerivedBalances(
   database: TapTrackDatabase = db,
@@ -52,27 +51,31 @@ export async function rebuildDerivedBalances(
   const latestCheckpointByBalance = getLatestCheckpointByBalance(checkpoints);
   const balanceMap = new Map<string, Balance>();
 
-  for (const currency of SUPPORTED_CURRENCIES) {
-    for (const method of SUPPORTED_METHODS) {
-      const id = getBalanceId(currency, method);
-      const checkpoint = latestCheckpointByBalance.get(id);
-      balanceMap.set(id, {
-        id,
-        currency,
-        method,
-        amount: checkpoint?.observedAmount ?? 0,
-        updatedAt,
-      });
-    }
+  // Opening/reconciliation checkpoints are the normal source of active balance
+  // buckets. Activity is also allowed to materialize a zero-based bucket
+  // defensively so older/in-flight data is never silently discarded.
+  for (const checkpoint of latestCheckpointByBalance.values()) {
+    ensureBalanceBucket(
+      balanceMap,
+      checkpoint.currency,
+      checkpoint.method,
+      checkpoint,
+      updatedAt
+    );
   }
 
   for (const transaction of transactions) {
     const balanceId = getBalanceId(transaction.currency, transaction.method);
     const checkpoint = latestCheckpointByBalance.get(balanceId);
+    const balance = ensureBalanceBucket(
+      balanceMap,
+      transaction.currency,
+      transaction.method,
+      checkpoint,
+      updatedAt
+    );
     if (!isActivityAfterCheckpoint(toTransactionActivity(transaction), checkpoint)) continue;
 
-    const balance = balanceMap.get(balanceId);
-    if (!balance) continue;
     balance.amount += transaction.type === 'income' ? transaction.amount : -transaction.amount;
   }
 
@@ -80,19 +83,36 @@ export async function rebuildDerivedBalances(
     const activity = toConversionActivity(conversion);
     const fromId = getBalanceId(conversion.fromCurrency, conversion.fromMethod);
     const toId = getBalanceId(conversion.toCurrency, conversion.toMethod);
+    const fromCheckpoint = latestCheckpointByBalance.get(fromId);
+    const toCheckpoint = latestCheckpointByBalance.get(toId);
+    const fromBalance = ensureBalanceBucket(
+      balanceMap,
+      conversion.fromCurrency,
+      conversion.fromMethod,
+      fromCheckpoint,
+      updatedAt
+    );
+    const toBalance = ensureBalanceBucket(
+      balanceMap,
+      conversion.toCurrency,
+      conversion.toMethod,
+      toCheckpoint,
+      updatedAt
+    );
 
-    if (isActivityAfterCheckpoint(activity, latestCheckpointByBalance.get(fromId))) {
-      const fromBalance = balanceMap.get(fromId);
-      if (fromBalance) fromBalance.amount -= conversion.fromAmount;
+    if (isActivityAfterCheckpoint(activity, fromCheckpoint)) {
+      fromBalance.amount -= conversion.fromAmount;
     }
-    if (isActivityAfterCheckpoint(activity, latestCheckpointByBalance.get(toId))) {
-      const toBalance = balanceMap.get(toId);
-      if (toBalance) toBalance.amount += conversion.toAmount;
+    if (isActivityAfterCheckpoint(activity, toCheckpoint)) {
+      toBalance.amount += conversion.toAmount;
     }
   }
 
-  const balances = [...balanceMap.values()];
-  await database.balances.bulkPut(balances);
+  const balances = [...balanceMap.values()].sort((left, right) => left.id.localeCompare(right.id));
+  await database.transaction('rw', database.balances, async () => {
+    await database.balances.clear();
+    if (balances.length > 0) await database.balances.bulkPut(balances);
+  });
   return balances;
 }
 
@@ -105,6 +125,28 @@ export function getLatestCheckpointByBalance(checkpoints: BalanceCheckpoint[]) {
     }
   }
   return latest;
+}
+
+function ensureBalanceBucket(
+  balanceMap: Map<string, Balance>,
+  currency: Balance['currency'],
+  method: Balance['method'],
+  checkpoint: BalanceCheckpoint | undefined,
+  updatedAt: string
+): Balance {
+  const id = getBalanceId(currency, method);
+  const existing = balanceMap.get(id);
+  if (existing) return existing;
+
+  const balance: Balance = {
+    id,
+    currency,
+    method,
+    amount: checkpoint?.observedAmount ?? 0,
+    updatedAt,
+  };
+  balanceMap.set(id, balance);
+  return balance;
 }
 
 function isActivityAfterCheckpoint(

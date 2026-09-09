@@ -62,7 +62,7 @@ async function completeFreshOnboarding(page: Page) {
   await expectMobileTargetSize(page.getByRole('button', { name: 'Get started' }));
   await page.getByRole('button', { name: 'Get started' }).click();
 
-  await expect(page.getByRole('heading', { name: 'What do you use?' })).toBeVisible();
+  await expect(page.getByRole('heading', { name: 'Choose the currencies you use.' })).toBeVisible();
   await assertNoHorizontalOverflow(page);
   await page.getByLabel('Cash', { exact: true }).fill('1000');
   await expectMobileTargetSize(page.getByRole('button', { name: 'Continue' }));
@@ -114,10 +114,11 @@ async function expectHeadingWithDiagnostics(
   page: Page,
   heading: string,
   phase: string,
-  diagnostics: BrowserDiagnostics
+  diagnostics: BrowserDiagnostics,
+  level?: 1 | 2 | 3 | 4 | 5 | 6
 ) {
   try {
-    await expect(page.getByRole('heading', { name: heading, exact: true })).toBeVisible();
+    await expect(page.getByRole('heading', { name: heading, exact: true, level })).toBeVisible();
   } catch (error) {
     const routeDiagnostics = await getRouteDiagnostics(page);
     throw new Error(
@@ -159,20 +160,14 @@ test('device-local ledger works across warmed offline mobile routes', async ({ p
   await page.goto('/app');
   await completeFreshOnboarding(page);
   await expectHeadingWithDiagnostics(page, 'Dashboard', 'Post-setup app state', diagnostics);
-
-  const quickAddCoachmark = page.getByRole('dialog', { name: 'Amount + title is enough.' });
-  await expect(quickAddCoachmark).toBeVisible();
   await assertNoHorizontalOverflow(page);
-  await expectMobileTargetSize(quickAddCoachmark.getByRole('button', { name: 'Got it' }));
-  await quickAddCoachmark.getByRole('button', { name: 'Got it' }).click();
-  await expect(quickAddCoachmark).toBeHidden();
+  await expectMobileTargetSize(page.getByRole('link', { name: 'Add transaction', exact: true }));
 
   await page.evaluate(async () => {
     await navigator.serviceWorker.ready;
   });
   await page.reload();
   await expectHeadingWithDiagnostics(page, 'Dashboard', 'Service-worker-controlled reload', diagnostics);
-  await expect(quickAddCoachmark).toBeHidden();
   await expect.poll(() => page.evaluate(() => Boolean(navigator.serviceWorker.controller))).toBe(true);
 
   for (const route of CORE_ROUTES) {
@@ -180,6 +175,12 @@ test('device-local ledger works across warmed offline mobile routes', async ({ p
     await expectHeadingWithDiagnostics(page, route.heading, `Warmed route ${route.path}`, diagnostics);
     await assertMobileLayout(page);
   }
+
+  // B004 moved transaction capture from the dashboard to its own route. Warm that
+  // route explicitly so the actual capture workflow is available after going offline.
+  await page.goto('/app/add');
+  await expectHeadingWithDiagnostics(page, 'Add transaction', 'Warmed capture route', diagnostics, 1);
+  await assertNoHorizontalOverflow(page);
 
   const cacheInventory = await page.evaluate(async () => {
     const keys = await caches.keys();
@@ -205,11 +206,13 @@ test('device-local ledger works across warmed offline mobile routes', async ({ p
     await assertMobileLayout(page);
   }
 
-  await page.goto('/app');
+  await page.goto('/app/add');
+  await expectHeadingWithDiagnostics(page, 'Add transaction', 'Offline capture route', diagnostics, 1);
   await page.getByLabel('Amount', { exact: true }).fill('5');
   await page.getByLabel('What was it?').fill('offlinecheck');
   await page.getByRole('button', { name: 'Cash', exact: true }).click();
   await page.getByRole('button', { name: 'Save expense', exact: true }).click();
+  await expectHeadingWithDiagnostics(page, 'Dashboard', 'Post-save offline dashboard', diagnostics);
   await expect(page.getByText('offlinecheck', { exact: true }).last()).toBeVisible();
   await page.reload();
   await expectHeadingWithDiagnostics(page, 'Dashboard', 'Offline reload', diagnostics);

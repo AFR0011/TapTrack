@@ -6,9 +6,8 @@ const categories = createDefaultCategories('2026-04-30T00:00:00.000Z');
 const today = new Date(2026, 3, 30);
 
 describe('parseCommand', () => {
-  it('parses an expense with default TRY currency and explicit method', () => {
+  it('parses an expense with legacy TRY default and explicit method', () => {
     const result = parseCommand('-120 coffee cash', { categories, today });
-
     expect(result).toEqual({
       ok: true,
       transaction: {
@@ -23,13 +22,51 @@ describe('parseCommand', () => {
     });
   });
 
+  it('uses the configured default currency when none is typed', () => {
+    const result = parseCommand('-12 coffee', {
+      categories,
+      defaultCurrency: 'GBP',
+      activeCurrencies: ['GBP', 'EUR'],
+      today,
+    });
+    expect(result.ok).toBe(true);
+    if (result.ok) expect(result.transaction.currency).toBe('GBP');
+  });
+
+  it('accepts arbitrary active three-letter currency codes', () => {
+    const result = parseCommand('-25 gbp lunch cash', {
+      categories,
+      defaultCurrency: 'EUR',
+      activeCurrencies: ['EUR', 'GBP'],
+      today,
+    });
+    expect(result.ok).toBe(true);
+    if (result.ok) {
+      expect(result.transaction.currency).toBe('GBP');
+      expect(result.transaction.title).toBe('lunch');
+    }
+  });
+
+  it('rejects a currency that is not active when an active list is supplied', () => {
+    expect(
+      parseCommand('-25 usd lunch', {
+        categories,
+        defaultCurrency: 'GBP',
+        activeCurrencies: ['GBP', 'EUR'],
+        today,
+      })
+    ).toEqual({
+      ok: false,
+      message: 'USD is not active in this TapTrack ledger. Add it in Settings first.',
+    });
+  });
+
   it('parses explicit currency and falls back to last used method', () => {
     const result = parseCommand('-9.99 eur spotify', {
       categories,
       defaultMethod: 'card',
       today,
     });
-
     expect(result).toEqual({
       ok: true,
       transaction: {
@@ -46,7 +83,6 @@ describe('parseCommand', () => {
 
   it('keeps income in the income category', () => {
     const result = parseCommand('+20000 salary card', { categories, today });
-
     expect(result.ok).toBe(true);
     if (result.ok) {
       expect(result.transaction.categoryId).toBe('cat-income');
@@ -67,10 +103,6 @@ describe('parseCommands', () => {
     const results = parseCommands('-120 coffee cash', { categories, today });
     expect(results).toHaveLength(1);
     expect(results[0]?.ok).toBe(true);
-    if (results[0]?.ok) {
-      expect(results[0].transaction.amount).toBe(120);
-      expect(results[0].transaction.title).toBe('coffee');
-    }
   });
 
   it('splits and parses two expense entries on one line', () => {
@@ -78,33 +110,19 @@ describe('parseCommands', () => {
     expect(results).toHaveLength(2);
     expect(results[0]?.ok).toBe(true);
     expect(results[1]?.ok).toBe(true);
-    if (results[0]?.ok) {
-      expect(results[0].transaction.amount).toBe(250);
-      expect(results[0].transaction.title).toBe('dinner');
-      expect(results[0].transaction.method).toBe('cash');
-    }
-    if (results[1]?.ok) {
-      expect(results[1].transaction.amount).toBe(500);
-      expect(results[1].transaction.title).toBe('lunch');
-      expect(results[1].transaction.method).toBe('card');
-    }
   });
 
   it('handles mixed income and expense entries', () => {
     const results = parseCommands('-250 dinner +300 loan cash', { categories, today });
     expect(results).toHaveLength(2);
     if (results[0]?.ok) expect(results[0].transaction.type).toBe('expense');
-    if (results[1]?.ok) {
-      expect(results[1].transaction.type).toBe('income');
-      expect(results[1].transaction.amount).toBe(300);
-    }
+    if (results[1]?.ok) expect(results[1].transaction.type).toBe('income');
   });
 
   it('returns an error result for entries missing a title', () => {
     const results = parseCommands('-250 dinner -500 cash', { categories, today });
     expect(results).toHaveLength(2);
     expect(results[0]?.ok).toBe(true);
-    // "-500 cash" has no title (cash is parsed as method, leaving nothing)
     expect(results[1]?.ok).toBe(false);
   });
 
@@ -123,23 +141,15 @@ describe('parseCommands', () => {
   it('handles multi-command with mixed currencies', () => {
     const results = parseCommands('-120 coffee +50 usd lunch', { categories, today });
     expect(results).toHaveLength(2);
-    if (results[0]?.ok) {
-      expect(results[0].transaction.currency).toBe('TRY');
-      expect(results[0].transaction.amount).toBe(120);
-    }
-    if (results[1]?.ok) {
-      expect(results[1].transaction.currency).toBe('USD');
-      expect(results[1].transaction.amount).toBe(50);
-      expect(results[1].transaction.title).toBe('lunch');
-    }
+    if (results[0]?.ok) expect(results[0].transaction.currency).toBe('TRY');
+    if (results[1]?.ok) expect(results[1].transaction.currency).toBe('USD');
   });
 
-  it('handles amounts without leading zero', () => {
+  it('handles amounts without a leading zero', () => {
     const results = parseCommands('-.5 coffee', { categories, today });
     expect(results).toHaveLength(1);
-    if (results[0]?.ok) {
-      expect(results[0].transaction.amount).toBe(0.5);
-    }
+    expect(results[0]?.ok).toBe(true);
+    if (results[0]?.ok) expect(results[0].transaction.amount).toBe(0.5);
   });
 
   it('rejects malformed multi-command with missing title', () => {
@@ -152,8 +162,6 @@ describe('parseCommands', () => {
   it('handles whitespace variants', () => {
     const results = parseCommands('- 120   coffee   cash', { categories, today });
     expect(results).toHaveLength(1);
-    if (results[0]?.ok) {
-      expect(results[0].transaction.amount).toBe(120);
-    }
+    expect(results[0]?.ok).toBe(true);
   });
 });

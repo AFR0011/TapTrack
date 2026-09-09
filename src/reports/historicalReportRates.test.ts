@@ -4,6 +4,7 @@ import type { Transaction } from '@/types';
 import {
   collectHistoricalReportRateNeeds,
   getHistoricalReportRateKey,
+  getTransactionAmountInCurrency,
   getTransactionAmountInTRY,
   type HistoricalReportRateMap,
 } from './historicalReportRates';
@@ -25,18 +26,19 @@ function transaction(overrides: Partial<Transaction>): Transaction {
 }
 
 function rate(input: {
-  base: 'USD' | 'EUR';
+  base: string;
+  quote?: string;
   dateRequested: string;
   dateUsed?: string;
   rate: number;
 }): HistoricalExchangeRateResponse {
   return {
     base: input.base,
-    quote: 'TRY',
+    quote: input.quote ?? 'TRY',
     dateRequested: input.dateRequested,
     dateUsed: input.dateUsed ?? input.dateRequested,
     rate: input.rate,
-    source: 'TCMB via Frankfurter',
+    source: 'Frankfurter',
     status:
       (input.dateUsed ?? input.dateRequested) === input.dateRequested
         ? 'historical'
@@ -45,7 +47,7 @@ function rate(input: {
 }
 
 describe('historical report rates', () => {
-  it('deduplicates requests by transaction date and foreign currency', () => {
+  it('deduplicates requests by date, source currency, and quote currency', () => {
     const needs = collectHistoricalReportRateNeeds([
       transaction({ id: 'usd-a' }),
       transaction({ id: 'usd-b', amount: 40 }),
@@ -54,18 +56,8 @@ describe('historical report rates', () => {
     ]);
 
     expect(needs).toEqual([
-      {
-        key: 'EUR:2026-05-05',
-        base: 'EUR',
-        quote: 'TRY',
-        date: '2026-05-05',
-      },
-      {
-        key: 'USD:2026-05-05',
-        base: 'USD',
-        quote: 'TRY',
-        date: '2026-05-05',
-      },
+      { key: 'EUR:TRY:2026-05-05', base: 'EUR', quote: 'TRY', date: '2026-05-05' },
+      { key: 'USD:TRY:2026-05-05', base: 'USD', quote: 'TRY', date: '2026-05-05' },
     ]);
   });
 
@@ -73,40 +65,36 @@ describe('historical report rates', () => {
     const first = transaction({ id: 'first', date: '2026-05-05', amount: 10 });
     const second = transaction({ id: 'second', date: '2026-05-20', amount: 10 });
     const rates: HistoricalReportRateMap = {
-      [getHistoricalReportRateKey('USD', '2026-05-05')]: rate({
-        base: 'USD',
-        dateRequested: '2026-05-05',
-        rate: 38,
-      }),
-      [getHistoricalReportRateKey('USD', '2026-05-20')]: rate({
-        base: 'USD',
-        dateRequested: '2026-05-20',
-        rate: 40,
-      }),
+      [getHistoricalReportRateKey('USD', '2026-05-05')]: rate({ base: 'USD', dateRequested: '2026-05-05', rate: 38 }),
+      [getHistoricalReportRateKey('USD', '2026-05-20')]: rate({ base: 'USD', dateRequested: '2026-05-20', rate: 40 }),
     };
 
     expect(getTransactionAmountInTRY(first, rates)).toBe(380);
     expect(getTransactionAmountInTRY(second, rates)).toBe(400);
   });
 
+  it('converts into a user-selected reporting currency', () => {
+    const usd = transaction({ amount: 10 });
+    const rates: HistoricalReportRateMap = {
+      [getHistoricalReportRateKey('USD', '2026-05-05', 'EUR')]: rate({
+        base: 'USD', quote: 'EUR', dateRequested: '2026-05-05', rate: 0.86,
+      }),
+    };
+    expect(getTransactionAmountInCurrency(usd, rates, 'EUR')).toBeCloseTo(8.6);
+  });
+
   it('accepts a prior published rate for the requested transaction date', () => {
     const weekendTransaction = transaction({ date: '2026-05-10', amount: 5 });
     const rates: HistoricalReportRateMap = {
       [getHistoricalReportRateKey('USD', '2026-05-10')]: rate({
-        base: 'USD',
-        dateRequested: '2026-05-10',
-        dateUsed: '2026-05-08',
-        rate: 39,
+        base: 'USD', dateRequested: '2026-05-10', dateUsed: '2026-05-08', rate: 39,
       }),
     };
-
     expect(getTransactionAmountInTRY(weekendTransaction, rates)).toBe(195);
   });
 
-  it('returns null instead of treating a missing foreign rate as TRY', () => {
+  it('returns null instead of treating a missing foreign rate as the quote currency', () => {
     expect(getTransactionAmountInTRY(transaction({ amount: 25 }), {})).toBeNull();
-    expect(
-      getTransactionAmountInTRY(transaction({ currency: 'TRY', amount: 25 }), {})
-    ).toBe(25);
+    expect(getTransactionAmountInTRY(transaction({ currency: 'TRY', amount: 25 }), {})).toBe(25);
   });
 });

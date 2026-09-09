@@ -1,9 +1,12 @@
+export const DEFAULT_CURRENCY = 'TRY' as const;
+/** Offline/bootstrap fallback only. The live supported-currency catalog comes from Frankfurter. */
 export const SUPPORTED_CURRENCIES = ['TRY', 'USD', 'EUR'] as const;
 export const SUPPORTED_METHODS = ['cash', 'card'] as const;
 export const TRANSACTION_TYPES = ['income', 'expense'] as const;
 export const RECURRING_FREQUENCIES = ['daily', 'weekly', 'monthly', 'yearly'] as const;
 
-export type Currency = (typeof SUPPORTED_CURRENCIES)[number];
+/** ISO-style three-letter currency code validated at system boundaries. */
+export type Currency = string;
 export type Method = (typeof SUPPORTED_METHODS)[number];
 export type TransactionType = (typeof TRANSACTION_TYPES)[number];
 export type Frequency = (typeof RECURRING_FREQUENCIES)[number];
@@ -17,10 +20,7 @@ export interface Transaction {
   categoryId: string;
   method: Method;
   date: string;
-  /**
-   * Exact occurrence ordering when known. New same-day activity records this
-   * automatically. Older/historical rows may omit it until ordering matters.
-   */
+  /** Exact occurrence ordering when known. */
   occurredAt?: string;
   note?: string;
   createdAt: string;
@@ -30,10 +30,7 @@ export interface Transaction {
 
 export type TransactionDraft = Omit<Transaction, 'id' | 'createdAt' | 'updatedAt'>;
 
-/**
- * Derived local cache only. Authoritative balance state is reconstructed from
- * balance checkpoints plus transactions and conversions.
- */
+/** Derived local cache only. */
 export interface Balance {
   id: string;
   currency: Currency;
@@ -44,11 +41,6 @@ export interface Balance {
 
 export type BalanceCheckpointKind = 'opening' | 'reconciliation';
 
-/**
- * Absolute balance observation. Opening checkpoints are written once during
- * setup (or migration). Reconciliation checkpoints record the real-world
- * balance observed by the user for a calendar month.
- */
 export interface BalanceCheckpoint {
   id: string;
   balanceId: string;
@@ -57,9 +49,7 @@ export interface BalanceCheckpoint {
   kind: BalanceCheckpointKind;
   observedAmount: number;
   deltaAmount: number;
-  /** Local calendar date chosen/observed by the user, independent of timezone changes. */
   date: string;
-  /** Exact UTC ordering boundary for activity before/after this checkpoint. */
   effectiveAt: string;
   month?: string;
   createdAt: string;
@@ -82,7 +72,7 @@ export interface MonthlyBudget {
   month: string;
   totalBudget: number;
   rolloverFromPreviousMonth: number;
-  currency: 'TRY';
+  currency: Currency;
   createdAt: string;
   updatedAt: string;
 }
@@ -92,7 +82,7 @@ export interface CategoryBudget {
   month: string;
   categoryId: string;
   amount: number;
-  currency: 'TRY';
+  currency: Currency;
   createdAt: string;
   updatedAt: string;
 }
@@ -123,19 +113,18 @@ export interface Conversion {
   fromAmount: number;
   toAmount: number;
   date: string;
-  /** See Transaction.occurredAt. */
   occurredAt?: string;
   note?: string;
   createdAt: string;
   updatedAt?: string;
 }
 
-/** Discriminated kind: 'exchange' = currency swap, 'transfer' = same-currency method swap */
 export type ConversionKind = 'exchange' | 'transfer';
 
 export interface Settings {
   id: string;
-  defaultCurrency: 'TRY';
+  /** Currency used for new entries, budgets, dashboard summaries, and reporting conversions. */
+  defaultCurrency: Currency;
   lastUsedMethod: Method;
   setupCompleted: boolean;
   aiCategorizationEnabled?: boolean;
@@ -149,14 +138,12 @@ export interface DeviceMetadata {
   id: string;
   syncOwnerUserId: string;
   linkedAt: string;
-  /** Cloud account restore generation adopted by this browser. */
   cloudRevision?: number;
   cloudGeneration?: string;
 }
 
 export type SyncOutboxOperation = 'upsert' | 'delete';
 
-/** Durable device-local queue of optimistic sync operations. */
 export interface SyncOutboxItem {
   id: string;
   operationId: string;
@@ -169,8 +156,5 @@ export interface SyncOutboxItem {
   lastAttemptAt?: string;
 }
 
-/** Live exchange rates: values are "1 unit of currency = X TRY" */
-export type ExchangeRates = {
-  USD: number;
-  EUR: number;
-};
+/** Legacy compatibility shape; new rate code uses arbitrary currency pairs. */
+export type ExchangeRates = Record<string, number>;

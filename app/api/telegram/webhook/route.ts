@@ -2,9 +2,9 @@ import { type NextRequest, NextResponse } from 'next/server';
 import { createSupabaseAdminClient } from '@/lib/supabase-admin';
 import { parseCommands } from '@/parser/parseCommand';
 import { createDefaultCategories } from '@/defaultData';
+import { normalizeCurrencyCode } from '@/currencies/currencyCatalog';
 import { suggestServerCategory } from '@/server/categories/suggestServerCategory';
 import {
-  SUPPORTED_CURRENCIES,
   SUPPORTED_METHODS,
   type Category,
   type Currency,
@@ -51,7 +51,6 @@ type TelegramSavedTransaction = {
 async function sendMessage(chatId: number, text: string): Promise<void> {
   const token = process.env.TELEGRAM_BOT_TOKEN;
   if (!token) return;
-
   try {
     await fetch(`https://api.telegram.org/bot${token}/sendMessage`, {
       method: 'POST',
@@ -87,11 +86,15 @@ export function getDateInTimeZone(date: Date, timeZone: string): string {
 }
 
 function formatAmount(amount: number, currency: string): string {
-  const symbol = currency === 'TRY' ? '₺' : currency === 'USD' ? '$' : '€';
-  return `${symbol}${Number(amount).toLocaleString('en-US', {
-    minimumFractionDigits: 0,
-    maximumFractionDigits: 2,
-  })}`;
+  try {
+    return new Intl.NumberFormat('en-US', {
+      style: 'currency',
+      currency,
+      maximumFractionDigits: 2,
+    }).format(Number(amount));
+  } catch {
+    return `${Number(amount).toLocaleString('en-US', { maximumFractionDigits: 2 })} ${currency}`;
+  }
 }
 
 function matchesCommand(text: string, command: string): boolean {
@@ -108,10 +111,20 @@ function isSavedTransaction(value: unknown): value is TelegramSavedTransaction {
     typeof row.amount === 'number' &&
     Number.isFinite(row.amount) &&
     row.amount > 0 &&
-    (row.currency === 'TRY' || row.currency === 'USD' || row.currency === 'EUR') &&
+    typeof row.currency === 'string' &&
+    /^[A-Z]{3}$/.test(row.currency) &&
     typeof row.title === 'string' &&
     (row.method === 'cash' || row.method === 'card')
   );
+}
+
+function normalizeActiveCurrencies(rows: Array<{ currency: unknown }> | null | undefined, fallback: Currency): Currency[] {
+  const currencies = new Set<Currency>([fallback]);
+  for (const row of rows ?? []) {
+    const currency = normalizeCurrencyCode(row.currency);
+    if (currency) currencies.add(currency);
+  }
+  return [...currencies].sort((a, b) => a.localeCompare(b));
 }
 
 export async function POST(request: NextRequest): Promise<NextResponse> {
@@ -130,10 +143,7 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
     !process.env.NEXT_PUBLIC_SUPABASE_URL ||
     !process.env.SUPABASE_SERVICE_ROLE_KEY
   ) {
-    return NextResponse.json(
-      { error: 'Telegram integration is not fully configured' },
-      { status: 503 }
-    );
+    return NextResponse.json({ error: 'Telegram integration is not fully configured' }, { status: 503 });
   }
 
   let ledgerDate: string;
@@ -144,9 +154,7 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
   }
 
   const secretToken = request.headers.get('x-telegram-bot-api-secret-token');
-  if (secretToken !== webhookSecret) {
-    return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
-  }
+  if (secretToken !== webhookSecret) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
 
   let update: TelegramUpdate;
   try {
@@ -154,23 +162,16 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
   } catch {
     return NextResponse.json({ error: 'Invalid Telegram update' }, { status: 400 });
   }
-
   if (!Number.isInteger(update.update_id) || update.update_id < 0) {
     return NextResponse.json({ error: 'Invalid Telegram update' }, { status: 400 });
   }
 
   const message = update.message;
   if (!message?.text) return NextResponse.json({ ok: true });
-
   const chatId = message.chat.id;
   const text = message.text.trim();
 
-  if (String(chatId) !== ownerChatId) {
-    return NextResponse.json({ error: 'Forbidden' }, { status: 403 });
-  }
-
-  // Group authorization is intentionally fail-closed until its product policy is
-  // selected. A configured private owner chat continues to work normally.
+  if (String(chatId) !== ownerChatId) return NextResponse.json({ error: 'Forbidden' }, { status: 403 });
   if (message.chat.type && message.chat.type !== 'private') {
     return NextResponse.json({ error: 'Telegram group access is not configured' }, { status: 403 });
   }
@@ -178,32 +179,45 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
   const supabase = createSupabaseAdminClient();
 
   if (matchesCommand(text, '/balance')) {
+    const [{ data: settings, error: settingsError }, { data: checkpointCurrencies, error: currencyError }] = await Promise.all([
+      supabase
+        .from('settings')
+        .select('default_currency')
+        .eq('user_id', ownerId)
+        .eq('id', 'default')
+        .is('deleted_at', null)
+        .maybeSingle(),
+      supabase
+        .from('balance_checkpoints')
+        .select('currency')
+        .eq('user_id', ownerId)
+        .is('deleted_at', null),
+    ]);
+    if (settingsError || currencyError) {
+      await sendMessage(chatId, '❌ Balance summary is temporarily unavailable.');
+      return NextResponse.json({ ok: true });
+    }
+    const defaultCurrency = normalizeCurrencyCode(settings?.default_currency) ?? 'TRY';
+    const currencies = normalizeActiveCurrencies(checkpointCurrencies, defaultCurrency);
     const balances: Array<{ currency: Currency; method: Method; amount: number }> = [];
-    for (const currency of SUPPORTED_CURRENCIES) {
+    for (const currency of currencies) {
       for (const method of SUPPORTED_METHODS) {
         const { data, error } = await supabase.rpc('taptrack_calculated_balance', {
           target_user_id: ownerId,
           target_currency: currency,
           target_method: method,
         });
-        if (error) {
+        if (error || !Number.isFinite(Number(data))) {
           await sendMessage(chatId, '❌ Balance summary is temporarily unavailable.');
           return NextResponse.json({ ok: true });
         }
-        const amount = Number(data);
-        if (!Number.isFinite(amount)) {
-          await sendMessage(chatId, '❌ Balance summary is temporarily unavailable.');
-          return NextResponse.json({ ok: true });
-        }
-        balances.push({ currency, method, amount });
+        balances.push({ currency, method, amount: Number(data) });
       }
     }
 
     const lines = ['💰 <b>Balances</b>'];
     for (const balance of balances) {
-      lines.push(
-        `${balance.currency} ${balance.method}: ${formatAmount(balance.amount, balance.currency)}`
-      );
+      lines.push(`${balance.currency} ${balance.method}: ${formatAmount(balance.amount, balance.currency)}`);
     }
     await sendMessage(chatId, lines.join('\n'));
     return NextResponse.json({ ok: true });
@@ -226,28 +240,22 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
     const expenses = txs?.filter((transaction) => transaction.type === 'expense') ?? [];
     const income = txs?.filter((transaction) => transaction.type === 'income') ?? [];
     const lines = [`📊 <b>Today (${ledgerDate})</b>`];
-
     if (expenses.length === 0 && income.length === 0) {
       lines.push('No transactions today.');
     } else {
       if (expenses.length > 0) {
         lines.push('\n<b>Expenses:</b>');
         for (const transaction of expenses) {
-          lines.push(
-            `  -${formatAmount(Number(transaction.amount), transaction.currency)} ${escapeTelegramHtml(String(transaction.method))} · ${escapeTelegramHtml(String(transaction.title))}`
-          );
+          lines.push(`  -${formatAmount(Number(transaction.amount), String(transaction.currency))} ${escapeTelegramHtml(String(transaction.method))} · ${escapeTelegramHtml(String(transaction.title))}`);
         }
       }
       if (income.length > 0) {
         lines.push('\n<b>Income:</b>');
         for (const transaction of income) {
-          lines.push(
-            `  +${formatAmount(Number(transaction.amount), transaction.currency)} ${escapeTelegramHtml(String(transaction.method))} · ${escapeTelegramHtml(String(transaction.title))}`
-          );
+          lines.push(`  +${formatAmount(Number(transaction.amount), String(transaction.currency))} ${escapeTelegramHtml(String(transaction.method))} · ${escapeTelegramHtml(String(transaction.title))}`);
         }
       }
     }
-
     await sendMessage(chatId, lines.join('\n'));
     return NextResponse.json({ ok: true });
   }
@@ -260,6 +268,7 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
         '  <code>-120 coffee cash</code>\n' +
         '  <code>+20000 salary card</code>\n' +
         '  <code>-9.99 eur spotify</code>\n' +
+        '  <code>-25 gbp lunch cash</code>\n' +
         '  <code>-250 dinner -500 lunch</code>\n\n' +
         'Commands:\n' +
         '  /balance — show current balances\n' +
@@ -269,22 +278,27 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
   }
 
   if (!text.startsWith('/')) {
-    const [{ data: rawCategories, error: categoryError }, { data: settings, error: settingsError }] =
-      await Promise.all([
-        supabase
-          .from('categories')
-          .select('*')
-          .eq('user_id', ownerId)
-          .is('deleted_at', null),
-        supabase
-          .from('settings')
-          .select('last_used_method, ai_categorization_enabled')
-          .eq('user_id', ownerId)
-          .is('deleted_at', null)
-          .maybeSingle(),
-      ]);
+    const [
+      { data: rawCategories, error: categoryError },
+      { data: settings, error: settingsError },
+      { data: checkpointCurrencies, error: currencyError },
+    ] = await Promise.all([
+      supabase.from('categories').select('*').eq('user_id', ownerId).is('deleted_at', null),
+      supabase
+        .from('settings')
+        .select('last_used_method, default_currency, ai_categorization_enabled')
+        .eq('user_id', ownerId)
+        .eq('id', 'default')
+        .is('deleted_at', null)
+        .maybeSingle(),
+      supabase
+        .from('balance_checkpoints')
+        .select('currency')
+        .eq('user_id', ownerId)
+        .is('deleted_at', null),
+    ]);
 
-    if (categoryError || settingsError) {
+    if (categoryError || settingsError || currencyError) {
       await sendMessage(chatId, '❌ TapTrack could not load your ledger settings.');
       return NextResponse.json({ ok: true });
     }
@@ -303,9 +317,15 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
       : createDefaultCategories()) as Category[];
 
     const defaultMethod: Method = settings?.last_used_method === 'cash' ? 'cash' : 'card';
-    const results = parseCommands(text, { categories, defaultMethod });
+    const defaultCurrency = normalizeCurrencyCode(settings?.default_currency) ?? 'TRY';
+    const activeCurrencies = normalizeActiveCurrencies(checkpointCurrencies, defaultCurrency);
+    const results = parseCommands(text, {
+      categories,
+      defaultMethod,
+      defaultCurrency,
+      activeCurrencies,
+    });
     const failures = results.filter((result) => !result.ok);
-
     if (failures.length > 0) {
       const messages = results
         .map((result, index) =>
@@ -322,17 +342,15 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
 
     const parsedDrafts = results.flatMap((result) =>
       result.ok
-        ? [
-            {
-              type: result.transaction.type,
-              amount: result.transaction.amount,
-              currency: result.transaction.currency,
-              title: result.transaction.title,
-              category_id: result.transaction.categoryId,
-              method: result.transaction.method,
-              note: result.transaction.note ?? null,
-            },
-          ]
+        ? [{
+            type: result.transaction.type,
+            amount: result.transaction.amount,
+            currency: result.transaction.currency,
+            title: result.transaction.title,
+            category_id: result.transaction.categoryId,
+            method: result.transaction.method,
+            note: result.transaction.note ?? null,
+          }]
         : []
     );
 
@@ -345,10 +363,7 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
           categories,
           aiEnabled: Boolean(settings?.ai_categorization_enabled),
         });
-        return {
-          ...draft,
-          category_id: category?.categoryId ?? draft.category_id,
-        };
+        return { ...draft, category_id: category?.categoryId ?? draft.category_id };
       })
     );
 
@@ -358,7 +373,6 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
       ledger_date: ledgerDate,
       drafts,
     });
-
     if (error) {
       await sendMessage(chatId, '❌ Transaction could not be saved.');
       return NextResponse.json({ ok: true });
@@ -369,10 +383,7 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
       await sendMessage(chatId, '❌ Transaction could not be saved.');
       return NextResponse.json({ ok: true });
     }
-
-    if (result.duplicate === true) {
-      return NextResponse.json({ ok: true, duplicate: true });
-    }
+    if (result.duplicate === true) return NextResponse.json({ ok: true, duplicate: true });
 
     if (result.applied !== true) {
       if (
