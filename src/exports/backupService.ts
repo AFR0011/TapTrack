@@ -464,15 +464,15 @@ function validateRelationships(data: CanonicalBackupData): void {
   }
 
   const openingBalanceIds = new Set<string>();
-  const activeCurrencies = new Set<Currency>();
+  const ledgerCurrencies = new Set<Currency>();
   for (const checkpoint of data.balanceCheckpoints) {
     if (checkpoint.kind === 'opening') {
       openingBalanceIds.add(checkpoint.balanceId);
-      activeCurrencies.add(checkpoint.currency);
+      ledgerCurrencies.add(checkpoint.currency);
     }
   }
 
-  const expectedBalanceIds = getExpectedBalanceIdsForCurrencies(activeCurrencies);
+  const expectedBalanceIds = getExpectedBalanceIdsForCurrencies(ledgerCurrencies);
   for (const checkpoint of data.balanceCheckpoints) {
     if (!expectedBalanceIds.has(checkpoint.balanceId)) {
       throw new BackupValidationError(
@@ -482,11 +482,14 @@ function validateRelationships(data: CanonicalBackupData): void {
   }
 
   const settings = data.settings[0];
+  if (settings.activeCurrencies && !settings.activeCurrencies.includes(settings.defaultCurrency)) {
+    throw new BackupValidationError('Active currencies must include the default currency.');
+  }
   if (settings.setupCompleted) {
-    if (activeCurrencies.size === 0) {
+    if (ledgerCurrencies.size === 0) {
       throw new BackupValidationError('Completed backup must contain at least one active currency.');
     }
-    if (!activeCurrencies.has(settings.defaultCurrency)) {
+    if (!ledgerCurrencies.has(settings.defaultCurrency)) {
       throw new BackupValidationError(
         `Default currency ${settings.defaultCurrency} is missing opening checkpoints.`
       );
@@ -502,7 +505,7 @@ function validateRelationships(data: CanonicalBackupData): void {
     }
 
     const inactiveReferencedCurrencies = [...collectReferencedCurrencies(data)]
-      .filter((currency) => !activeCurrencies.has(currency))
+      .filter((currency) => !ledgerCurrencies.has(currency))
       .sort();
     if (inactiveReferencedCurrencies.length > 0) {
       throw new BackupValidationError(
@@ -665,12 +668,20 @@ function validateConversion(value: unknown, label: string): Conversion {
 
 function validateSettings(value: unknown, label: string): Settings {
   const row = requireObject(value, label);
+  const defaultCurrency = requireCurrencyCode(row.defaultCurrency, `${label}.defaultCurrency`);
+  const activeCurrencies = optionalCurrencyArrayField(row, 'activeCurrencies', label);
+  if (activeCurrencies.length > 0 && !activeCurrencies.includes(defaultCurrency)) {
+    throw new BackupValidationError(`${label}.activeCurrencies must include the default currency.`);
+  }
   return {
     id: requireId(row.id, `${label}.id`),
-    defaultCurrency: requireCurrencyCode(row.defaultCurrency, `${label}.defaultCurrency`),
+    defaultCurrency,
+    ...(activeCurrencies.length > 0 ? { activeCurrencies } : {}),
     lastUsedMethod: requireOneOf(row.lastUsedMethod, SUPPORTED_METHODS, `${label}.lastUsedMethod`),
     setupCompleted: requireBoolean(row.setupCompleted, `${label}.setupCompleted`),
     ...optionalBooleanField(row, 'aiCategorizationEnabled', label),
+    ...optionalBooleanField(row, 'aiAutoCategorizationEnabled', label),
+    ...optionalBooleanField(row, 'aiRecommendNewCategoriesEnabled', label),
     ...optionalBooleanField(row, 'darkModeEnabled', label),
     ...optionalTimestampField(row, 'lastSyncAt', label),
     createdAt: requireTimestamp(row.createdAt, `${label}.createdAt`),
@@ -809,6 +820,18 @@ function optionalBooleanField(
   return { [key]: requireBoolean(value, `${label}.${key}`) };
 }
 
+function optionalCurrencyArrayField(row: UnknownRow, key: string, label: string): Currency[] {
+  const value = row[key];
+  if (value === undefined || value === null) return [];
+  if (!Array.isArray(value) || value.length === 0 || value.length > 100) {
+    throw new BackupValidationError(`${label}.${key} must be a non-empty currency list.`);
+  }
+  const currencies = value.map((currency, index) =>
+    requireCurrencyCode(currency, `${label}.${key}[${index}]`)
+  );
+  return [...new Set(currencies)];
+}
+
 function optionalTimestampField(
   row: UnknownRow,
   key: string,
@@ -900,10 +923,19 @@ function stripDeviceLocalSettingsFields(settings: Settings): Settings {
   return {
     id: settings.id,
     defaultCurrency: settings.defaultCurrency,
+    ...(settings.activeCurrencies !== undefined
+      ? { activeCurrencies: settings.activeCurrencies }
+      : {}),
     lastUsedMethod: settings.lastUsedMethod,
     setupCompleted: settings.setupCompleted,
     ...(settings.aiCategorizationEnabled !== undefined
       ? { aiCategorizationEnabled: settings.aiCategorizationEnabled }
+      : {}),
+    ...(settings.aiAutoCategorizationEnabled !== undefined
+      ? { aiAutoCategorizationEnabled: settings.aiAutoCategorizationEnabled }
+      : {}),
+    ...(settings.aiRecommendNewCategoriesEnabled !== undefined
+      ? { aiRecommendNewCategoriesEnabled: settings.aiRecommendNewCategoriesEnabled }
       : {}),
     ...(settings.darkModeEnabled !== undefined
       ? { darkModeEnabled: settings.darkModeEnabled }
@@ -925,4 +957,3 @@ function countCanonicalRecords(data: CanonicalBackupData): number {
     data.settings.length
   );
 }
-
