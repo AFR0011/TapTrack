@@ -40,7 +40,7 @@ test('settings navigation and local preferences remain usable offline on mobile'
   await expect(general).toBeVisible();
   await expect(settingsNavigation).toBeHidden();
 
-  const method = general.getByLabel('Default payment method', { exact: true });
+  const method = general.getByRole('combobox', { name: 'Default payment method', exact: true });
   await expect(method).toHaveValue('card');
   await method.selectOption('cash');
   await expect(method).toHaveValue('cash');
@@ -55,7 +55,9 @@ test('settings navigation and local preferences remain usable offline on mobile'
   await expect(page.getByRole('heading', { name: 'Settings', exact: true })).toBeVisible();
   const reloadedGeneral = page.locator('[data-settings-section="general"]');
   await expect(reloadedGeneral).toBeVisible();
-  await expect(reloadedGeneral.getByLabel('Default payment method', { exact: true })).toHaveValue('cash');
+  await expect(
+    reloadedGeneral.getByRole('combobox', { name: 'Default payment method', exact: true })
+  ).toHaveValue('cash');
   await expect(reloadedGeneral.getByRole('switch', { name: 'Dark mode', exact: true })).toHaveAttribute('aria-checked', 'true');
   await assertNoHorizontalOverflow(page);
 
