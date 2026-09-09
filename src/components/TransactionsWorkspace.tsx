@@ -1,6 +1,6 @@
 'use client';
 
-import { useState } from 'react';
+import { useState, type ReactNode } from 'react';
 import TransactionsWorkspaceB004 from './TransactionsWorkspaceB004';
 import TransactionsHistoryWorkspace from './TransactionsHistoryWorkspace';
 import { cn, focusVisibleRing } from '@/lib/cn';
@@ -39,7 +39,7 @@ function ViewButton({
 }: {
   active: boolean;
   onClick: () => void;
-  children: React.ReactNode;
+  children: ReactNode;
 }) {
   return (
     <button
