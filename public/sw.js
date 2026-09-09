@@ -1,5 +1,5 @@
 const CACHE_PREFIX = 'taptrack-shell-';
-const CACHE_NAME = `${CACHE_PREFIX}2026-09-07-v8`;
+const CACHE_NAME = `${CACHE_PREFIX}2026-09-09-v9`;
 const APP_ROUTES = [
   '/app',
   '/app/add',
@@ -8,6 +8,7 @@ const APP_ROUTES = [
   '/app/budgets',
   '/app/recurring',
   '/app/reports',
+  '/app/balances',
   '/app/settings',
 ];
 const STATIC_SHELL_ASSETS = [

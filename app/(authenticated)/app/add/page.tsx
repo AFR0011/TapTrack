@@ -2,7 +2,7 @@
 
 import Link from 'next/link';
 import { Suspense, useMemo } from 'react';
-import { useRouter, useSearchParams } from 'next/navigation';
+import { useSearchParams } from 'next/navigation';
 import { TransactionEntry } from '@/components/TransactionEntry';
 import type { QuickAddPrefill } from '@/components/QuickAddTransaction';
 import type { TransactionInputMode } from '@/transactions/inputPreferences';
@@ -53,20 +53,11 @@ function parseCaptureParameters(params: URLSearchParams): {
 }
 
 function CaptureContent() {
-  const router = useRouter();
   const searchParams = useSearchParams();
   const capture = useMemo(
     () => parseCaptureParameters(new URLSearchParams(searchParams.toString())),
     [searchParams]
   );
-
-  const returnToDashboard = () => {
-    if (navigator.onLine === false) {
-      window.location.replace('/app');
-      return;
-    }
-    router.replace('/app');
-  };
 
   return (
     <div className="space-y-5">
@@ -94,7 +85,6 @@ function CaptureContent() {
       <TransactionEntry
         initialMode={capture.mode}
         prefill={capture.prefill}
-        onSaved={returnToDashboard}
       />
     </div>
   );

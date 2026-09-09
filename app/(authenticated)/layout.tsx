@@ -1,5 +1,5 @@
 import AppShell from "@/components/AppShell";
-import NavigationLoadingOverlay from "@/components/NavigationLoadingOverlay";
+import OnlineRoutePrefetch from "@/components/OnlineRoutePrefetch";
 import SetupGate from "@/components/SetupGate";
 import { ServiceWorkerRegister } from "@/components/ServiceWorkerRegister";
 import { ToastProvider } from "@/components/ToastProvider";
@@ -17,8 +17,8 @@ export default function AuthenticatedLayout({
         <DatabaseProvider>
           <ServiceWorkerRegister />
           <SetupGate>
+            <OnlineRoutePrefetch />
             <AppShell>{children}</AppShell>
-            <NavigationLoadingOverlay />
           </SetupGate>
         </DatabaseProvider>
       </ToastProvider>

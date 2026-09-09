@@ -225,6 +225,14 @@ test('device-local ledger works across warmed offline mobile routes', async ({ p
   await page.getByLabel('What was it?').fill('offlinecheck');
   await page.getByRole('button', { name: 'Cash', exact: true }).click();
   await page.getByRole('button', { name: 'Save expense', exact: true }).click();
+
+  await expectHeadingWithDiagnostics(page, 'Add transaction', 'Post-save capture route', diagnostics, 1);
+  await expect(page).toHaveURL(/\/app\/add$/);
+  await expect(page.getByText('Transaction saved.', { exact: true })).toBeVisible();
+  await expect(page.getByLabel('Amount', { exact: true })).toHaveValue('');
+  await expect(page.getByLabel('What was it?')).toHaveValue('');
+
+  await page.goto('/app');
   await expectHeadingWithDiagnostics(page, 'Dashboard', 'Post-save offline dashboard', diagnostics);
   await expect(page.getByText('offlinecheck', { exact: true }).last()).toBeVisible();
   await page.reload();
