@@ -1,5 +1,5 @@
-import RouteLoadingFrame from '@/components/RouteLoadingFrame';
+import RecurringLoadingFrame from '@/components/RecurringLoadingFrame';
 
 export default function Loading() {
-  return <RouteLoadingFrame kind="recurring" />;
+  return <RecurringLoadingFrame />;
 }

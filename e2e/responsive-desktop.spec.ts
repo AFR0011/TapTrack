@@ -29,7 +29,7 @@ async function expectSideBySide(left: ReturnType<Page['locator']>, right: Return
   expect(Math.abs(rightBox.y - leftBox.y)).toBeLessThan(24);
 }
 
-test('desktop dashboard, transactions, budgets, reports, balances, and transfers use responsive compositions', async ({ page }) => {
+test('desktop dashboard, transactions, budgets, reports, balances, transfers, and recurring use responsive compositions', async ({ page }) => {
   await page.goto('/app');
   await completeFreshOnboarding(page);
 
@@ -88,11 +88,11 @@ test('desktop dashboard, transactions, budgets, reports, balances, and transfers
   const balanceRow = page.locator('[data-balance-method]').first();
   await expect(balanceRow).toBeVisible();
   await balanceRow.click();
-  const dialog = page.getByRole('dialog');
-  await expect(dialog).toBeVisible();
-  await expect(dialog.getByText('Current balance', { exact: true })).toBeVisible();
-  await dialog.getByRole('button', { name: 'Close' }).click();
-  await expect(dialog).toBeHidden();
+  const balanceDialog = page.getByRole('dialog');
+  await expect(balanceDialog).toBeVisible();
+  await expect(balanceDialog.getByText('Current balance', { exact: true })).toBeVisible();
+  await balanceDialog.getByRole('button', { name: 'Close' }).click();
+  await expect(balanceDialog).toBeHidden();
   await assertNoHorizontalOverflow(page);
 
   await desktopNav.locator('summary').filter({ hasText: 'More' }).click();
@@ -113,5 +113,25 @@ test('desktop dashboard, transactions, budgets, reports, balances, and transfers
   await expect(moveType.getByRole('button', { name: 'Transfer', exact: true })).toHaveAttribute('aria-pressed', 'true');
   await expect(page.locator('[data-move-source]')).toBeVisible();
   await expect(page.locator('[data-move-destination]')).toBeVisible();
+  await assertNoHorizontalOverflow(page);
+
+  await desktopNav.locator('summary').filter({ hasText: 'More' }).click();
+  moreNavigation = desktopNav.getByRole('group', { name: 'More navigation' });
+  await expect(moreNavigation).toBeVisible();
+  await moreNavigation.getByRole('link', { name: 'Recurring', exact: true }).click();
+  await expect(page.getByRole('heading', { name: 'Recurring', exact: true })).toBeVisible();
+
+  const recurringMainBox = await main.boundingBox();
+  expect(recurringMainBox?.width ?? 0).toBeGreaterThan(1000);
+  const recurringSummary = page.locator('[data-layout="recurring-summary"]');
+  await expect(recurringSummary).toBeVisible();
+  await expect(recurringSummary.locator(':scope > div')).toHaveCount(3);
+  await page.getByRole('button', { name: 'New recurring', exact: true }).click();
+  const recurringDialog = page.getByRole('dialog');
+  await expect(recurringDialog).toBeVisible();
+  await expect(recurringDialog.getByRole('heading', { name: 'New recurring transaction', exact: true })).toBeVisible();
+  await expect(recurringDialog.getByRole('group', { name: 'Recurring transaction type' })).toBeVisible();
+  await recurringDialog.getByRole('button', { name: 'Close' }).click();
+  await expect(recurringDialog).toBeHidden();
   await assertNoHorizontalOverflow(page);
 });

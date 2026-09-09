@@ -6,7 +6,7 @@ import {
   queueDeleteForSync,
   queueRecordForSync,
 } from '@/sync/syncService';
-import type { RecurringTransaction, TransactionDraft } from '@/types';
+import type { Frequency, RecurringTransaction, TransactionDraft } from '@/types';
 
 export type RecurringInput = Omit<RecurringTransaction, 'id' | 'createdAt' | 'updatedAt'>;
 
@@ -135,6 +135,78 @@ export async function deleteRecurringTransaction(
   void flushSyncQueueBestEffort(database);
 }
 
+/**
+ * Returns the first occurrence on or after today that still belongs to the
+ * original schedule. Unlike getInitialNextRunDate(), this does not invent a
+ * one-off occurrence today when the schedule started in the past.
+ */
+export function getNextScheduledOccurrenceDate(
+  startDate: string,
+  frequency: Frequency,
+  currentDate = new Date()
+) {
+  const today = formatLocalDate(currentDate);
+  if (startDate >= today) return startDate;
+
+  const [startYear, startMonth, startDay] = startDate.split('-').map(Number);
+  const [todayYear, todayMonth] = today.split('-').map(Number);
+
+  if (frequency === 'daily') return today;
+
+  if (frequency === 'weekly') {
+    const startUtc = Date.UTC(startYear, startMonth - 1, startDay);
+    const todayDate = parseLocalDate(today);
+    const todayUtc = Date.UTC(todayDate.getFullYear(), todayDate.getMonth(), todayDate.getDate());
+    const daysSinceStart = Math.floor((todayUtc - startUtc) / 86_400_000);
+    const weeks = Math.ceil(daysSinceStart / 7);
+    const next = parseLocalDate(startDate);
+    next.setDate(next.getDate() + weeks * 7);
+    return formatLocalDate(next);
+  }
+
+  if (frequency === 'monthly') {
+    let monthOffset = (todayYear - startYear) * 12 + (todayMonth - startMonth);
+    let candidate = clampedScheduleDate(startYear, startMonth - 1 + monthOffset, startDay);
+    if (candidate < today) {
+      monthOffset += 1;
+      candidate = clampedScheduleDate(startYear, startMonth - 1 + monthOffset, startDay);
+    }
+    return candidate;
+  }
+
+  let yearOffset = todayYear - startYear;
+  let candidate = clampedScheduleDate(startYear + yearOffset, startMonth - 1, startDay);
+  if (candidate < today) {
+    yearOffset += 1;
+    candidate = clampedScheduleDate(startYear + yearOffset, startMonth - 1, startDay);
+  }
+  return candidate;
+}
+
+export async function resumeRecurringTransaction(
+  id: string,
+  currentDate = new Date(),
+  database: TapTrackDatabase = db
+) {
+  const recurring = await getRecurringTransaction(id, database);
+  if (!recurring) throw new Error('Recurring transaction not found');
+
+  const nextRunDate = getNextScheduledOccurrenceDate(
+    recurring.startDate,
+    recurring.frequency,
+    currentDate
+  );
+  if (recurring.endDate && nextRunDate > recurring.endDate) {
+    throw new Error('This recurring schedule has ended. Edit the end date before resuming it.');
+  }
+
+  return updateRecurringTransaction(
+    id,
+    { isActive: true, nextRunDate },
+    database
+  );
+}
+
 export function getInitialNextRunDate(startDate: string, currentDate = new Date()) {
   const today = formatLocalDate(currentDate);
   return startDate >= today ? startDate : today;
@@ -224,4 +296,16 @@ export async function createDueRecurringTransactions(
   }
 
   return result;
+}
+
+function clampedScheduleDate(year: number, monthIndex: number, requestedDay: number) {
+  const normalized = new Date(year, monthIndex, 1);
+  const lastDay = new Date(
+    normalized.getFullYear(),
+    normalized.getMonth() + 1,
+    0
+  ).getDate();
+  return formatLocalDate(
+    new Date(normalized.getFullYear(), normalized.getMonth(), Math.min(requestedDay, lastDay))
+  );
 }

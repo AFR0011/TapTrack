@@ -5,6 +5,8 @@ import {
   createRecurringTransaction,
   deleteRecurringTransaction,
   getInitialNextRunDate,
+  getNextScheduledOccurrenceDate,
+  resumeRecurringTransaction,
   updateRecurringTransaction,
 } from './recurringService';
 
@@ -126,5 +128,56 @@ describe('recurringService', () => {
 
   it('uses today as the first run date when the selected start date is already past', () => {
     expect(getInitialNextRunDate('2026-05-01', new Date(2026, 4, 5))).toBe('2026-05-05');
+  });
+
+  it('finds the next schedule-aligned occurrence without backfilling paused dates', () => {
+    expect(getNextScheduledOccurrenceDate('2026-01-31', 'monthly', new Date(2026, 2, 1))).toBe('2026-03-31');
+    expect(getNextScheduledOccurrenceDate('2026-05-04', 'weekly', new Date(2026, 4, 19))).toBe('2026-05-25');
+    expect(getNextScheduledOccurrenceDate('2024-02-29', 'yearly', new Date(2027, 2, 1))).toBe('2028-02-29');
+  });
+
+  it('resumes from the next scheduled occurrence instead of creating transactions missed while paused', async () => {
+    const recurring = await createRecurringTransaction(
+      {
+        ...baseRecurring,
+        startDate: '2026-05-05',
+        nextRunDate: '2026-06-05',
+        isActive: false,
+      },
+      database
+    );
+
+    const resumed = await resumeRecurringTransaction(
+      recurring.id,
+      new Date(2026, 7, 20),
+      database
+    );
+    expect(resumed).toMatchObject({ isActive: true, nextRunDate: '2026-09-05' });
+
+    await expect(
+      createDueRecurringTransactions(new Date(2026, 7, 20), database)
+    ).resolves.toMatchObject({ created: 0, failed: 0 });
+    expect(await database.transactions.toArray()).toHaveLength(0);
+  });
+
+  it('does not resume a schedule whose end date is already behind the next valid occurrence', async () => {
+    const recurring = await createRecurringTransaction(
+      {
+        ...baseRecurring,
+        startDate: '2026-05-05',
+        nextRunDate: '2026-06-05',
+        endDate: '2026-07-05',
+        isActive: false,
+      },
+      database
+    );
+
+    await expect(
+      resumeRecurringTransaction(recurring.id, new Date(2026, 7, 20), database)
+    ).rejects.toThrow('schedule has ended');
+    await expect(database.recurringTransactions.get(recurring.id)).resolves.toMatchObject({
+      isActive: false,
+      nextRunDate: '2026-06-05',
+    });
   });
 });
