@@ -32,10 +32,16 @@ const MORE_NAV_ITEMS = [
 ];
 
 function resolveMainMaxWidth(pathname: string) {
-  if (pathname === '/app' || pathname.startsWith('/app/add')) return 'max-w-2xl';
-  if (pathname.startsWith('/app/reports')) return 'max-w-7xl';
+  if (pathname.startsWith('/app/add')) return 'max-w-2xl';
+  if (
+    pathname === '/app' ||
+    pathname.startsWith('/app/reports') ||
+    pathname.startsWith('/app/transactions') ||
+    pathname.startsWith('/app/budgets')
+  ) {
+    return 'max-w-7xl';
+  }
   if (pathname.startsWith('/app/settings')) return 'max-w-6xl';
-  if (pathname.startsWith('/app/transactions')) return 'max-w-6xl';
   return 'max-w-6xl';
 }
 

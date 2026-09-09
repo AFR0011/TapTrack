@@ -11,8 +11,8 @@ export default function SetupGate({ children }: { children: ReactNode }) {
 
   if (settings === undefined) {
     return (
-      <div className="flex min-h-screen items-center justify-center bg-background px-4 text-sm font-medium text-muted">
-        Preparing TapTrack...
+      <div className="min-h-dvh bg-background" role="status" aria-live="polite">
+        <span className="sr-only">Preparing TapTrack...</span>
       </div>
     );
   }

@@ -18,11 +18,18 @@ export default defineConfig({
   projects: [
     {
       name: 'mobile-320',
+      testIgnore: /responsive-desktop\.spec\.ts/,
       use: { ...devices['Desktop Chrome'], viewport: { width: 320, height: 720 } },
     },
     {
       name: 'mobile-390',
+      testIgnore: /responsive-desktop\.spec\.ts/,
       use: { ...devices['Desktop Chrome'], viewport: { width: 390, height: 844 } },
+    },
+    {
+      name: 'desktop-1440',
+      testMatch: /responsive-desktop\.spec\.ts/,
+      use: { ...devices['Desktop Chrome'], viewport: { width: 1440, height: 900 } },
     },
   ],
   webServer: {

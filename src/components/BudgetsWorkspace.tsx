@@ -7,7 +7,7 @@ import { CategoryIcon } from '@/categories/categoryVisuals';
 import { CategoryPicker } from '@/components/CategoryPicker';
 import { AdaptiveSheet } from '@/components/ui/AdaptiveSheet';
 import { Button } from '@/components/ui/Button';
-import { SkeletonCard } from '@/components/ui/Skeleton';
+import { Skeleton, SkeletonListRows } from '@/components/ui/Skeleton';
 import { useActiveCurrencies } from '@/currencies/useActiveCurrencies';
 import { db } from '@/database';
 import { getCurrentMonth } from '@/dates';
@@ -229,16 +229,7 @@ export default function BudgetsWorkspace() {
   };
 
   if (isLoading) {
-    return (
-      <div className="space-y-5" aria-busy="true" aria-label="Loading budgets">
-        <header>
-          <p className="text-xs font-semibold uppercase tracking-[0.18em] text-muted">Plan</p>
-          <h1 className="mt-1.5 text-3xl font-semibold tracking-[-0.035em] text-primary">Budgets</h1>
-        </header>
-        <SkeletonCard />
-        <SkeletonCard />
-      </div>
-    );
+    return <BudgetsSkeleton />;
   }
 
   const monthLabel = formatMonthLabel(month);
@@ -261,171 +252,176 @@ export default function BudgetsWorkspace() {
         </Button>
       </header>
 
-      <section
-        className={cn(
-          'relative overflow-hidden rounded-[1.75rem] p-5 text-white shadow-[0_20px_55px_rgba(30,64,175,0.18)] sm:p-6',
-          overBudget
-            ? 'bg-gradient-to-br from-slate-950 via-rose-950 to-red-900'
-            : 'bg-gradient-to-br from-slate-950 via-blue-950 to-indigo-900'
-        )}
+      <div
+        data-layout="budgets-content"
+        className="grid gap-5 sm:gap-6 lg:grid-cols-[minmax(0,5fr)_minmax(0,7fr)] lg:items-start lg:gap-7"
       >
-        <div className="pointer-events-none absolute -right-16 -top-16 h-44 w-44 rounded-full bg-white/10 blur-3xl" />
-        <div className="pointer-events-none absolute -bottom-24 left-1/4 h-48 w-48 rounded-full bg-indigo-300/10 blur-3xl" />
+        <section
+          className={cn(
+            'relative overflow-hidden rounded-[1.75rem] p-5 text-white shadow-[0_20px_55px_rgba(30,64,175,0.18)] sm:p-6',
+            overBudget
+              ? 'bg-gradient-to-br from-slate-950 via-rose-950 to-red-900'
+              : 'bg-gradient-to-br from-slate-950 via-blue-950 to-indigo-900'
+          )}
+        >
+          <div className="pointer-events-none absolute -right-16 -top-16 h-44 w-44 rounded-full bg-white/10 blur-3xl" />
+          <div className="pointer-events-none absolute -bottom-24 left-1/4 h-48 w-48 rounded-full bg-indigo-300/10 blur-3xl" />
 
-        <div className="relative">
-          <div className="flex items-start justify-between gap-4">
-            <div className="min-w-0">
-              <p className="text-xs font-semibold uppercase tracking-[0.18em] text-blue-100/70">
-                {budgetAvailable > 0 ? 'Left to spend' : 'Monthly budget'}
-              </p>
-              <p className="mt-2 text-4xl font-semibold tracking-[-0.04em] tabular-nums sm:text-5xl">
-                {budgetAvailable > 0
-                  ? formatMoney(Math.abs(remaining), budgetCurrency)
-                  : formatMoney(0, budgetCurrency)}
-              </p>
-              <p className={cn('mt-2 text-sm font-semibold', overBudget ? 'text-rose-200' : 'text-blue-100/75')}>
-                {budgetAvailable <= 0
-                  ? 'Set a monthly ceiling to start tracking your spending.'
-                  : overBudget
-                    ? `${formatMoney(Math.abs(remaining), budgetCurrency)} over budget`
-                    : `${Math.round(totalPercent)}% of this month’s budget used`}
-              </p>
-            </div>
-            <button
-              type="button"
-              onClick={openBudgetEditor}
-              className={cn(
-                'inline-flex min-h-11 shrink-0 items-center rounded-xl bg-white/10 px-3.5 text-sm font-semibold text-white ring-1 ring-white/10 transition-colors hover:bg-white/15',
-                focusVisibleRing
-              )}
-            >
-              {budgetAvailable > 0 ? 'Edit budget' : 'Set budget'}
-            </button>
-          </div>
-
-          {budgetAvailable > 0 ? (
-            <div className="mt-6">
-              <div
-                className="h-2 overflow-hidden rounded-full bg-white/15"
-                role="progressbar"
-                aria-label="Monthly budget used"
-                aria-valuenow={totalPercent}
-                aria-valuemin={0}
-                aria-valuemax={100}
-                aria-valuetext={`${Math.round(totalPercent)}% used`}
-              >
-                <div
-                  className={cn('h-full rounded-full transition-[width] duration-300', overBudget ? 'bg-rose-300' : totalPercent >= 80 ? 'bg-amber-300' : 'bg-white')}
-                  style={{ width: `${totalPercent}%` }}
-                />
+          <div className="relative">
+            <div className="flex items-start justify-between gap-4">
+              <div className="min-w-0">
+                <p className="text-xs font-semibold uppercase tracking-[0.18em] text-blue-100/70">
+                  {budgetAvailable > 0 ? 'Left to spend' : 'Monthly budget'}
+                </p>
+                <p className="mt-2 text-4xl font-semibold tracking-[-0.04em] tabular-nums sm:text-5xl">
+                  {budgetAvailable > 0
+                    ? formatMoney(Math.abs(remaining), budgetCurrency)
+                    : formatMoney(0, budgetCurrency)}
+                </p>
+                <p className={cn('mt-2 text-sm font-semibold', overBudget ? 'text-rose-200' : 'text-blue-100/75')}>
+                  {budgetAvailable <= 0
+                    ? 'Set a monthly ceiling to start tracking your spending.'
+                    : overBudget
+                      ? `${formatMoney(Math.abs(remaining), budgetCurrency)} over budget`
+                      : `${Math.round(totalPercent)}% of this month’s budget used`}
+                </p>
               </div>
+              <button
+                type="button"
+                onClick={openBudgetEditor}
+                className={cn(
+                  'inline-flex min-h-11 shrink-0 items-center rounded-xl bg-white/10 px-3.5 text-sm font-semibold text-white ring-1 ring-white/10 transition-colors hover:bg-white/15',
+                  focusVisibleRing
+                )}
+              >
+                {budgetAvailable > 0 ? 'Edit budget' : 'Set budget'}
+              </button>
             </div>
-          ) : null}
 
-          <div className="mt-5 grid grid-cols-2 gap-3 border-t border-white/10 pt-4">
-            <HeroMetric label="Spent" value={formatMoney(totalSpent, budgetCurrency)} />
-            <HeroMetric label="Budget" value={formatMoney(monthlyBudget?.totalBudget ?? 0, budgetCurrency)} />
-          </div>
+            {budgetAvailable > 0 ? (
+              <div className="mt-6">
+                <div
+                  className="h-2 overflow-hidden rounded-full bg-white/15"
+                  role="progressbar"
+                  aria-label="Monthly budget used"
+                  aria-valuenow={totalPercent}
+                  aria-valuemin={0}
+                  aria-valuemax={100}
+                  aria-valuetext={`${Math.round(totalPercent)}% used`}
+                >
+                  <div
+                    className={cn('h-full rounded-full transition-[width] duration-300', overBudget ? 'bg-rose-300' : totalPercent >= 80 ? 'bg-amber-300' : 'bg-white')}
+                    style={{ width: `${totalPercent}%` }}
+                  />
+                </div>
+              </div>
+            ) : null}
 
-          {rollover > 0 ? (
-            <p className="mt-3 text-xs font-medium text-blue-100/65">
-              Includes {formatMoney(rollover, budgetCurrency)} carried over from last month.
-            </p>
-          ) : null}
-        </div>
-      </section>
-
-      <section>
-        <div className="mb-3 flex items-center justify-between gap-3">
-          <div>
-            <p className="text-xs font-semibold uppercase tracking-[0.16em] text-muted">Guardrails</p>
-            <h2 className="mt-1 text-lg font-semibold tracking-tight text-primary">Category limits</h2>
-          </div>
-          {availableCategories.length > 0 ? (
-            <Button type="button" variant="secondary" size="sm" onClick={openAddCategory}>
-              <PlusIcon />
-              Add category
-            </Button>
-          ) : null}
-        </div>
-
-        {allocationOverBudget ? (
-          <div className="mb-3 rounded-2xl bg-surface-muted px-4 py-3 text-sm font-medium text-secondary ring-1 ring-subtle/70">
-            Category limits add up to {formatMoney(allocatedTotal, budgetCurrency)}, which is above the available monthly budget.
-          </div>
-        ) : null}
-
-        {sortedCategoryBudgets.length === 0 ? (
-          <div className="rounded-[1.5rem] bg-surface px-5 py-8 text-center shadow-[0_8px_28px_rgba(15,23,42,0.05)] ring-1 ring-subtle/70 dark:shadow-none">
-            <div className="mx-auto grid h-11 w-11 place-items-center rounded-2xl bg-surface-muted text-accent">
-              <TargetIcon />
+            <div className="mt-5 grid grid-cols-2 gap-3 border-t border-white/10 pt-4">
+              <HeroMetric label="Spent" value={formatMoney(totalSpent, budgetCurrency)} />
+              <HeroMetric label="Budget" value={formatMoney(monthlyBudget?.totalBudget ?? 0, budgetCurrency)} />
             </div>
-            <p className="mt-3 text-sm font-semibold text-primary">No category limits yet.</p>
-            <p className="mx-auto mt-1 max-w-sm text-sm text-muted">
-              Add limits only to the categories you want to keep a closer eye on.
-            </p>
+
+            {rollover > 0 ? (
+              <p className="mt-3 text-xs font-medium text-blue-100/65">
+                Includes {formatMoney(rollover, budgetCurrency)} carried over from last month.
+              </p>
+            ) : null}
+          </div>
+        </section>
+
+        <section>
+          <div className="mb-3 flex items-center justify-between gap-3">
+            <div>
+              <p className="text-xs font-semibold uppercase tracking-[0.16em] text-muted">Guardrails</p>
+              <h2 className="mt-1 text-lg font-semibold tracking-tight text-primary">Category limits</h2>
+            </div>
             {availableCategories.length > 0 ? (
-              <Button type="button" variant="secondary" className="mt-4" onClick={openAddCategory}>
-                Add first limit
+              <Button type="button" variant="secondary" size="sm" onClick={openAddCategory}>
+                <PlusIcon />
+                Add category
               </Button>
             ) : null}
           </div>
-        ) : (
-          <div className="overflow-hidden rounded-[1.5rem] bg-surface shadow-[0_8px_28px_rgba(15,23,42,0.05)] ring-1 ring-subtle/70 dark:shadow-none">
-            <div className="divide-y divide-subtle">
-              {sortedCategoryBudgets.map((budget) => {
-                const category = categoryById.get(budget.categoryId);
-                if (!category) return null;
-                const spent = spentByCategory.get(category.id) ?? 0;
-                const percent = budget.amount > 0 ? clampPercent((spent / budget.amount) * 100) : 0;
-                const categoryRemaining = budget.amount - spent;
-                return (
-                  <button
-                    key={budget.id}
-                    type="button"
-                    onClick={() => openEditCategory(category.id, budget.amount)}
-                    className={cn(
-                      'w-full px-4 py-4 text-left transition-colors hover:bg-surface-muted sm:px-5',
-                      focusVisibleRing
-                    )}
-                  >
-                    <div className="flex items-start gap-3">
-                      <CategoryIcon icon={category.icon} color={category.color} className="h-10 w-10 rounded-2xl" />
-                      <div className="min-w-0 flex-1">
-                        <div className="flex items-start justify-between gap-3">
-                          <div className="min-w-0">
-                            <p className="truncate text-sm font-semibold text-primary">{category.name}</p>
-                            <p className="mt-0.5 text-xs font-medium text-muted">
-                              {formatMoney(spent, budgetCurrency)} of {formatMoney(budget.amount, budgetCurrency)}
-                            </p>
+
+          {allocationOverBudget ? (
+            <div className="mb-3 rounded-2xl bg-surface-muted px-4 py-3 text-sm font-medium text-secondary ring-1 ring-subtle/70">
+              Category limits add up to {formatMoney(allocatedTotal, budgetCurrency)}, which is above the available monthly budget.
+            </div>
+          ) : null}
+
+          {sortedCategoryBudgets.length === 0 ? (
+            <div className="rounded-[1.5rem] bg-surface px-5 py-8 text-center shadow-[0_8px_28px_rgba(15,23,42,0.05)] ring-1 ring-subtle/70 dark:shadow-none">
+              <div className="mx-auto grid h-11 w-11 place-items-center rounded-2xl bg-surface-muted text-accent">
+                <TargetIcon />
+              </div>
+              <p className="mt-3 text-sm font-semibold text-primary">No category limits yet.</p>
+              <p className="mx-auto mt-1 max-w-sm text-sm text-muted">
+                Add limits only to the categories you want to keep a closer eye on.
+              </p>
+              {availableCategories.length > 0 ? (
+                <Button type="button" variant="secondary" className="mt-4" onClick={openAddCategory}>
+                  Add first limit
+                </Button>
+              ) : null}
+            </div>
+          ) : (
+            <div className="overflow-hidden rounded-[1.5rem] bg-surface shadow-[0_8px_28px_rgba(15,23,42,0.05)] ring-1 ring-subtle/70 dark:shadow-none">
+              <div className="divide-y divide-subtle">
+                {sortedCategoryBudgets.map((budget) => {
+                  const category = categoryById.get(budget.categoryId);
+                  if (!category) return null;
+                  const spent = spentByCategory.get(category.id) ?? 0;
+                  const percent = budget.amount > 0 ? clampPercent((spent / budget.amount) * 100) : 0;
+                  const categoryRemaining = budget.amount - spent;
+                  return (
+                    <button
+                      key={budget.id}
+                      type="button"
+                      onClick={() => openEditCategory(category.id, budget.amount)}
+                      className={cn(
+                        'w-full px-4 py-4 text-left transition-colors hover:bg-surface-muted sm:px-5',
+                        focusVisibleRing
+                      )}
+                    >
+                      <div className="flex items-start gap-3">
+                        <CategoryIcon icon={category.icon} color={category.color} className="h-10 w-10 rounded-2xl" />
+                        <div className="min-w-0 flex-1">
+                          <div className="flex items-start justify-between gap-3">
+                            <div className="min-w-0">
+                              <p className="truncate text-sm font-semibold text-primary">{category.name}</p>
+                              <p className="mt-0.5 text-xs font-medium text-muted">
+                                {formatMoney(spent, budgetCurrency)} of {formatMoney(budget.amount, budgetCurrency)}
+                              </p>
+                            </div>
+                            <div className="shrink-0 text-right">
+                              <p className={cn('text-sm font-semibold tabular-nums', categoryRemaining < 0 ? 'text-danger' : 'text-primary')}>
+                                {categoryRemaining < 0
+                                  ? `${formatMoney(Math.abs(categoryRemaining), budgetCurrency)} over`
+                                  : `${formatMoney(categoryRemaining, budgetCurrency)} left`}
+                              </p>
+                              <span className="mt-0.5 inline-block text-xs font-medium text-muted">{Math.round(percent)}%</span>
+                            </div>
                           </div>
-                          <div className="shrink-0 text-right">
-                            <p className={cn('text-sm font-semibold tabular-nums', categoryRemaining < 0 ? 'text-danger' : 'text-primary')}>
-                              {categoryRemaining < 0
-                                ? `${formatMoney(Math.abs(categoryRemaining), budgetCurrency)} over`
-                                : `${formatMoney(categoryRemaining, budgetCurrency)} left`}
-                            </p>
-                            <span className="mt-0.5 inline-block text-xs font-medium text-muted">{Math.round(percent)}%</span>
+                          <div className="mt-3 h-1.5 overflow-hidden rounded-full bg-surface-muted">
+                            <div
+                              className={cn(
+                                'h-full rounded-full transition-[width] duration-300',
+                                spent > budget.amount ? 'bg-danger' : percent >= 80 ? 'bg-warning' : 'bg-accent'
+                              )}
+                              style={{ width: `${percent}%` }}
+                            />
                           </div>
-                        </div>
-                        <div className="mt-3 h-1.5 overflow-hidden rounded-full bg-surface-muted">
-                          <div
-                            className={cn(
-                              'h-full rounded-full transition-[width] duration-300',
-                              spent > budget.amount ? 'bg-danger' : percent >= 80 ? 'bg-warning' : 'bg-accent'
-                            )}
-                            style={{ width: `${percent}%` }}
-                          />
                         </div>
                       </div>
-                    </div>
-                  </button>
-                );
-              })}
+                    </button>
+                  );
+                })}
+              </div>
             </div>
-          </div>
-        )}
-      </section>
+          )}
+        </section>
+      </div>
 
       <AdaptiveSheet
         open={contextOpen}
@@ -591,6 +587,57 @@ export default function BudgetsWorkspace() {
           ) : null}
         </div>
       </AdaptiveSheet>
+    </div>
+  );
+}
+
+function BudgetsSkeleton() {
+  return (
+    <div className="space-y-5 sm:space-y-6" aria-busy="true" aria-label="Loading budgets">
+      <header className="flex items-start justify-between gap-3">
+        <div>
+          <p className="text-xs font-semibold uppercase tracking-[0.18em] text-muted">Plan</p>
+          <h1 className="mt-1.5 text-3xl font-semibold tracking-[-0.035em] text-primary">Budgets</h1>
+        </div>
+        <Skeleton className="h-11 w-36 rounded-xl sm:w-44" />
+      </header>
+
+      <div className="grid gap-5 sm:gap-6 lg:grid-cols-[minmax(0,5fr)_minmax(0,7fr)] lg:items-start lg:gap-7" data-layout="budgets-content">
+        <section className="min-h-[15.5rem] rounded-[1.75rem] bg-surface p-5 shadow-[0_12px_38px_rgba(15,23,42,0.05)] ring-1 ring-subtle/70 sm:p-6">
+          <div className="flex items-start justify-between gap-4">
+            <div className="min-w-0 flex-1">
+              <Skeleton className="h-3 w-24" />
+              <Skeleton className="mt-4 h-11 w-44 max-w-[72%] rounded-xl" />
+              <Skeleton className="mt-3 h-4 w-52 max-w-[75%]" />
+            </div>
+            <Skeleton className="h-11 w-24 rounded-xl" />
+          </div>
+          <Skeleton className="mt-7 h-2 w-full rounded-full" />
+          <div className="mt-6 grid grid-cols-2 gap-5 border-t border-subtle pt-4">
+            <div>
+              <Skeleton className="h-3 w-14" />
+              <Skeleton className="mt-2 h-6 w-24" />
+            </div>
+            <div>
+              <Skeleton className="h-3 w-14" />
+              <Skeleton className="mt-2 h-6 w-24" />
+            </div>
+          </div>
+        </section>
+
+        <section>
+          <div className="mb-3 flex items-center justify-between gap-3">
+            <div>
+              <Skeleton className="h-3 w-20" />
+              <Skeleton className="mt-2 h-6 w-32" />
+            </div>
+            <Skeleton className="h-11 w-32 rounded-xl" />
+          </div>
+          <div className="overflow-hidden rounded-[1.5rem] bg-surface shadow-[0_8px_28px_rgba(15,23,42,0.05)] ring-1 ring-subtle/70">
+            <SkeletonListRows count={4} />
+          </div>
+        </section>
+      </div>
     </div>
   );
 }

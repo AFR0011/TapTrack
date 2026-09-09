@@ -20,7 +20,7 @@ import {
 } from '@/reports/historicalReportRates';
 import { AnimatedNumber } from '@/components/ui/AnimatedNumber';
 import { ProgressBar } from '@/components/ui/ProgressBar';
-import { SkeletonCard, SkeletonMetric } from '@/components/ui/Skeleton';
+import { Skeleton, SkeletonListRows } from '@/components/ui/Skeleton';
 import RecentTransactions from '@/components/RecentTransactions';
 import { cn, focusVisibleRing } from '@/lib/cn';
 import type { Category, Currency, Transaction } from '@/types';
@@ -53,7 +53,7 @@ export default function DashboardSummary() {
   );
   const [rates, setRates] = useState<HistoricalReportRateMap>({});
   const [balanceRates, setBalanceRates] = useState<BalanceRateMap>({});
-  const [ratesLoading, setRatesLoading] = useState(false);
+  const [ratesLoading, setRatesLoading] = useState(true);
   const [rateError, setRateError] = useState(false);
   const [analyticsTab, setAnalyticsTab] = useState<AnalyticsTab>('spending');
 
@@ -120,16 +120,7 @@ export default function DashboardSummary() {
   }, [activeBalances, balances, dashboardTransactions, defaultCurrency, settings, today, transactions]);
 
   if (!balances || !transactions || !categories || !settings || monthlyBudget === undefined) {
-    return (
-      <section className="space-y-4" aria-busy="true" aria-label="Loading dashboard">
-        <SkeletonCard />
-        <SkeletonCard />
-        <div className="grid grid-cols-2 gap-3">
-          <SkeletonMetric />
-          <SkeletonMetric />
-        </div>
-      </section>
-    );
+    return <DashboardSkeleton />;
   }
 
   const convert = (transaction: Transaction) =>
@@ -193,223 +184,319 @@ export default function DashboardSummary() {
   };
 
   return (
-    <section className="space-y-6">
-      <Link
-        href="/app/balances"
-        prefetch={false}
-        className={cn(
-          'group relative block overflow-hidden rounded-[1.75rem] bg-gradient-to-br from-slate-950 via-blue-950 to-indigo-900 p-5 text-white shadow-[0_20px_55px_rgba(30,64,175,0.22)] md:p-6',
-          focusVisibleRing
-        )}
-      >
-        <div className="pointer-events-none absolute -right-16 -top-16 h-44 w-44 rounded-full bg-blue-400/20 blur-3xl" />
-        <div className="pointer-events-none absolute -bottom-24 left-1/4 h-48 w-48 rounded-full bg-indigo-300/10 blur-3xl" />
+    <section
+      data-layout="dashboard-summary"
+      className="grid gap-6 lg:grid-cols-[minmax(0,3fr)_minmax(20rem,2fr)] lg:items-start lg:gap-7"
+    >
+      <div className="space-y-6" data-dashboard-column="primary">
+        <Link
+          href="/app/balances"
+          prefetch={false}
+          className={cn(
+            'group relative block overflow-hidden rounded-[1.75rem] bg-gradient-to-br from-slate-950 via-blue-950 to-indigo-900 p-5 text-white shadow-[0_20px_55px_rgba(30,64,175,0.22)] md:p-6',
+            focusVisibleRing
+          )}
+        >
+          <div className="pointer-events-none absolute -right-16 -top-16 h-44 w-44 rounded-full bg-blue-400/20 blur-3xl" />
+          <div className="pointer-events-none absolute -bottom-24 left-1/4 h-48 w-48 rounded-full bg-indigo-300/10 blur-3xl" />
 
-        <div className="relative">
-          <div className="flex items-start justify-between gap-4">
-            <div className="min-w-0">
-              <p className="text-xs font-semibold uppercase tracking-[0.18em] text-blue-200/80">Available</p>
-              <p className="mt-2 text-4xl font-semibold tracking-[-0.04em] tabular-nums sm:text-5xl">
-                {ratesLoading ? '…' : (
-                  <AnimatedNumber value={totalBalance} format={(amount) => formatCurrency(amount, defaultCurrency)} />
-                )}
-              </p>
-              <p
-                className={cn(
-                  'mt-2 text-sm font-semibold tabular-nums',
-                  monthNet > 0
-                    ? 'text-emerald-300'
-                    : monthNet < 0
-                      ? 'text-rose-300'
-                      : 'text-blue-100/70'
-                )}
-              >
-                {ratesLoading
-                  ? '…'
-                  : monthNet === 0
-                    ? 'No net change this month'
-                    : `${monthNet > 0 ? '↑' : '↓'} ${formatCurrency(Math.abs(monthNet), defaultCurrency)} this month`}
-              </p>
+          <div className="relative">
+            <div className="flex items-start justify-between gap-4">
+              <div className="min-w-0">
+                <p className="text-xs font-semibold uppercase tracking-[0.18em] text-blue-200/80">Available</p>
+                <p className="mt-2 text-4xl font-semibold tracking-[-0.04em] tabular-nums sm:text-5xl">
+                  {ratesLoading ? '…' : (
+                    <AnimatedNumber value={totalBalance} format={(amount) => formatCurrency(amount, defaultCurrency)} />
+                  )}
+                </p>
+                <p
+                  className={cn(
+                    'mt-2 text-sm font-semibold tabular-nums',
+                    monthNet > 0
+                      ? 'text-emerald-300'
+                      : monthNet < 0
+                        ? 'text-rose-300'
+                        : 'text-blue-100/70'
+                  )}
+                >
+                  {ratesLoading
+                    ? '…'
+                    : monthNet === 0
+                      ? 'No net change this month'
+                      : `${monthNet > 0 ? '↑' : '↓'} ${formatCurrency(Math.abs(monthNet), defaultCurrency)} this month`}
+                </p>
+              </div>
+              <span className="grid h-10 w-10 shrink-0 place-items-center rounded-2xl bg-white/10 text-blue-100 ring-1 ring-white/10 transition-colors group-hover:bg-white/15" aria-hidden="true">
+                ↗
+              </span>
             </div>
-            <span className="grid h-10 w-10 shrink-0 place-items-center rounded-2xl bg-white/10 text-blue-100 ring-1 ring-white/10 transition-colors group-hover:bg-white/15" aria-hidden="true">
-              ↗
-            </span>
+
+            <div className="mt-5 grid grid-cols-2 gap-3 border-t border-white/10 pt-4">
+              <HeroMetric
+                label="Income"
+                value={monthIncome}
+                currency={defaultCurrency}
+                tone="good"
+                loading={ratesLoading}
+              />
+              <HeroMetric
+                label="Spent"
+                value={monthExpenses}
+                currency={defaultCurrency}
+                tone="neutral"
+                loading={ratesLoading}
+              />
+            </div>
           </div>
+        </Link>
 
-          <div className="mt-5 grid grid-cols-2 gap-3 border-t border-white/10 pt-4">
-            <HeroMetric
-              label="Income"
-              value={monthIncome}
-              currency={defaultCurrency}
-              tone="good"
-              loading={ratesLoading}
-            />
-            <HeroMetric
-              label="Spent"
-              value={monthExpenses}
-              currency={defaultCurrency}
-              tone="neutral"
-              loading={ratesLoading}
-            />
-          </div>
-        </div>
-      </Link>
+        {rateError ? (
+          <p className="rounded-2xl bg-surface-muted px-4 py-3 text-xs font-medium text-muted">
+            Some active currency balances could not be included in the total right now.
+          </p>
+        ) : null}
 
-      {rateError ? (
-        <p className="rounded-2xl bg-surface-muted px-4 py-3 text-xs font-medium text-muted">
-          Some active currency balances could not be included in the total right now.
-        </p>
-      ) : null}
+        <RecentTransactions />
+      </div>
 
-      <RecentTransactions />
-
-      <section>
-        <div className="mb-3 flex items-center justify-between">
-          <div>
-            <p className="text-xs font-semibold uppercase tracking-[0.16em] text-muted">Accounts</p>
-            <h2 className="mt-1 text-lg font-semibold tracking-tight text-primary">Balances</h2>
-          </div>
-          <Link
-            href="/app/balances"
-            prefetch={false}
-            className={cn(
-              'inline-flex min-h-11 items-center gap-1.5 rounded-xl bg-surface px-3.5 text-sm font-semibold text-secondary shadow-sm ring-1 ring-subtle transition-colors hover:bg-surface-muted hover:text-primary',
-              focusVisibleRing
-            )}
-          >
-            View all <span aria-hidden="true">→</span>
-          </Link>
-        </div>
-
-        <div className="-mx-4 flex snap-x gap-3 overflow-x-auto px-4 py-1 [scrollbar-width:none] [&::-webkit-scrollbar]:hidden sm:mx-0 sm:grid sm:grid-cols-3 sm:px-0">
-          {balanceSummaries.map((balance) => (
+      <div className="space-y-6" data-dashboard-column="secondary">
+        <section>
+          <div className="mb-3 flex items-center justify-between">
+            <div>
+              <p className="text-xs font-semibold uppercase tracking-[0.16em] text-muted">Accounts</p>
+              <h2 className="mt-1 text-lg font-semibold tracking-tight text-primary">Balances</h2>
+            </div>
             <Link
-              key={balance.currency}
               href="/app/balances"
               prefetch={false}
               className={cn(
-                'min-w-[9.75rem] snap-start rounded-[1.35rem] bg-surface px-4 py-3.5 shadow-[0_6px_22px_rgba(15,23,42,0.05)] ring-1 ring-subtle/70 dark:shadow-none sm:min-w-0',
+                'inline-flex min-h-11 items-center gap-1.5 rounded-xl bg-surface px-3.5 text-sm font-semibold text-secondary shadow-sm ring-1 ring-subtle transition-colors hover:bg-surface-muted hover:text-primary',
                 focusVisibleRing
               )}
             >
-              <p className="text-xs font-semibold uppercase tracking-[0.14em] text-muted">{balance.currency}</p>
-              <p className="mt-2 truncate text-lg font-semibold tracking-tight tabular-nums text-primary">
-                <AnimatedNumber value={balance.amount} format={(value) => formatCurrency(value, balance.currency)} />
-              </p>
+              View all <span aria-hidden="true">→</span>
             </Link>
-          ))}
-        </div>
-      </section>
-
-      <section>
-        <div className="mb-3 flex items-end justify-between gap-3">
-          <div>
-            <p className="text-xs font-semibold uppercase tracking-[0.16em] text-muted">This month</p>
-            <h2 className="mt-1 text-lg font-semibold tracking-tight text-primary">Insights</h2>
           </div>
-          <Link
-            href="/app/reports"
-            prefetch={false}
-            className={cn(
-              'inline-flex min-h-11 items-center gap-1.5 rounded-xl bg-surface px-3.5 text-sm font-semibold text-secondary shadow-sm ring-1 ring-subtle transition-colors hover:bg-surface-muted hover:text-primary',
-              focusVisibleRing
-            )}
-          >
-            Reports <span aria-hidden="true">→</span>
-          </Link>
-        </div>
 
-        <div className="overflow-hidden rounded-[1.55rem] bg-surface shadow-[0_8px_28px_rgba(15,23,42,0.06)] ring-1 ring-subtle/70 dark:shadow-none">
-          <div className="p-3 pb-0">
-            <div className="grid grid-cols-3 rounded-2xl bg-surface-muted p-1" role="tablist" aria-label="Dashboard insights">
-              {ANALYTICS_TABS.map((tab) => (
-                <button
-                  key={tab.id}
-                  type="button"
-                  role="tab"
-                  id={`dashboard-tab-${tab.id}`}
-                  aria-selected={analyticsTab === tab.id}
-                  aria-controls={`dashboard-panel-${tab.id}`}
-                  onClick={() => setAnalyticsTab(tab.id)}
-                  onKeyDown={(event) => {
-                    if (event.key === 'ArrowLeft') {
-                      event.preventDefault();
-                      moveAnalytics(-1);
-                    }
-                    if (event.key === 'ArrowRight') {
-                      event.preventDefault();
-                      moveAnalytics(1);
-                    }
+          <div className="-mx-4 flex snap-x gap-3 overflow-x-auto px-4 py-1 [scrollbar-width:none] [&::-webkit-scrollbar]:hidden sm:mx-0 sm:grid sm:grid-cols-3 sm:px-0 lg:block lg:overflow-hidden lg:rounded-[1.5rem] lg:bg-surface lg:p-0 lg:shadow-[0_8px_28px_rgba(15,23,42,0.05)] lg:ring-1 lg:ring-subtle/70 dark:lg:shadow-none">
+            {balanceSummaries.map((balance) => (
+              <Link
+                key={balance.currency}
+                href="/app/balances"
+                prefetch={false}
+                className={cn(
+                  'min-w-[9.75rem] snap-start rounded-[1.35rem] bg-surface px-4 py-3.5 shadow-[0_6px_22px_rgba(15,23,42,0.05)] ring-1 ring-subtle/70 dark:shadow-none sm:min-w-0 lg:flex lg:items-center lg:justify-between lg:gap-4 lg:rounded-none lg:border-b lg:border-subtle lg:px-4 lg:py-4 lg:shadow-none lg:ring-0 lg:last:border-b-0',
+                  focusVisibleRing
+                )}
+              >
+                <p className="text-xs font-semibold uppercase tracking-[0.14em] text-muted">{balance.currency}</p>
+                <p className="mt-2 truncate text-lg font-semibold tracking-tight tabular-nums text-primary lg:mt-0">
+                  <AnimatedNumber value={balance.amount} format={(value) => formatCurrency(value, balance.currency)} />
+                </p>
+              </Link>
+            ))}
+          </div>
+        </section>
+
+        <section>
+          <div className="mb-3 flex items-end justify-between gap-3">
+            <div>
+              <p className="text-xs font-semibold uppercase tracking-[0.16em] text-muted">This month</p>
+              <h2 className="mt-1 text-lg font-semibold tracking-tight text-primary">Insights</h2>
+            </div>
+            <Link
+              href="/app/reports"
+              prefetch={false}
+              className={cn(
+                'inline-flex min-h-11 items-center gap-1.5 rounded-xl bg-surface px-3.5 text-sm font-semibold text-secondary shadow-sm ring-1 ring-subtle transition-colors hover:bg-surface-muted hover:text-primary',
+                focusVisibleRing
+              )}
+            >
+              Reports <span aria-hidden="true">→</span>
+            </Link>
+          </div>
+
+          <div className="overflow-hidden rounded-[1.55rem] bg-surface shadow-[0_8px_28px_rgba(15,23,42,0.06)] ring-1 ring-subtle/70 dark:shadow-none">
+            <div className="p-3 pb-0">
+              <div className="grid grid-cols-3 rounded-2xl bg-surface-muted p-1" role="tablist" aria-label="Dashboard insights">
+                {ANALYTICS_TABS.map((tab) => (
+                  <button
+                    key={tab.id}
+                    type="button"
+                    role="tab"
+                    id={`dashboard-tab-${tab.id}`}
+                    aria-selected={analyticsTab === tab.id}
+                    aria-controls={`dashboard-panel-${tab.id}`}
+                    onClick={() => setAnalyticsTab(tab.id)}
+                    onKeyDown={(event) => {
+                      if (event.key === 'ArrowLeft') {
+                        event.preventDefault();
+                        moveAnalytics(-1);
+                      }
+                      if (event.key === 'ArrowRight') {
+                        event.preventDefault();
+                        moveAnalytics(1);
+                      }
+                    }}
+                    className={cn(
+                      'min-h-11 rounded-xl px-2 text-sm font-semibold transition-colors',
+                      analyticsTab === tab.id
+                        ? 'bg-surface text-primary shadow-sm'
+                        : 'text-muted hover:text-secondary',
+                      focusVisibleRing
+                    )}
+                  >
+                    {tab.label}
+                  </button>
+                ))}
+              </div>
+            </div>
+
+            <div className="relative min-h-[13.5rem] overflow-hidden px-4 pb-4 pt-3 md:px-5 md:pb-5">
+              <AnimatePresence mode="wait" initial={false}>
+                <motion.div
+                  key={analyticsTab}
+                  role="tabpanel"
+                  id={`dashboard-panel-${analyticsTab}`}
+                  aria-labelledby={`dashboard-tab-${analyticsTab}`}
+                  drag="x"
+                  dragConstraints={{ left: 0, right: 0 }}
+                  dragElastic={0.12}
+                  dragMomentum={false}
+                  onDragEnd={(_, info) => {
+                    if (info.offset.x <= -55) moveAnalytics(1);
+                    if (info.offset.x >= 55) moveAnalytics(-1);
                   }}
-                  className={cn(
-                    'min-h-11 rounded-xl px-2 text-sm font-semibold transition-colors',
-                    analyticsTab === tab.id
-                      ? 'bg-surface text-primary shadow-sm'
-                      : 'text-muted hover:text-secondary',
-                    focusVisibleRing
-                  )}
+                  initial={reduceMotion ? false : { opacity: 0, y: 5 }}
+                  animate={{ opacity: 1, y: 0 }}
+                  exit={reduceMotion ? { opacity: 0 } : { opacity: 0, y: -5 }}
+                  transition={reduceMotion ? { duration: 0 } : { duration: 0.18, ease: 'easeOut' }}
+                  style={{ touchAction: 'pan-y' }}
                 >
-                  {tab.label}
-                </button>
-              ))}
+                  {analyticsTab === 'spending' ? (
+                    <SpendingPanel
+                      monthExpenses={monthExpenses}
+                      monthIncome={monthIncome}
+                      monthNet={monthNet}
+                      currency={defaultCurrency}
+                      loading={ratesLoading}
+                      trendData={trendData}
+                      trendTotal={trendTotal}
+                    />
+                  ) : null}
+
+                  {analyticsTab === 'budget' ? (
+                    <BudgetPanel
+                      budgetAvailable={budgetAvailable}
+                      budgetSpent={budgetSpent}
+                      budgetRemaining={budgetRemaining}
+                      budgetUsed={budgetUsed}
+                      currency={budgetCurrency}
+                    />
+                  ) : null}
+
+                  {analyticsTab === 'categories' ? (
+                    <CategoriesPanel
+                      topCategories={topCategories}
+                      total={topCategoryTotal}
+                      currency={defaultCurrency}
+                    />
+                  ) : null}
+                </motion.div>
+              </AnimatePresence>
             </div>
           </div>
+        </section>
+      </div>
+    </section>
+  );
+}
 
-          <div className="relative min-h-[13.5rem] overflow-hidden px-4 pb-4 pt-3 md:px-5 md:pb-5">
-            <AnimatePresence mode="wait" initial={false}>
-              <motion.div
-                key={analyticsTab}
-                role="tabpanel"
-                id={`dashboard-panel-${analyticsTab}`}
-                aria-labelledby={`dashboard-tab-${analyticsTab}`}
-                drag="x"
-                dragConstraints={{ left: 0, right: 0 }}
-                dragElastic={0.12}
-                dragMomentum={false}
-                onDragEnd={(_, info) => {
-                  if (info.offset.x <= -55) moveAnalytics(1);
-                  if (info.offset.x >= 55) moveAnalytics(-1);
-                }}
-                initial={reduceMotion ? false : { opacity: 0, y: 5 }}
-                animate={{ opacity: 1, y: 0 }}
-                exit={reduceMotion ? { opacity: 0 } : { opacity: 0, y: -5 }}
-                transition={reduceMotion ? { duration: 0 } : { duration: 0.18, ease: 'easeOut' }}
-                style={{ touchAction: 'pan-y' }}
-              >
-                {analyticsTab === 'spending' ? (
-                  <SpendingPanel
-                    monthExpenses={monthExpenses}
-                    monthIncome={monthIncome}
-                    monthNet={monthNet}
-                    currency={defaultCurrency}
-                    loading={ratesLoading}
-                    trendData={trendData}
-                    trendTotal={trendTotal}
-                  />
-                ) : null}
-
-                {analyticsTab === 'budget' ? (
-                  <BudgetPanel
-                    budgetAvailable={budgetAvailable}
-                    budgetSpent={budgetSpent}
-                    budgetRemaining={budgetRemaining}
-                    budgetUsed={budgetUsed}
-                    currency={budgetCurrency}
-                  />
-                ) : null}
-
-                {analyticsTab === 'categories' ? (
-                  <CategoriesPanel
-                    topCategories={topCategories}
-                    total={topCategoryTotal}
-                    currency={defaultCurrency}
-                  />
-                ) : null}
-              </motion.div>
-            </AnimatePresence>
+function DashboardSkeleton() {
+  return (
+    <section
+      className="grid gap-6 lg:grid-cols-[minmax(0,3fr)_minmax(20rem,2fr)] lg:items-start lg:gap-7"
+      aria-busy="true"
+      aria-label="Loading dashboard"
+      data-layout="dashboard-summary"
+    >
+      <div className="space-y-6" data-dashboard-column="primary">
+        <div className="min-h-[14.25rem] rounded-[1.75rem] bg-surface p-5 shadow-[0_12px_38px_rgba(15,23,42,0.05)] ring-1 ring-subtle/70 sm:p-6">
+          <div className="flex items-start justify-between gap-4">
+            <div className="min-w-0 flex-1">
+              <Skeleton className="h-3 w-20" />
+              <Skeleton className="mt-4 h-11 w-48 max-w-[72%] rounded-xl" />
+              <Skeleton className="mt-3 h-4 w-40 max-w-[62%]" />
+            </div>
+            <Skeleton className="h-10 w-10 rounded-2xl" />
+          </div>
+          <div className="mt-7 grid grid-cols-2 gap-5 border-t border-subtle pt-4">
+            <div>
+              <Skeleton className="h-3 w-14" />
+              <Skeleton className="mt-2 h-6 w-24" />
+            </div>
+            <div>
+              <Skeleton className="h-3 w-14" />
+              <Skeleton className="mt-2 h-6 w-24" />
+            </div>
           </div>
         </div>
-      </section>
+
+        <section>
+          <div className="mb-3 flex items-end justify-between gap-3">
+            <div>
+              <Skeleton className="h-3 w-16" />
+              <Skeleton className="mt-2 h-6 w-36" />
+            </div>
+            <Skeleton className="h-11 w-24 rounded-xl" />
+          </div>
+          <div className="overflow-hidden rounded-[1.5rem] bg-surface shadow-[0_8px_28px_rgba(15,23,42,0.05)] ring-1 ring-subtle/70">
+            <SkeletonListRows count={4} />
+          </div>
+        </section>
+      </div>
+
+      <div className="space-y-6" data-dashboard-column="secondary">
+        <section>
+          <div className="mb-3 flex items-center justify-between gap-3">
+            <div>
+              <Skeleton className="h-3 w-16" />
+              <Skeleton className="mt-2 h-6 w-24" />
+            </div>
+            <Skeleton className="h-11 w-24 rounded-xl" />
+          </div>
+          <div className="overflow-hidden rounded-[1.5rem] bg-surface ring-1 ring-subtle/70">
+            <SkeletonListRows count={3} />
+          </div>
+        </section>
+
+        <section>
+          <div className="mb-3 flex items-center justify-between gap-3">
+            <div>
+              <Skeleton className="h-3 w-20" />
+              <Skeleton className="mt-2 h-6 w-20" />
+            </div>
+            <Skeleton className="h-11 w-24 rounded-xl" />
+          </div>
+          <div className="rounded-[1.55rem] bg-surface p-3 shadow-[0_8px_28px_rgba(15,23,42,0.05)] ring-1 ring-subtle/70">
+            <div className="grid grid-cols-3 gap-1 rounded-2xl bg-surface-muted p-1">
+              <Skeleton className="h-11 rounded-xl" />
+              <Skeleton className="h-11 rounded-xl" />
+              <Skeleton className="h-11 rounded-xl" />
+            </div>
+            <div className="px-1 pb-2 pt-5">
+              <div className="flex items-end justify-between gap-4">
+                <div>
+                  <Skeleton className="h-3 w-24" />
+                  <Skeleton className="mt-2 h-8 w-32" />
+                </div>
+                <Skeleton className="h-6 w-20" />
+              </div>
+              <Skeleton className="mt-5 h-24 w-full rounded-2xl" />
+            </div>
+          </div>
+        </section>
+      </div>
     </section>
   );
 }
