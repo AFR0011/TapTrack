@@ -108,7 +108,7 @@ describe('budgetService', () => {
       database
     );
 
-    const budget = await prepareMonthlyRollover('2026-05', 20000, 'TRY', database);
+    const budget = await prepareMonthlyRollover('2026-05', 20000, database);
 
     expect(calculateRollover(20000, 18000)).toBe(2000);
     expect(budget.rolloverFromPreviousMonth).toBe(2000);
