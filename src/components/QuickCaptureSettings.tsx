@@ -359,6 +359,7 @@ function ShortcutSetupSheet({
   const endpoint = typeof window === 'undefined' ? '/api/capture' : `${window.location.origin}/api/capture`;
   const shortcutName = shortcutType === 'expense' ? 'TapTrack Expense' : 'TapTrack Income';
   const verified = Boolean(session?.device.last_used_at);
+  const displayedCheckMessage = checkMessage || (verified ? 'Connected. TapTrack received a transaction from this shortcut.' : '');
 
   useEffect(() => {
     onCancelRef.current = onCancel;
@@ -396,10 +397,6 @@ function ShortcutSetupSheet({
       previousActive?.focus();
     };
   }, []);
-
-  useEffect(() => {
-    if (verified) setCheckMessage('Connected. TapTrack received a test transaction from this key.');
-  }, [verified]);
 
   const copyToken = async () => {
     if (!session) return;
@@ -547,9 +544,9 @@ function ShortcutSetupSheet({
             >
               Check connection
             </Button>
-            {checkMessage ? (
+            {displayedCheckMessage ? (
               <p className={`mt-2 text-xs font-semibold ${verified ? 'text-success' : 'text-muted'}`} role="status">
-                {checkMessage}
+                {displayedCheckMessage}
               </p>
             ) : null}
           </SetupStep>
