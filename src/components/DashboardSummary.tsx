@@ -207,12 +207,28 @@ export default function DashboardSummary() {
 
         <div className="relative">
           <div className="flex items-start justify-between gap-4">
-            <div>
+            <div className="min-w-0">
               <p className="text-xs font-semibold uppercase tracking-[0.18em] text-blue-200/80">Available</p>
               <p className="mt-2 text-4xl font-semibold tracking-[-0.04em] tabular-nums sm:text-5xl">
                 {ratesLoading ? '…' : (
                   <AnimatedNumber value={totalBalance} format={(amount) => formatCurrency(amount, defaultCurrency)} />
                 )}
+              </p>
+              <p
+                className={cn(
+                  'mt-2 text-sm font-semibold tabular-nums',
+                  monthNet > 0
+                    ? 'text-emerald-300'
+                    : monthNet < 0
+                      ? 'text-rose-300'
+                      : 'text-blue-100/70'
+                )}
+              >
+                {ratesLoading
+                  ? '…'
+                  : monthNet === 0
+                    ? 'No net change this month'
+                    : `${monthNet > 0 ? '↑' : '↓'} ${formatCurrency(Math.abs(monthNet), defaultCurrency)} this month`}
               </p>
             </div>
             <span className="grid h-10 w-10 shrink-0 place-items-center rounded-2xl bg-white/10 text-blue-100 ring-1 ring-white/10 transition-colors group-hover:bg-white/15" aria-hidden="true">
@@ -221,12 +237,18 @@ export default function DashboardSummary() {
           </div>
 
           <div className="mt-5 grid grid-cols-2 gap-3 border-t border-white/10 pt-4">
-            <HeroMetric label="Month net" value={monthNet} currency={defaultCurrency} tone={monthNet >= 0 ? 'good' : 'bad'} loading={ratesLoading} />
             <HeroMetric
-              label={budgetAvailable > 0 ? 'Budget left' : 'Month spent'}
-              value={budgetAvailable > 0 ? budgetRemaining : monthExpenses}
-              currency={budgetAvailable > 0 ? budgetCurrency : defaultCurrency}
-              tone={budgetAvailable > 0 && budgetRemaining < 0 ? 'bad' : 'neutral'}
+              label="Income"
+              value={monthIncome}
+              currency={defaultCurrency}
+              tone="good"
+              loading={ratesLoading}
+            />
+            <HeroMetric
+              label="Spent"
+              value={monthExpenses}
+              currency={defaultCurrency}
+              tone="neutral"
               loading={ratesLoading}
             />
           </div>
@@ -247,8 +269,15 @@ export default function DashboardSummary() {
             <p className="text-xs font-semibold uppercase tracking-[0.16em] text-muted">Accounts</p>
             <h2 className="mt-1 text-lg font-semibold tracking-tight text-primary">Balances</h2>
           </div>
-          <Link href="/app/balances" prefetch={false} className="text-sm font-semibold text-accent hover:underline">
-            View all
+          <Link
+            href="/app/balances"
+            prefetch={false}
+            className={cn(
+              'inline-flex min-h-11 items-center gap-1.5 rounded-xl bg-surface px-3.5 text-sm font-semibold text-secondary shadow-sm ring-1 ring-subtle transition-colors hover:bg-surface-muted hover:text-primary',
+              focusVisibleRing
+            )}
+          >
+            View all <span aria-hidden="true">→</span>
           </Link>
         </div>
 
@@ -278,8 +307,15 @@ export default function DashboardSummary() {
             <p className="text-xs font-semibold uppercase tracking-[0.16em] text-muted">This month</p>
             <h2 className="mt-1 text-lg font-semibold tracking-tight text-primary">Insights</h2>
           </div>
-          <Link href="/app/reports" prefetch={false} className="text-sm font-semibold text-accent hover:underline">
-            Reports
+          <Link
+            href="/app/reports"
+            prefetch={false}
+            className={cn(
+              'inline-flex min-h-11 items-center gap-1.5 rounded-xl bg-surface px-3.5 text-sm font-semibold text-secondary shadow-sm ring-1 ring-subtle transition-colors hover:bg-surface-muted hover:text-primary',
+              focusVisibleRing
+            )}
+          >
+            Reports <span aria-hidden="true">→</span>
           </Link>
         </div>
 

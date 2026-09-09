@@ -42,9 +42,12 @@ export default function RecentTransactions() {
         <Link
           href="/app/transactions"
           prefetch={false}
-          className={cn('text-sm font-semibold text-accent hover:underline', focusVisibleRing)}
+          className={cn(
+            'inline-flex min-h-11 items-center gap-1.5 rounded-xl bg-surface px-3.5 text-sm font-semibold text-secondary shadow-sm ring-1 ring-subtle transition-colors hover:bg-surface-muted hover:text-primary',
+            focusVisibleRing
+          )}
         >
-          View all
+          View all <span aria-hidden="true">→</span>
         </Link>
       </div>
 
