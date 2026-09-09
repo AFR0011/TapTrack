@@ -1,5 +1,5 @@
-import RouteLoadingFrame from '@/components/RouteLoadingFrame';
+import ConversionsLoadingFrame from '@/components/ConversionsLoadingFrame';
 
 export default function Loading() {
-  return <RouteLoadingFrame kind="conversions" />;
+  return <ConversionsLoadingFrame />;
 }

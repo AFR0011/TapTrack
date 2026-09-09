@@ -29,7 +29,7 @@ async function expectSideBySide(left: ReturnType<Page['locator']>, right: Return
   expect(Math.abs(rightBox.y - leftBox.y)).toBeLessThan(24);
 }
 
-test('desktop dashboard, transactions, budgets, reports, and balances use responsive compositions', async ({ page }) => {
+test('desktop dashboard, transactions, budgets, reports, balances, and transfers use responsive compositions', async ({ page }) => {
   await page.goto('/app');
   await completeFreshOnboarding(page);
 
@@ -71,7 +71,7 @@ test('desktop dashboard, transactions, budgets, reports, and balances use respon
   await assertNoHorizontalOverflow(page);
 
   await desktopNav.locator('summary').filter({ hasText: 'More' }).click();
-  const moreNavigation = desktopNav.getByRole('group', { name: 'More navigation' });
+  let moreNavigation = desktopNav.getByRole('group', { name: 'More navigation' });
   await expect(moreNavigation).toBeVisible();
   await moreNavigation.getByRole('link', { name: 'Balances', exact: true }).click();
   await expect(page.getByRole('heading', { name: 'Balances', exact: true })).toBeVisible();
@@ -93,5 +93,25 @@ test('desktop dashboard, transactions, budgets, reports, and balances use respon
   await expect(dialog.getByText('Current balance', { exact: true })).toBeVisible();
   await dialog.getByRole('button', { name: 'Close' }).click();
   await expect(dialog).toBeHidden();
+  await assertNoHorizontalOverflow(page);
+
+  await desktopNav.locator('summary').filter({ hasText: 'More' }).click();
+  moreNavigation = desktopNav.getByRole('group', { name: 'More navigation' });
+  await expect(moreNavigation).toBeVisible();
+  await moreNavigation.getByRole('link', { name: 'Transfers', exact: true }).click();
+  await expect(page.getByRole('heading', { name: 'Transfers & exchanges', exact: true })).toBeVisible();
+
+  const conversionsMainBox = await main.boundingBox();
+  expect(conversionsMainBox?.width ?? 0).toBeGreaterThan(1000);
+  const conversionsLayout = page.locator('[data-layout="conversions-workspace"]');
+  await expect(conversionsLayout).toBeVisible();
+  await expectSideBySide(
+    conversionsLayout.locator('[data-conversions-column="editor"]'),
+    conversionsLayout.locator('[data-conversions-column="preview"]')
+  );
+  const moveType = page.getByRole('group', { name: 'Move type' });
+  await expect(moveType.getByRole('button', { name: 'Transfer', exact: true })).toHaveAttribute('aria-pressed', 'true');
+  await expect(page.locator('[data-move-source]')).toBeVisible();
+  await expect(page.locator('[data-move-destination]')).toBeVisible();
   await assertNoHorizontalOverflow(page);
 });
