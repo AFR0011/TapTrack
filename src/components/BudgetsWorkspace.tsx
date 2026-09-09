@@ -18,7 +18,7 @@ import {
   upsertMonthlyBudget,
 } from '@/budgets/budgetService';
 import { cn, focusVisibleRing } from '@/lib/cn';
-import type { Category, Currency } from '@/types';
+import type { Currency } from '@/types';
 
 export default function BudgetsWorkspace() {
   const [month, setMonth] = useState(getCurrentMonth());

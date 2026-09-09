@@ -16,7 +16,7 @@ import {
   type LedgerLinkPlan,
 } from '@/sync/syncBinding';
 import { pullUpdates, pushLocalChanges, pushRecord } from '@/sync/syncService';
-import type { Category, DeviceMetadata } from '@/types';
+import type { DeviceMetadata } from '@/types';
 
 type CanonicalTableName =
   | 'transactions'

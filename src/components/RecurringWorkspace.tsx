@@ -91,7 +91,6 @@ export default function RecurringWorkspace() {
   const [busyRuleId, setBusyRuleId] = useState<string | null>(null);
   const [confirmDelete, setConfirmDelete] = useState<RecurringTransaction | null>(null);
 
-  const today = formatLocalDate(new Date());
   const categoryById = useMemo(
     () => new Map((categories ?? []).map((category) => [category.id, category])),
     [categories]
