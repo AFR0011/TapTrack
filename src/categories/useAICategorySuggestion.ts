@@ -7,7 +7,7 @@ import {
 } from '@/categories/categorySuggestion';
 import type { Category, TransactionType } from '@/types';
 
-type SuggestionSnapshot = AICategorySuggestionResult & {
+type SuggestionSnapshot = Omit<AICategorySuggestionResult, 'status'> & {
   key: string;
   status: AICategorySuggestionResult['status'] | 'loading';
 };
