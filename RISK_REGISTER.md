@@ -3,37 +3,36 @@
 Workflow schema: `agentic-workflow/v2`
 Project: TapTrack
 Repository profile: software
-Initialized: 2026-09-05
-Last reconciled: 2026-09-08
+Last reconciled: 2026-09-10
+Promotion PR: #15
 
 ## Active and residual risks
 
 | ID | Severity | Status | Risk and current evidence | Required control |
 | --- | --- | --- | --- | --- |
-| TT-R01 | Critical | Mitigated — production | Cloud access requires explicit device binding and exact user match; explicit disconnect removes binding and pending outbox while preserving local canonical data. | Retain mismatch/disconnect/relink tests and production monitoring. |
-| TT-R02 | Critical | Mitigated with residual | Local finance routes remain usable without authentication/network after a warmed shell; Chromium offline-mobile CI passes at 320x720 and 390x844. | Do not claim native installed Safari/iOS relaunch, upgrade, or storage-eviction safety until separately verified. |
-| TT-R03 | Critical | Mitigated with residual | Telegram fails closed on incomplete configuration, validates the webhook secret, permits only the configured owner private chat, and writes through an atomic/idempotent server-side RPC keyed by Telegram `update_id`. | Keep private-owner-only policy unless shared/group semantics are explicitly designed and tested. |
-| TT-R04 | High | Mitigated with residual | Historical path rewrite changed commit IDs and earlier history handling was reviewed only through reachable GitHub/API evidence, not a complete local all-object secret scan. | Complete a full mirror/object-database secret scan before claiming exhaustive historical cleanliness. |
-| TT-R05 | High | Mitigated — production | B002 application and required Supabase migrations are live; production sync was smoke-tested after server credential configuration. | Monitor provider-backed paths for regressions. |
-| TT-R06 | High | Mitigated — production | Device-only restore/reset detaches locally; account-wide restore/reset uses authenticated generation-rotating replacement with a safety backup. | Retain destructive-action tests and require explicit scope confirmation in UI. |
-| TT-R07 | High | Mitigated | Telegram mutation uses one PostgreSQL operation with `update_id` idempotency. | Retain webhook and database rollback/idempotency tests. |
-| TT-R08 | High | Mitigated | Versioned restore validates full payload before mutation, creates a recoverable safety backup, excludes device/sync-derived state, and supports legacy checkpoint migration. | Retain validation/rollback tests. |
-| TT-R09 | High | Mitigated with residual | Local finance mutation + outbox intent are atomic; retry state is durable; pending local rows are protected from pull overwrite; ledger generation blocks stale pre-replacement writes. | Do not claim globally transactional cross-provider sync; retain convergence tests and operational monitoring. |
-| TT-R10 | High | Mitigated — production | Canonical schema, checkpoint backfill, restore generation, Telegram, quota, and protected-write migrations are applied. | Keep forward migration ordering documented and migrations tracked in Git. |
-| TT-R11 | Medium | Open hardening residual | JavaScript `number` remains the application money representation. | Consider integer-minor-unit/decimal representation in a future financial-hardening change. |
-| TT-R12 | Medium | Mitigated with residual | Service-worker registration is scoped to the authenticated application layout and warmed offline Chromium navigation/persistence passes. | Run explicit old-worker→new-worker and native Safari/iOS installed-PWA scenarios before platform-specific claims. |
-| TT-R13 | Medium | Mitigated | CI retains production build, route smoke, mobile layout/offline persistence, overflow, and page-error browser gates. | Keep browser gate mandatory for release branches. |
-| TT-R14 | Medium | Mitigated | Release/governance records now reflect production B002 rather than the old B001 baseline. | Keep state docs synchronized with future production changes. |
-| TT-R15 | High | Open residual | Empty-cloud linking rechecks remote emptiness immediately before binding, but binding and initial seed writes are still separate operations. | Future hardening should move claim + initialization into one server-authorized transactional primitive with concurrency tests. |
-| TT-R16 | High | Closed — production | Protected-write enforcement was applied only after compatible B002 production code was live and sync was smoke-tested. Canonical finance tables now expose owner SELECT only, while protected mutation RPCs remain service-role-only. | Preserve this server-mediated write boundary. |
-| TT-R17 | Low | Open project-level security setting | Supabase leaked-password protection is disabled. | Enable leaked-password protection if supported/desired for the current project plan. |
+| TT-R01 | Critical | Mitigated | Device/account sync requires explicit binding and exact owner match. Cloud adoption now validates first and commits local canonical replacement + derived rebuild + outbox reset + device binding atomically. | Retain adoption rollback, owner-mismatch, disconnect, and relink tests. |
+| TT-R02 | Critical | Mitigated with residual | Local finance routes and mutation survive warmed/fresh offline Chromium scenarios at 320px and 390px. | Do not claim native installed Safari/iOS relaunch, upgrade, or storage-eviction safety until separately verified. |
+| TT-R03 | Critical | Mitigated with residual | Telegram is private-owner-only, fail-closed, idempotent by update ID, and writes through protected server/database paths. | Retain owner/private-chat restrictions and provider-backed smoke testing. |
+| TT-R04 | High | Open residual | Historical rewrite/secret review has not included a complete local mirror/all-object/reflog scan. | Run a full object-database secret scan before claiming exhaustive historical cleanliness. |
+| TT-R05 | High | Mitigated | Protected sync/restore/integration paths and server-mediated canonical write boundary remain the intended production architecture. | Verify production deployment and monitor provider-backed errors after promotion. |
+| TT-R06 | High | Mitigated | Restore/reset scopes remain explicit and generation-aware; destructive operations preserve safety backups where designed. | Retain restore/reset rollback and scope tests. |
+| TT-R07 | High | Mitigated | Recurring online startup now requires a successful pre-sync before due generation; deterministic IDs and same-date reconciliation ordering prevent duplicate/ambiguous replay. | Retain startup-sync, deterministic occurrence, and reconciliation-date tests. |
+| TT-R08 | High | Mitigated | Manual future-dated transaction/conversion writes are rejected and ledger balances remain derived from canonical checkpoints/activity. | Retain date-boundary and negative-balance tests. |
+| TT-R09 | High | Mitigated with residual | Local canonical mutation + outbox intent are atomic; cloud delivery remains cross-provider and therefore not globally transactional. | Keep durable retry, generation, and convergence tests; do not claim distributed transactions. |
+| TT-R10 | High | Mitigated | Historical FX fallback is constrained to the requested date or a prior cached/published observation; future observations cannot value earlier ledger dates. | Retain exact/prior/cache provenance tests. |
+| TT-R11 | Medium | Open residual | JavaScript `number` remains the application money representation. | Consider integer minor units or decimal arithmetic in a future financial-hardening migration. |
+| TT-R12 | Medium | Mitigated with residual | Service-worker/offline behavior is covered in Chromium, including fresh and warmed route navigation. | Run old-worker to new-worker and native Safari/iOS installed-PWA scenarios before platform-specific claims. |
+| TT-R13 | Medium | Mitigated | CI includes publication guard, dependency audits, lint, typecheck, 244-test unit suite at the verified candidate, production build, route smoke, and responsive/offline Playwright. | Require exact-head CI before promotion. |
+| TT-R14 | Medium | Mitigated | Dashboard budget selection follows default currency and stale FX maps are invalidated when reporting currency changes. | Retain dashboard finance selector tests. |
+| TT-R15 | High | Open residual | Empty-cloud inspection/binding is fail-closed, but claim + initial seed are still separate provider operations. | Move empty-cloud claim + initialization into one server-authorized transactional primitive with concurrency tests. |
+| TT-R16 | High | Mitigated | Reconciliation completeness is evaluated per active balance; balances introduced during a month are covered and archived currencies do not block completion. | Retain active/archived/mid-month reconciliation tests. |
+| TT-R17 | Low | Open project setting | Supabase leaked-password protection is outside repository code and remains a project-level setting. | Enable in Supabase if supported/desired for the deployed plan. |
+| TT-R18 | Medium | Open governance residual | `main` is currently unprotected. The connected GitHub App cannot change repository-administration settings. | Complete issue #14: require TapTrack CI, PR-only changes, no force pushes, and no branch deletion on `main`. |
+| TT-R19 | Medium | Mitigated | Ordinary transaction entry no longer rewrites the synchronized Settings record just to remember cash/card usage, reducing needless same-record conflicts. | Keep payment method as an explicit preference and avoid reintroducing write-on-every-transaction Settings updates. |
+| TT-R20 | Medium | Mitigated | PDF output now wraps and paginates report lines instead of relying on one overflowing page content stream. | Retain multi-page export regression coverage. |
 
-## Production release state
+## Promotion state
 
-TT-B002 is deployed to production. The implementation gate passed 32/32 Vitest files (172/172 tests), production build, 9/9 route smoke, and both offline-mobile Playwright projects. Production server configuration was corrected so protected sync/restore/AI/Telegram routes can use the Supabase server credential.
+PR #15 is the production promotion vehicle for the completed editorial sequence and this hardening set. The code candidate `0d03ca1da0888744c374689fcd8015d5d67e5b23` passed GitHub Actions run `34407468049` with 44/44 Vitest files, 244/244 tests, production build, 9/9 route smoke, and Playwright 9 passed / 2 intentionally skipped.
 
-After production smoke testing, `enforce_protected_sync_writes` was applied. Live policy inspection confirmed that authenticated browser users retain SELECT access to canonical finance tables but no direct INSERT/UPDATE/DELETE policies. Protected ledger RPCs remain `SECURITY DEFINER`, service-role executable, and unavailable to ordinary authenticated clients.
-
-The follow-up `optimize_rls_and_indexes` migration removed the RLS-initplan warnings and nine duplicate unique indexes. Remaining database advisor notices are four informational unused-index observations, which are not being removed without representative workload evidence.
-
-Native Safari/iOS behavior, the empty-cloud claim/seed TOCTOU, IndexedDB-at-rest exposure, JavaScript-number precision, and exhaustive all-object historical secret scanning remain explicit residuals.
+The final PR head includes lint-warning cleanup and release-record updates and must independently pass the full gate before merge. Production acceptance additionally requires a green exact `main` merge SHA and a READY Vercel production deployment.

@@ -5,7 +5,7 @@ import { getHistoricalReportRateKey, type HistoricalReportRateMap } from '@/repo
 import { createTransaction } from '@/transactions/createTransaction';
 import { seedOpeningBalance } from '@/test/ledgerTestUtils';
 import { exportCSV, exportJSON, exportPDF, importJSON } from './exportService';
-import type { TransactionDraft } from '@/types';
+import type { Transaction, TransactionDraft } from '@/types';
 
 let database: TapTrackDatabase;
 
@@ -75,6 +75,36 @@ describe('exportService', () => {
     expect(text).toContain('TapTrack Monthly Report');
     expect(text).toContain('coffee');
     expect(text).toContain('Food');
+    expect(text).toContain('Page 1 of 1');
+  });
+
+  it('paginates long PDF reports without clipping the last transaction', async () => {
+    const createdAt = '2026-05-01T12:00:00.000Z';
+    const transactions: Transaction[] = Array.from({ length: 96 }, (_, index) => ({
+      id: `pdf-row-${String(index + 1).padStart(3, '0')}`,
+      type: 'expense',
+      amount: index + 1,
+      currency: 'TRY',
+      title:
+        index === 95
+          ? 'FINAL-PDF-ROW that must remain visible after pagination and wrapping'
+          : `PDF row ${index + 1}`,
+      categoryId: 'cat-food',
+      method: 'card',
+      date: `2026-05-${String((index % 28) + 1).padStart(2, '0')}`,
+      createdAt,
+      updatedAt: createdAt,
+    }));
+    await database.transactions.bulkAdd(transactions);
+
+    const pdf = await exportPDF('2026-05', database);
+    const text = await pdf.text();
+    const pageCountMatch = text.match(/\/Type \/Pages \/Kids \[[^\]]+\] \/Count (\d+)/);
+
+    expect(Number(pageCountMatch?.[1] ?? 0)).toBeGreaterThan(1);
+    expect(text).toContain('FINAL-PDF-ROW');
+    expect(text).toMatch(/Page 1 of \d+/);
+    expect(text).toMatch(/Page \d+ of \d+/);
   });
 
   it('makes PDF totals follow the historical TRY report view', async () => {

@@ -69,25 +69,30 @@ export function findLatestCachedExchangeRate(
 ): HistoricalExchangeRateResponse | null {
   const candidates = entries
     .filter((entry) => isValidCachedExchangeRate(entry))
+    .filter((entry) => entry.dateUsed <= input.date)
     .filter(
       (entry) =>
         (entry.base === input.base && entry.quote === input.quote) ||
         (entry.base === input.quote && entry.quote === input.base)
     )
-    .sort((a, b) => b.fetchedAt.localeCompare(a.fetchedAt));
+    .sort((a, b) => {
+      const byDate = b.dateUsed.localeCompare(a.dateUsed);
+      return byDate !== 0 ? byDate : b.fetchedAt.localeCompare(a.fetchedAt);
+    });
 
   const latest = candidates[0];
   if (!latest) return null;
 
+  const status = latest.dateUsed === input.date ? 'historical' : 'prior-available';
   if (latest.base === input.base && latest.quote === input.quote) {
     return {
       base: input.base,
       quote: input.quote,
-      dateRequested: latest.dateRequested,
+      dateRequested: input.date,
       dateUsed: latest.dateUsed,
       rate: latest.rate,
       source: EXCHANGE_RATE_SOURCE,
-      status: latest.status,
+      status,
       cached: true,
       fetchedAt: latest.fetchedAt,
     };
@@ -96,11 +101,11 @@ export function findLatestCachedExchangeRate(
   return {
     base: input.base,
     quote: input.quote,
-    dateRequested: latest.dateRequested,
+    dateRequested: input.date,
     dateUsed: latest.dateUsed,
     rate: 1 / latest.rate,
     source: EXCHANGE_RATE_SOURCE,
-    status: latest.status,
+    status,
     cached: true,
     fetchedAt: latest.fetchedAt,
   };
@@ -110,7 +115,7 @@ function getCachedRateOrThrow(input: ExchangeRateRequest): HistoricalExchangeRat
   const cached = findLatestCachedExchangeRate(readCachedExchangeRates(), input);
   if (cached) return cached;
   throw new Error(
-    `No saved ${input.base} → ${input.quote} exchange rate is available yet. Connect once to fetch a rate.`
+    `No saved ${input.base} → ${input.quote} exchange rate is available on or before ${input.date}. Connect to fetch a suitable rate.`
   );
 }
 
@@ -123,6 +128,7 @@ function validateExchangeRateResponse(
     data.quote !== input.quote ||
     data.dateRequested !== input.date ||
     typeof data.dateUsed !== 'string' ||
+    data.dateUsed > input.date ||
     typeof data.rate !== 'number' ||
     !Number.isFinite(data.rate) ||
     data.rate <= 0 ||

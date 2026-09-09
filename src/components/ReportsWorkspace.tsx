@@ -1,23 +1,33 @@
 'use client';
 
+import Link from 'next/link';
 import { useEffect, useMemo, useState, type ReactNode } from 'react';
-import { useRouter } from 'next/navigation';
-import { Bar, BarChart, Line, LineChart, ResponsiveContainer, Tooltip, XAxis, YAxis } from 'recharts';
+import {
+  Area,
+  AreaChart,
+  Bar,
+  BarChart,
+  ResponsiveContainer,
+  Tooltip,
+  XAxis,
+  YAxis,
+} from 'recharts';
 import { useLiveQuery } from 'dexie-react-hooks';
 import { CategoryIcon } from '@/categories/categoryVisuals';
-import { Button } from '@/components/ui/Button';
+import ReportsLoadingFrame from '@/components/ReportsLoadingFrame';
+import { AdaptiveSheet } from '@/components/ui/AdaptiveSheet';
+import { Button, buttonVariants } from '@/components/ui/Button';
 import { EmptyState } from '@/components/ui/EmptyState';
 import { Field } from '@/components/ui/Field';
-import { PageHeader } from '@/components/ui/PageHeader';
 import { ProgressBar } from '@/components/ui/ProgressBar';
-import { SelectField } from '@/components/ui/SelectField';
-import { SkeletonCard, SkeletonMetric } from '@/components/ui/Skeleton';
-import { StatCard, StatRow } from '@/components/ui/StatRow';
+import { Skeleton } from '@/components/ui/Skeleton';
+import { StatRow } from '@/components/ui/StatRow';
 import { useActiveCurrencies } from '@/currencies/useActiveCurrencies';
+import { formatCurrency } from '@/currencies/currencyCatalog';
 import { db } from '@/database';
 import { getCurrentMonth, getPreviousMonth } from '@/dates';
 import { exportPDF, type ReportExportOptions } from '@/exports/exportService';
-import { clampPercent, formatMoney } from '@/format';
+import { clampPercent } from '@/format';
 import { cn, focusVisibleRing } from '@/lib/cn';
 import { downloadBlob } from '@/lib/download';
 import {
@@ -27,12 +37,19 @@ import {
 } from '@/reports/historicalReportRates';
 import { calculateIncomeVsExpense } from '@/reports/reportService';
 import { getBudgetPerformance } from '@/reports/reportTransforms';
-import type { Currency, Transaction } from '@/types';
+import type { Category, Currency, Transaction } from '@/types';
 
 type ReportMode = 'month' | 'range' | 'year';
 type ReportSection = 'overview' | 'spending' | 'budgets';
 type ComparisonRow = { label: string; income: number; expense: number };
-type SpendingRow = { date: string; amount: number };
+type SpendingRow = { date: string; label: string; amount: number };
+type CashFlowRow = { date: string; label: string; amount: number };
+
+const REPORT_TABS: Array<{ id: ReportSection; label: string }> = [
+  { id: 'overview', label: 'Overview' },
+  { id: 'spending', label: 'Spending' },
+  { id: 'budgets', label: 'Budgets' },
+];
 
 const TOOLTIP_PROPS = {
   contentStyle: { background: 'transparent', border: 'none', boxShadow: 'none', padding: 0 },
@@ -58,19 +75,19 @@ function totalsFor(
   conversionAvailable: boolean
 ) {
   if (!conversionAvailable) return calculateIncomeVsExpense(transactions, reportCurrency);
-  let income = 0;
-  let expense = 0;
-  for (const transaction of transactions) {
-    const amount = convertedAmount(transaction, reportCurrency, rates, true);
-    if (amount === null) continue;
-    if (transaction.type === 'income') income += amount;
-    else expense += amount;
-  }
-  return { income, expense, net: income - expense };
+  return transactions.reduce(
+    (totals, transaction) => {
+      const amount = convertedAmount(transaction, reportCurrency, rates, true);
+      if (amount === null) return totals;
+      return transaction.type === 'income'
+        ? { ...totals, income: totals.income + amount, net: totals.net + amount }
+        : { ...totals, expense: totals.expense + amount, net: totals.net - amount };
+    },
+    { income: 0, expense: 0, net: 0 }
+  );
 }
 
 export default function ReportsWorkspace() {
-  const router = useRouter();
   const currentMonth = getCurrentMonth();
   const { currencies, defaultCurrency, loading: currenciesLoading } = useActiveCurrencies();
   const [section, setSection] = useState<ReportSection>('overview');
@@ -85,6 +102,16 @@ export default function ReportsWorkspace() {
   const [rateError, setRateError] = useState('');
   const [exporting, setExporting] = useState(false);
   const [exportError, setExportError] = useState('');
+  const [contextOpen, setContextOpen] = useState(false);
+  const [actionsOpen, setActionsOpen] = useState(false);
+  const [showAllCategories, setShowAllCategories] = useState(false);
+
+  const [draftMode, setDraftMode] = useState<ReportMode>('month');
+  const [draftMonth, setDraftMonth] = useState(currentMonth);
+  const [draftRangeStart, setDraftRangeStart] = useState(`${currentMonth}-01`);
+  const [draftRangeEnd, setDraftRangeEnd] = useState(new Date().toISOString().slice(0, 10));
+  const [draftYear, setDraftYear] = useState(currentMonth.slice(0, 4));
+  const [draftCurrency, setDraftCurrency] = useState<Currency>('TRY');
 
   const reportCurrency =
     currencyChoice && currencies.includes(currencyChoice) ? currencyChoice : defaultCurrency;
@@ -181,6 +208,7 @@ export default function ReportsWorkspace() {
     () => totalsFor(previousTransactions, reportCurrency, rates, conversionAvailable),
     [conversionAvailable, previousTransactions, rates, reportCurrency]
   );
+
   const categoryData = useMemo(() => {
     const spending = new Map<string, number>();
     for (const transaction of activeTransactions) {
@@ -193,6 +221,7 @@ export default function ReportsWorkspace() {
       .map(([categoryId, amount]) => ({ categoryId, amount }))
       .sort((a, b) => b.amount - a.amount);
   }, [activeTransactions, conversionAvailable, rates, reportCurrency]);
+
   const spendingOverTime = useMemo<SpendingRow[]>(() => {
     const spending = new Map<string, number>();
     for (const transaction of activeTransactions) {
@@ -202,30 +231,41 @@ export default function ReportsWorkspace() {
       spending.set(transaction.date, (spending.get(transaction.date) ?? 0) + amount);
     }
     return [...spending.entries()]
-      .map(([date, amount]) => ({ date: mode === 'year' ? date.slice(5) : date, amount }))
+      .map(([date, amount]) => ({ date, label: date.slice(5), amount }))
       .sort((a, b) => a.date.localeCompare(b.date));
-  }, [activeTransactions, conversionAvailable, mode, rates, reportCurrency]);
-  const comparisonData = useMemo<ComparisonRow[]>(() => {
-    if (mode === 'month') {
-      return [
-        { label: getPreviousMonth(month), income: previousTotals.income, expense: previousTotals.expense },
-        { label: month, income: totals.income, expense: totals.expense },
-      ];
+  }, [activeTransactions, conversionAvailable, rates, reportCurrency]);
+
+  const cashFlowData = useMemo<CashFlowRow[]>(() => {
+    const daily = new Map<string, number>();
+    for (const transaction of activeTransactions) {
+      const amount = convertedAmount(transaction, reportCurrency, rates, conversionAvailable);
+      if (amount === null) continue;
+      const signed = transaction.type === 'income' ? amount : -amount;
+      daily.set(transaction.date, (daily.get(transaction.date) ?? 0) + signed);
     }
-    if (mode === 'year') {
-      return Array.from({ length: 12 }, (_, index) => {
-        const itemMonth = `${year}-${String(index + 1).padStart(2, '0')}`;
-        const itemTotals = totalsFor(
-          (transactions ?? []).filter((transaction) => transaction.date.startsWith(itemMonth)),
-          reportCurrency,
-          rates,
-          conversionAvailable
-        );
-        return { label: itemMonth.slice(5), income: itemTotals.income, expense: itemTotals.expense };
-      });
-    }
-    return [{ label: 'Selected range', income: totals.income, expense: totals.expense }];
-  }, [conversionAvailable, mode, month, previousTotals, rates, reportCurrency, totals, transactions, year]);
+    const dates = [...daily.keys()].sort((a, b) => a.localeCompare(b));
+    return dates.map((date, index) => ({
+      date,
+      label: date.slice(5),
+      amount: dates
+        .slice(0, index + 1)
+        .reduce((sum, itemDate) => sum + (daily.get(itemDate) ?? 0), 0),
+    }));
+  }, [activeTransactions, conversionAvailable, rates, reportCurrency]);
+
+  const yearComparisonData = useMemo<ComparisonRow[]>(() => {
+    if (mode !== 'year') return [];
+    return Array.from({ length: 12 }, (_, index) => {
+      const itemMonth = `${year}-${String(index + 1).padStart(2, '0')}`;
+      const itemTotals = totalsFor(
+        (transactions ?? []).filter((transaction) => transaction.date.startsWith(itemMonth)),
+        reportCurrency,
+        rates,
+        conversionAvailable
+      );
+      return { label: itemMonth.slice(5), income: itemTotals.income, expense: itemTotals.expense };
+    });
+  }, [conversionAvailable, mode, rates, reportCurrency, transactions, year]);
 
   const budgetPerformance = getBudgetPerformance(
     month,
@@ -237,13 +277,49 @@ export default function ReportsWorkspace() {
   const budgetPercent = budgetPerformance.available > 0
     ? clampPercent((budgetPerformance.totalSpent / budgetPerformance.available) * 100)
     : 0;
+
+  const periodLabel = getPeriodLabel(mode, month, rangeStart, rangeEnd, year);
+  const netDelta = mode === 'month' ? totals.net - previousTotals.net : 0;
+  const expenseDelta = mode === 'month' ? totals.expense - previousTotals.expense : 0;
   const largestCategory = categoryData[0];
+  const visibleCategories = showAllCategories ? categoryData : categoryData.slice(0, 5);
   const isLoading =
     transactions === undefined ||
     categories === undefined ||
     monthlyBudget === undefined ||
     categoryBudgets === undefined ||
     currenciesLoading;
+
+  const openContextSheet = () => {
+    setDraftMode(mode);
+    setDraftMonth(month);
+    setDraftRangeStart(rangeStart);
+    setDraftRangeEnd(rangeEnd);
+    setDraftYear(year);
+    setDraftCurrency(reportCurrency);
+    setContextOpen(true);
+  };
+
+  const applyContext = () => {
+    setMode(draftMode);
+    setMonth(draftMonth);
+    setYear(draftYear);
+    const [start, end] =
+      draftRangeStart <= draftRangeEnd
+        ? [draftRangeStart, draftRangeEnd]
+        : [draftRangeEnd, draftRangeStart];
+    setRangeStart(start);
+    setRangeEnd(end);
+    setCurrencyChoice(draftCurrency);
+    setContextOpen(false);
+  };
+
+  const contextValid =
+    draftMode === 'month'
+      ? /^\d{4}-\d{2}$/.test(draftMonth)
+      : draftMode === 'year'
+        ? /^\d{4}$/.test(draftYear)
+        : Boolean(draftRangeStart && draftRangeEnd);
 
   const handleExportPDF = async () => {
     setExporting(true);
@@ -259,6 +335,7 @@ export default function ReportsWorkspace() {
     try {
       const blob = await exportPDF(options);
       downloadBlob(`taptrack-${mode}-report.pdf`, blob);
+      setActionsOpen(false);
     } catch (error) {
       setExportError(error instanceof Error ? error.message : 'The PDF could not be created.');
     } finally {
@@ -266,205 +343,522 @@ export default function ReportsWorkspace() {
     }
   };
 
-  if (isLoading) {
-    return (
-      <div className="space-y-5" aria-busy="true" aria-label="Loading reports">
-        <PageHeader title="Reports" description="Income, spending, and budgets." />
-        <SkeletonCard />
-        <div className="grid gap-4 md:grid-cols-3"><SkeletonMetric /><SkeletonMetric /><SkeletonMetric /></div>
-      </div>
-    );
-  }
+  if (isLoading) return <ReportsLoadingFrame />;
 
   const yAxis = {
-    tick: { fill: 'var(--text-muted)', fontSize: 12 },
+    tick: { fill: 'var(--text-muted)', fontSize: 11 },
     tickLine: false,
     axisLine: false,
-    width: 64,
+    width: 60,
     tickFormatter: (value: number) => compactMoney(Number(value), reportCurrency),
   } as const;
 
   return (
-    <div className="space-y-5">
-      <PageHeader
-        title="Reports"
-        description="Income, spending, and budget performance in one chosen currency."
-        action={<Button type="button" variant="secondary" size="sm" onClick={() => void handleExportPDF()} loading={exporting} disabled={exporting || ratesLoading}>Export PDF</Button>}
-      />
-
-      <section className="rounded-2xl border border-subtle bg-surface p-4 sm:p-5" aria-label="Report context">
-        <div className="grid gap-3 md:grid-cols-[auto_minmax(0,1fr)_minmax(140px,180px)] md:items-end">
-          <div className="flex flex-wrap gap-2" aria-label="Report period type">
-            {(['month', 'range', 'year'] as const).map((value) => (
-              <Button key={value} type="button" variant={mode === value ? 'primary' : 'subtle'} size="sm" aria-pressed={mode === value} onClick={() => setMode(value)}>
-                {value === 'month' ? 'Month' : value === 'range' ? 'Range' : 'Year'}
-              </Button>
-            ))}
-          </div>
-          <div className="grid gap-3 sm:grid-cols-2">
-            {mode === 'month' ? <Field label="Month" type="month" value={month} onChange={(event) => setMonth(event.target.value)} /> : null}
-            {mode === 'range' ? <><Field label="Start" type="date" value={rangeStart} onChange={(event) => setRangeStart(event.target.value)} /><Field label="End" type="date" value={rangeEnd} onChange={(event) => setRangeEnd(event.target.value)} /></> : null}
-            {mode === 'year' ? <Field label="Year" type="number" value={year} onChange={(event) => setYear(event.target.value)} min="2000" max="2100" /> : null}
-          </div>
-          <SelectField label="Report currency" value={reportCurrency} onChange={(event) => setCurrencyChoice(event.target.value)} options={currencies.map((currency) => ({ value: currency, label: currency }))} />
+    <div className="space-y-5 sm:space-y-6">
+      <header className="flex items-start justify-between gap-3">
+        <div className="min-w-0">
+          <p className="text-xs font-semibold uppercase tracking-[0.18em] text-muted">Analysis</p>
+          <h1 className="mt-1 text-3xl font-semibold tracking-[-0.035em] text-primary sm:text-4xl">Reports</h1>
         </div>
-        <p className="mt-3 text-sm font-medium text-muted" role="status">
-          {ratesLoading
-            ? `Converting transactions into ${reportCurrency}…`
-            : rateError
-              ? rateError
-              : needsConversion
-                ? `Other currencies are converted into ${reportCurrency} using each transaction date.`
-                : `All transactions in this report are already in ${reportCurrency}.`}
-        </p>
-        {exportError ? <p className="mt-2 text-sm font-medium text-danger" role="alert">{exportError}</p> : null}
-      </section>
+        <div className="flex shrink-0 gap-2">
+          <Button
+            variant="secondary"
+            size="sm"
+            className="max-w-[11.5rem] rounded-xl px-3 sm:max-w-none"
+            onClick={openContextSheet}
+            aria-label={`Report period: ${periodLabel}. Change report period`}
+          >
+            <CalendarIcon />
+            <span className="truncate">{periodLabel}</span>
+            <span aria-hidden="true" className="text-muted">⌄</span>
+          </Button>
+          <Button
+            variant="secondary"
+            size="icon"
+            className="rounded-xl"
+            onClick={() => setActionsOpen(true)}
+            aria-label="Report actions"
+          >
+            <MoreIcon />
+          </Button>
+        </div>
+      </header>
 
-      <nav className="flex gap-1 overflow-x-auto rounded-xl border border-subtle bg-surface p-1" aria-label="Report sections">
-        {([['overview', 'Overview'], ['spending', 'Spending'], ['budgets', 'Budgets']] as const).map(([value, label]) => (
-          <button key={value} type="button" onClick={() => setSection(value)} aria-current={section === value ? 'page' : undefined} className={cn('min-h-11 min-w-28 flex-1 rounded-lg px-4 text-sm font-semibold transition-colors', section === value ? 'bg-action-primary text-white' : 'text-secondary hover:bg-surface-muted hover:text-primary', focusVisibleRing)}>{label}</button>
+      <div
+        data-layout="reports-summary"
+        className="grid min-w-0 gap-5 lg:grid-cols-[minmax(0,0.86fr)_minmax(0,1.4fr)] lg:items-stretch lg:gap-6"
+      >
+        <section className="relative min-w-0 overflow-hidden rounded-[1.75rem] bg-gradient-to-br from-slate-950 via-blue-950 to-indigo-900 p-5 text-white shadow-[0_20px_55px_rgba(30,64,175,0.2)] sm:p-6">
+          <div className="pointer-events-none absolute -right-12 -top-16 h-44 w-44 rounded-full bg-blue-400/20 blur-3xl" />
+          <div className="pointer-events-none absolute -bottom-24 left-1/4 h-48 w-48 rounded-full bg-indigo-300/10 blur-3xl" />
+          <div className="relative flex h-full min-h-[14rem] flex-col">
+            <p className="text-xs font-semibold uppercase tracking-[0.18em] text-blue-200/80">
+              {mode === 'month' ? 'Net this month' : mode === 'year' ? `Net in ${year}` : 'Net for range'}
+            </p>
+            <p className="mt-3 text-4xl font-semibold tracking-[-0.045em] tabular-nums sm:text-5xl">
+              {ratesLoading ? '…' : formatSignedCurrency(totals.net, reportCurrency)}
+            </p>
+            <p
+              className={cn(
+                'mt-2 text-sm font-semibold tabular-nums',
+                mode !== 'month' || netDelta === 0
+                  ? 'text-blue-100/70'
+                  : netDelta > 0
+                    ? 'text-emerald-300'
+                    : 'text-rose-300'
+              )}
+            >
+              {ratesLoading
+                ? 'Updating converted totals…'
+                : mode === 'month'
+                  ? netDelta === 0
+                    ? `No change vs ${formatMonthOnly(getPreviousMonth(month))}`
+                    : `${netDelta > 0 ? '↑' : '↓'} ${formatCurrency(Math.abs(netDelta), reportCurrency)} vs ${formatMonthOnly(getPreviousMonth(month))}`
+                  : periodLabel}
+            </p>
+
+            <div className="mt-auto grid grid-cols-2 gap-5 border-t border-white/10 pt-5">
+              <ReportHeroMetric label="Income" value={totals.income} currency={reportCurrency} loading={ratesLoading} tone="good" />
+              <ReportHeroMetric label="Expenses" value={totals.expense} currency={reportCurrency} loading={ratesLoading} tone="neutral" />
+            </div>
+          </div>
+        </section>
+
+        <section className="min-w-0 rounded-[1.75rem] bg-surface p-4 shadow-[0_10px_34px_rgba(15,23,42,0.06)] ring-1 ring-subtle/70 dark:shadow-none sm:p-5">
+          <div className="flex items-start justify-between gap-4">
+            <div>
+              <p className="text-xs font-semibold uppercase tracking-[0.16em] text-muted">Trend</p>
+              <h2 className="mt-1 text-lg font-semibold tracking-tight text-primary">
+                {mode === 'year' ? 'Income and expenses by month' : 'Net movement over time'}
+              </h2>
+            </div>
+            <span className="shrink-0 text-xs font-semibold text-muted">{reportCurrency}</span>
+          </div>
+
+          {ratesLoading ? (
+            <Skeleton className="mt-5 h-56 w-full rounded-2xl sm:h-64" />
+          ) : mode === 'year' ? (
+            yearComparisonData.every((row) => row.income === 0 && row.expense === 0) ? (
+              <EmptyState title="Nothing to chart yet." description="Transactions in this year will appear here." compact className="mt-5" />
+            ) : (
+              <>
+                <ChartLegend />
+                <div className="mt-3 h-56 sm:h-64" aria-hidden="true">
+                  <ResponsiveContainer width="100%" height="100%">
+                    <BarChart data={yearComparisonData} margin={{ top: 8, right: 4, bottom: 0, left: 0 }}>
+                      <XAxis dataKey="label" tick={{ fill: 'var(--text-muted)', fontSize: 11 }} tickLine={false} axisLine={false} />
+                      <YAxis {...yAxis} />
+                      <Tooltip content={<ChartTooltip currency={reportCurrency} />} {...TOOLTIP_PROPS} />
+                      <Bar dataKey="income" name="Income" fill="var(--chart-2)" radius={[5, 5, 0, 0]} />
+                      <Bar dataKey="expense" name="Expenses" fill="var(--chart-3)" radius={[5, 5, 0, 0]} />
+                    </BarChart>
+                  </ResponsiveContainer>
+                </div>
+                <DataDisclosure label="View income and expense data">
+                  <ComparisonTable rows={yearComparisonData} currency={reportCurrency} />
+                </DataDisclosure>
+              </>
+            )
+          ) : cashFlowData.length === 0 ? (
+            <EmptyState title="Nothing to chart yet." description="Transactions in this period will appear here." compact className="mt-5" />
+          ) : (
+            <>
+              <div className="mt-4 h-56 sm:h-64" aria-hidden="true">
+                <ResponsiveContainer width="100%" height="100%">
+                  <AreaChart data={cashFlowData} margin={{ top: 8, right: 4, bottom: 0, left: 0 }}>
+                    <defs>
+                      <linearGradient id="reportsNetFill" x1="0" y1="0" x2="0" y2="1">
+                        <stop offset="0%" stopColor="var(--chart-1)" stopOpacity={0.3} />
+                        <stop offset="100%" stopColor="var(--chart-1)" stopOpacity={0.02} />
+                      </linearGradient>
+                    </defs>
+                    <XAxis dataKey="label" tick={{ fill: 'var(--text-muted)', fontSize: 11 }} tickLine={false} axisLine={false} minTickGap={18} />
+                    <YAxis {...yAxis} />
+                    <Tooltip content={<ChartTooltip currency={reportCurrency} />} {...TOOLTIP_PROPS} />
+                    <Area type="monotone" dataKey="amount" name="Net" stroke="var(--chart-1)" strokeWidth={2.5} fill="url(#reportsNetFill)" dot={false} activeDot={{ r: 4, strokeWidth: 0 }} />
+                  </AreaChart>
+                </ResponsiveContainer>
+              </div>
+              <DataDisclosure label="View net movement data">
+                <CashFlowTable rows={cashFlowData} currency={reportCurrency} />
+              </DataDisclosure>
+            </>
+          )}
+        </section>
+      </div>
+
+      {rateError ? (
+        <div className="flex items-start gap-3 rounded-2xl bg-danger-muted px-4 py-3 text-sm font-medium text-danger" role="alert">
+          <span aria-hidden="true">!</span>
+          <span>{rateError}</span>
+        </div>
+      ) : null}
+
+      <nav className="grid grid-cols-3 gap-1 rounded-2xl bg-surface-muted p-1" aria-label="Report sections" role="tablist">
+        {REPORT_TABS.map((tab) => (
+          <button
+            key={tab.id}
+            type="button"
+            role="tab"
+            aria-selected={section === tab.id}
+            aria-controls={`reports-panel-${tab.id}`}
+            onClick={() => setSection(tab.id)}
+            className={cn(
+              'min-h-11 rounded-xl px-2 text-sm font-semibold transition-colors sm:px-4',
+              section === tab.id ? 'bg-surface text-primary shadow-sm' : 'text-muted hover:text-secondary',
+              focusVisibleRing
+            )}
+          >
+            {tab.label}
+          </button>
         ))}
       </nav>
 
-      {section === 'overview' ? (
-        <section className="space-y-4">
-          <div className="grid gap-4 md:grid-cols-3">
-            <StatCard label="Income" value={ratesLoading ? '…' : formatMoney(totals.income, reportCurrency)} tone="good" />
-            <StatCard label="Expenses" value={ratesLoading ? '…' : formatMoney(totals.expense, reportCurrency)} tone="bad" />
-            <StatCard label="Net" value={ratesLoading ? '…' : formatMoney(totals.net, reportCurrency)} tone={totals.net >= 0 ? 'good' : 'bad'} />
-          </div>
-          {!ratesLoading && activeTransactions.length > 0 ? (
-            <div className="rounded-2xl border border-subtle bg-surface p-5">
-              <p className="text-xs font-semibold uppercase tracking-wide text-muted">At a glance</p>
-              <p className="mt-2 text-base font-semibold text-primary">{totals.net >= 0 ? `You finished ${formatMoney(totals.net, reportCurrency)} above zero.` : `You finished ${formatMoney(Math.abs(totals.net), reportCurrency)} below zero.`}</p>
-              <p className="mt-1 text-sm font-medium text-secondary">{largestCategory ? `${categoryById.get(largestCategory.categoryId)?.name ?? 'Your largest category'} accounted for ${formatMoney(largestCategory.amount, reportCurrency)} of spending.` : 'There is no spending in this period yet.'}</p>
-            </div>
-          ) : null}
-          <ChartPanel title={mode === 'year' ? 'Income and expenses by month' : 'Income and expenses'} empty={comparisonData.every((row) => row.income === 0 && row.expense === 0)}>
-            <ChartLegend />
-            <div className="mt-3" aria-hidden="true">
-              <ResponsiveContainer width="100%" height={280}>
-                <BarChart data={comparisonData}>
-                  <XAxis dataKey="label" tick={{ fill: 'var(--text-muted)', fontSize: 12 }} tickLine={false} axisLine={false} />
-                  <YAxis {...yAxis} />
-                  <Tooltip content={<ChartTooltip currency={reportCurrency} />} {...TOOLTIP_PROPS} />
-                  <Bar dataKey="income" name="Income" fill="var(--chart-2)" radius={[4, 4, 0, 0]} />
-                  <Bar dataKey="expense" name="Expenses" fill="var(--chart-3)" radius={[4, 4, 0, 0]} />
-                </BarChart>
-              </ResponsiveContainer>
-            </div>
-            <DataDisclosure label="View income and expense data"><ComparisonTable rows={comparisonData} currency={reportCurrency} /></DataDisclosure>
-          </ChartPanel>
-        </section>
-      ) : null}
-
-      {section === 'spending' ? (
-        <section className="grid gap-4 lg:grid-cols-2">
-          <ChartPanel title="Spending by category" empty={categoryData.length === 0}>
-            <div className="divide-y divide-subtle">
-              {categoryData.map((item, index) => {
-                const category = categoryById.get(item.categoryId);
-                const share = totals.expense > 0 ? (item.amount / totals.expense) * 100 : 0;
-                return (
-                  <div key={item.categoryId} className="flex items-center gap-3 py-3">
-                    <CategoryIcon icon={category?.icon} color={category?.color} />
-                    <div className="min-w-0 flex-1">
-                      <div className="flex items-baseline justify-between gap-3"><p className="truncate text-sm font-semibold text-primary">{category?.name ?? item.categoryId}</p><p className="shrink-0 text-sm font-semibold tabular-nums text-primary">{formatMoney(item.amount, reportCurrency)}</p></div>
-                      <p className="mt-0.5 text-xs font-medium text-muted">{Math.round(share)}% of spending · #{index + 1}</p>
-                    </div>
-                  </div>
-                );
-              })}
-            </div>
-          </ChartPanel>
-          <ChartPanel title="Spending over time" empty={spendingOverTime.length === 0}>
-            <p className="mb-3 text-xs font-medium text-muted">{spendingOverTime.length} day{spendingOverTime.length === 1 ? '' : 's'} with spending · {formatMoney(spendingOverTime.reduce((sum, row) => sum + row.amount, 0), reportCurrency)} total</p>
-            <div aria-hidden="true">
-              <ResponsiveContainer width="100%" height={280}>
-                <LineChart data={spendingOverTime}>
-                  <XAxis dataKey="date" tick={{ fill: 'var(--text-muted)', fontSize: 12 }} tickLine={false} axisLine={false} minTickGap={18} />
-                  <YAxis {...yAxis} />
-                  <Tooltip content={<ChartTooltip currency={reportCurrency} />} {...TOOLTIP_PROPS} />
-                  <Line type="monotone" dataKey="amount" name="Spent" stroke="var(--chart-1)" strokeWidth={3} dot={false} />
-                </LineChart>
-              </ResponsiveContainer>
-            </div>
-            <DataDisclosure label="View spending data"><SpendingTable rows={spendingOverTime} currency={reportCurrency} /></DataDisclosure>
-          </ChartPanel>
-        </section>
-      ) : null}
-
-      {section === 'budgets' ? (
-        <section className="space-y-4">
-          <div className="flex flex-wrap items-end justify-between gap-3">
-            <div><h2 className="text-lg font-semibold text-primary">Budget performance</h2><p className="mt-1 text-sm font-medium text-muted">Budgets stay in their own currency rather than being converted.</p></div>
-            <Button type="button" variant="secondary" size="sm" onClick={() => router.push('/app/budgets')}>Manage budgets</Button>
-          </div>
-          {mode !== 'month' ? (
-            <EmptyState title="Budget performance is monthly." description="Switch the report period to Month to review a budget." />
-          ) : budgetPerformance.available <= 0 && budgetPerformance.categoryBudgets.length === 0 ? (
-            <EmptyState title={`No ${reportCurrency} budget for ${month}.`} description="Create a monthly total or category limit on Budgets." />
-          ) : (
-            <div className="grid gap-4 lg:grid-cols-[minmax(0,1.15fr)_minmax(0,1fr)]">
-              <div className="rounded-2xl border border-subtle bg-surface p-5">
-                <ProgressBar percent={budgetPercent} usedLabel={budgetPerformance.available > 0 ? `${Math.round(budgetPercent)}% used` : undefined} remainingLabel={budgetPerformance.available > 0 ? `${formatMoney(Math.max(budgetPerformance.remaining, 0), reportCurrency)} remaining` : 'No monthly total set'} ariaLabel="Monthly budget used" ariaValueText={budgetPerformance.available > 0 ? `${Math.round(budgetPercent)}% used` : 'No monthly total set'} />
-                <div className="mt-4 grid gap-2">
-                  <StatRow label="Available" value={formatMoney(budgetPerformance.available, reportCurrency)} />
-                  <StatRow label="Spent" value={formatMoney(budgetPerformance.totalSpent, reportCurrency)} />
-                  <StatRow label="Remaining" value={formatMoney(budgetPerformance.remaining, reportCurrency)} tone={budgetPerformance.remaining >= 0 ? 'good' : 'bad'} />
-                  {budgetPerformance.rollover > 0 ? <StatRow label="Rollover" value={formatMoney(budgetPerformance.rollover, reportCurrency)} /> : null}
+      <div role="tabpanel" id={`reports-panel-${section}`}>
+        {section === 'overview' ? (
+          <section className="grid gap-5 lg:grid-cols-[minmax(0,1.2fr)_minmax(19rem,0.8fr)] lg:items-start">
+            <ReportPanel>
+              <div className="flex items-end justify-between gap-3">
+                <div>
+                  <p className="text-xs font-semibold uppercase tracking-[0.16em] text-muted">Spending</p>
+                  <h2 className="mt-1 text-lg font-semibold tracking-tight text-primary">Top categories</h2>
                 </div>
+                <Button variant="ghost" size="sm" onClick={() => setSection('spending')}>View spending</Button>
               </div>
-              <div className="rounded-2xl border border-subtle bg-surface p-5">
-                <h3 className="text-base font-semibold text-primary">Category limits</h3>
-                {budgetPerformance.categoryBudgets.length === 0 ? <EmptyState title="No category limits." description="Add only the categories you want to keep an eye on." compact className="mt-3" /> : (
-                  <div className="mt-3 divide-y divide-subtle">
-                    {budgetPerformance.categoryBudgets.map((item) => {
-                      const category = categoryById.get(item.categoryId);
-                      return (
-                        <div key={item.categoryId} className="flex items-center gap-3 py-3">
-                          <CategoryIcon icon={category?.icon} color={category?.color} />
-                          <div className="min-w-0 flex-1">
-                            <div className="flex justify-between gap-3 text-sm"><span className="truncate font-semibold text-primary">{category?.name ?? item.categoryId}</span><span className="shrink-0 font-semibold tabular-nums text-primary">{formatMoney(item.spent, item.currency)} / {formatMoney(item.budget, item.currency)}</span></div>
-                            <p className={cn('mt-0.5 text-xs font-medium', item.remaining >= 0 ? 'text-muted' : 'text-danger')}>{item.remaining >= 0 ? `${formatMoney(item.remaining, item.currency)} left` : `${formatMoney(Math.abs(item.remaining), item.currency)} over`}</p>
-                          </div>
-                        </div>
-                      );
-                    })}
-                  </div>
+              {categoryData.length === 0 ? (
+                <EmptyState title="No spending yet." description="Expense categories will appear here." compact className="mt-4" />
+              ) : (
+                <CategorySpendList rows={categoryData.slice(0, 4)} total={totals.expense} categoryById={categoryById} currency={reportCurrency} />
+              )}
+            </ReportPanel>
+
+            <ReportPanel>
+              <p className="text-xs font-semibold uppercase tracking-[0.16em] text-muted">At a glance</p>
+              <div className="mt-4 space-y-5">
+                <InsightBlock
+                  label="Largest category"
+                  value={largestCategory ? categoryById.get(largestCategory.categoryId)?.name ?? 'Other' : 'No spending yet'}
+                  detail={largestCategory ? formatCurrency(largestCategory.amount, reportCurrency) : undefined}
+                />
+                {mode === 'month' ? (
+                  <InsightBlock
+                    label="Expenses vs last month"
+                    value={expenseDelta === 0 ? 'No change' : expenseDelta > 0 ? 'Higher' : 'Lower'}
+                    detail={expenseDelta === 0 ? undefined : `${formatCurrency(Math.abs(expenseDelta), reportCurrency)} ${expenseDelta > 0 ? 'more' : 'less'}`}
+                    tone={expenseDelta > 0 ? 'bad' : expenseDelta < 0 ? 'good' : 'neutral'}
+                  />
+                ) : (
+                  <InsightBlock label="Transactions in period" value={String(activeTransactions.length)} />
                 )}
               </div>
+            </ReportPanel>
+          </section>
+        ) : null}
+
+        {section === 'spending' ? (
+          <section className="space-y-5">
+            <div>
+              <p className="text-xs font-semibold uppercase tracking-[0.16em] text-muted">Spending</p>
+              <div className="mt-1 flex flex-wrap items-baseline justify-between gap-3">
+                <h2 className="text-2xl font-semibold tracking-tight text-primary">{ratesLoading ? '…' : formatCurrency(totals.expense, reportCurrency)} total</h2>
+                <span className="text-sm font-medium text-muted">{activeTransactions.filter((transaction) => transaction.type === 'expense').length} expenses</span>
+              </div>
             </div>
-          )}
-        </section>
-      ) : null}
+
+            <div className="grid gap-5 lg:grid-cols-[minmax(19rem,0.9fr)_minmax(0,1.35fr)] lg:items-start">
+              <ReportPanel>
+                <h3 className="text-base font-semibold text-primary">By category</h3>
+                {categoryData.length === 0 ? (
+                  <EmptyState title="Nothing to show yet." description="Expense categories in this period will appear here." compact className="mt-4" />
+                ) : (
+                  <>
+                    <CategorySpendList rows={visibleCategories} total={totals.expense} categoryById={categoryById} currency={reportCurrency} />
+                    {categoryData.length > 5 ? (
+                      <Button variant="ghost" size="sm" fullWidth className="mt-3" onClick={() => setShowAllCategories((current) => !current)}>
+                        {showAllCategories ? 'Show top 5' : `View all ${categoryData.length} categories`}
+                      </Button>
+                    ) : null}
+                  </>
+                )}
+              </ReportPanel>
+
+              <ReportPanel>
+                <div className="flex items-start justify-between gap-4">
+                  <div>
+                    <h3 className="text-base font-semibold text-primary">Spending over time</h3>
+                    <p className="mt-1 text-xs font-medium text-muted">{spendingOverTime.length} day{spendingOverTime.length === 1 ? '' : 's'} with spending</p>
+                  </div>
+                  <span className="text-xs font-semibold text-muted">{reportCurrency}</span>
+                </div>
+                {spendingOverTime.length === 0 ? (
+                  <EmptyState title="Nothing to chart yet." description="Expenses in this period will appear here." compact className="mt-4" />
+                ) : (
+                  <>
+                    <div className="mt-4 h-64" aria-hidden="true">
+                      <ResponsiveContainer width="100%" height="100%">
+                        <AreaChart data={spendingOverTime} margin={{ top: 8, right: 4, bottom: 0, left: 0 }}>
+                          <defs>
+                            <linearGradient id="reportsSpendingFill" x1="0" y1="0" x2="0" y2="1">
+                              <stop offset="0%" stopColor="var(--chart-1)" stopOpacity={0.26} />
+                              <stop offset="100%" stopColor="var(--chart-1)" stopOpacity={0.01} />
+                            </linearGradient>
+                          </defs>
+                          <XAxis dataKey="label" tick={{ fill: 'var(--text-muted)', fontSize: 11 }} tickLine={false} axisLine={false} minTickGap={18} />
+                          <YAxis {...yAxis} />
+                          <Tooltip content={<ChartTooltip currency={reportCurrency} />} {...TOOLTIP_PROPS} />
+                          <Area type="monotone" dataKey="amount" name="Spent" stroke="var(--chart-1)" strokeWidth={2.5} fill="url(#reportsSpendingFill)" dot={false} activeDot={{ r: 4, strokeWidth: 0 }} />
+                        </AreaChart>
+                      </ResponsiveContainer>
+                    </div>
+                    <DataDisclosure label="View spending data"><SpendingTable rows={spendingOverTime} currency={reportCurrency} /></DataDisclosure>
+                  </>
+                )}
+              </ReportPanel>
+            </div>
+          </section>
+        ) : null}
+
+        {section === 'budgets' ? (
+          <section className="space-y-4">
+            <div className="flex flex-wrap items-end justify-between gap-3">
+              <div>
+                <p className="text-xs font-semibold uppercase tracking-[0.16em] text-muted">Guardrails</p>
+                <h2 className="mt-1 text-lg font-semibold tracking-tight text-primary">Budget performance</h2>
+              </div>
+              <Link href="/app/budgets" prefetch={false} className={cn(buttonVariants({ variant: 'secondary', size: 'sm' }), 'rounded-xl')}>Manage budgets</Link>
+            </div>
+
+            {mode !== 'month' ? (
+              <ReportPanel>
+                <EmptyState
+                  title="Budget performance is monthly."
+                  description="Choose a month to review its total and category limits."
+                  compact
+                  action={<Button variant="secondary" size="sm" onClick={() => {
+                    setDraftMode('month');
+                    setDraftMonth(month);
+                    setDraftCurrency(reportCurrency);
+                    setContextOpen(true);
+                  }}>Choose a month</Button>}
+                />
+              </ReportPanel>
+            ) : budgetPerformance.available <= 0 && budgetPerformance.categoryBudgets.length === 0 ? (
+              <ReportPanel><EmptyState title={`No ${reportCurrency} budget for ${formatMonthLabel(month)}.`} description="Create a monthly total or category limit on Budgets." compact /></ReportPanel>
+            ) : (
+              <div className="grid gap-5 lg:grid-cols-[minmax(0,0.9fr)_minmax(0,1.2fr)] lg:items-start">
+                <ReportPanel>
+                  <div className="flex items-end justify-between gap-4">
+                    <div>
+                      <p className="text-xs font-medium text-muted">Remaining</p>
+                      <p className={cn('mt-1 text-3xl font-semibold tracking-tight tabular-nums', budgetPerformance.remaining >= 0 ? 'text-primary' : 'text-danger')}>{formatCurrency(budgetPerformance.remaining, reportCurrency)}</p>
+                    </div>
+                    <span className="text-sm font-semibold text-muted">{Math.round(budgetPercent)}% used</span>
+                  </div>
+                  <ProgressBar
+                    className="mt-5"
+                    percent={budgetPercent}
+                    usedLabel={budgetPerformance.available > 0 ? `${Math.round(budgetPercent)}% used` : undefined}
+                    remainingLabel={budgetPerformance.available > 0 ? `${formatCurrency(Math.max(budgetPerformance.remaining, 0), reportCurrency)} remaining` : 'No monthly total set'}
+                    ariaLabel="Monthly budget used"
+                    ariaValueText={budgetPerformance.available > 0 ? `${Math.round(budgetPercent)}% used` : 'No monthly total set'}
+                  />
+                  <div className="mt-5 grid gap-2 border-t border-subtle pt-4">
+                    <StatRow label="Available" value={formatCurrency(budgetPerformance.available, reportCurrency)} />
+                    <StatRow label="Spent" value={formatCurrency(budgetPerformance.totalSpent, reportCurrency)} />
+                    {budgetPerformance.rollover > 0 ? <StatRow label="Rollover" value={formatCurrency(budgetPerformance.rollover, reportCurrency)} /> : null}
+                  </div>
+                </ReportPanel>
+
+                <ReportPanel>
+                  <h3 className="text-base font-semibold text-primary">Category limits</h3>
+                  {budgetPerformance.categoryBudgets.length === 0 ? (
+                    <EmptyState title="No category limits." description="Add only the categories you want to keep an eye on." compact className="mt-3" />
+                  ) : (
+                    <div className="mt-3 divide-y divide-subtle">
+                      {budgetPerformance.categoryBudgets.map((item) => {
+                        const category = categoryById.get(item.categoryId);
+                        const percent = item.budget > 0 ? clampPercent((item.spent / item.budget) * 100) : 0;
+                        return (
+                          <div key={item.categoryId} className="flex items-start gap-3 py-3.5">
+                            <CategoryIcon icon={category?.icon} color={category?.color} />
+                            <div className="min-w-0 flex-1">
+                              <div className="flex items-baseline justify-between gap-3">
+                                <span className="truncate text-sm font-semibold text-primary">{category?.name ?? item.categoryId}</span>
+                                <span className="shrink-0 text-sm font-semibold tabular-nums text-primary">{formatCurrency(item.spent, item.currency)} / {formatCurrency(item.budget, item.currency)}</span>
+                              </div>
+                              <div className="mt-2 h-1.5 overflow-hidden rounded-full bg-surface-muted"><div className={cn('h-full rounded-full', item.remaining >= 0 ? 'bg-accent' : 'bg-danger')} style={{ width: `${percent}%` }} /></div>
+                              <p className={cn('mt-1.5 text-xs font-medium', item.remaining >= 0 ? 'text-muted' : 'text-danger')}>{item.remaining >= 0 ? `${formatCurrency(item.remaining, item.currency)} left` : `${formatCurrency(Math.abs(item.remaining), item.currency)} over`}</p>
+                            </div>
+                          </div>
+                        );
+                      })}
+                    </div>
+                  )}
+                </ReportPanel>
+              </div>
+            )}
+          </section>
+        ) : null}
+      </div>
+
+      <AdaptiveSheet
+        open={contextOpen}
+        title="Report period"
+        description="Choose the time window and currency used for this report."
+        onClose={() => setContextOpen(false)}
+        size="sm"
+        footer={<div className="grid grid-cols-2 gap-2"><Button variant="ghost" onClick={() => setContextOpen(false)}>Cancel</Button><Button onClick={applyContext} disabled={!contextValid}>Apply report</Button></div>}
+      >
+        <div className="space-y-5">
+          <div>
+            <p className="mb-2 text-sm font-semibold text-secondary">Period</p>
+            <div className="grid grid-cols-3 gap-1 rounded-2xl bg-surface-muted p-1">
+              {(['month', 'year', 'range'] as const).map((value) => (
+                <button
+                  key={value}
+                  type="button"
+                  data-sheet-autofocus={value === draftMode ? '' : undefined}
+                  aria-pressed={draftMode === value}
+                  onClick={() => setDraftMode(value)}
+                  className={cn('min-h-11 rounded-xl px-2 text-sm font-semibold transition-colors', draftMode === value ? 'bg-surface text-primary shadow-sm' : 'text-muted hover:text-secondary', focusVisibleRing)}
+                >
+                  {value === 'month' ? 'Month' : value === 'year' ? 'Year' : 'Range'}
+                </button>
+              ))}
+            </div>
+          </div>
+          {draftMode === 'month' ? <Field label="Month" type="month" value={draftMonth} onChange={(event) => setDraftMonth(event.target.value)} /> : null}
+          {draftMode === 'year' ? <Field label="Year" type="number" min="2000" max="2100" value={draftYear} onChange={(event) => setDraftYear(event.target.value)} /> : null}
+          {draftMode === 'range' ? <div className="grid gap-3 sm:grid-cols-2"><Field label="From" type="date" value={draftRangeStart} onChange={(event) => setDraftRangeStart(event.target.value)} /><Field label="To" type="date" value={draftRangeEnd} onChange={(event) => setDraftRangeEnd(event.target.value)} /></div> : null}
+          <div>
+            <p className="mb-2 text-sm font-semibold text-secondary">Report currency</p>
+            <div className="flex flex-wrap gap-2">
+              {currencies.map((currency) => (
+                <button
+                  key={currency}
+                  type="button"
+                  aria-pressed={draftCurrency === currency}
+                  onClick={() => setDraftCurrency(currency)}
+                  className={cn('min-h-11 rounded-xl px-4 text-sm font-semibold ring-1 transition-colors', draftCurrency === currency ? 'bg-accent text-white ring-accent' : 'bg-surface text-secondary ring-subtle hover:bg-surface-muted hover:text-primary', focusVisibleRing)}
+                >
+                  {currency}
+                </button>
+              ))}
+            </div>
+          </div>
+        </div>
+      </AdaptiveSheet>
+
+      <AdaptiveSheet open={actionsOpen} title="Report actions" onClose={() => setActionsOpen(false)} size="sm">
+        <div className="space-y-3">
+          <Button fullWidth onClick={() => void handleExportPDF()} loading={exporting} disabled={ratesLoading}><DownloadIcon />Export PDF</Button>
+          <p className="text-sm font-medium text-muted">Exports the currently selected report period and currency.</p>
+          {exportError ? <p className="rounded-xl bg-danger-muted px-3 py-2 text-sm font-medium text-danger" role="alert">{exportError}</p> : null}
+        </div>
+      </AdaptiveSheet>
     </div>
   );
 }
 
-function ChartPanel({ title, empty, children }: { title: string; empty: boolean; children: ReactNode }) {
-  return <div className="rounded-2xl border border-subtle bg-surface p-5"><h3 className="text-base font-semibold text-primary">{title}</h3>{empty ? <EmptyState title="Nothing to show yet." description="Transactions in this period will appear here." compact className="mt-4" /> : <div className="mt-4">{children}</div>}</div>;
+function ReportPanel({ children, className }: { children: ReactNode; className?: string }) {
+  return <div className={cn('rounded-[1.5rem] bg-surface p-4 shadow-[0_8px_28px_rgba(15,23,42,0.05)] ring-1 ring-subtle/70 dark:shadow-none sm:p-5', className)}>{children}</div>;
+}
+
+function CategorySpendList({ rows, total, categoryById, currency }: { rows: Array<{ categoryId: string; amount: number }>; total: number; categoryById: Map<string, Category>; currency: Currency }) {
+  return (
+    <div className="mt-3 divide-y divide-subtle">
+      {rows.map((item, index) => {
+        const category = categoryById.get(item.categoryId);
+        const share = total > 0 ? clampPercent((item.amount / total) * 100) : 0;
+        return (
+          <div key={item.categoryId} className="flex items-start gap-3 py-3.5 first:pt-2 last:pb-1">
+            <CategoryIcon icon={category?.icon} color={category?.color} />
+            <div className="min-w-0 flex-1">
+              <div className="flex items-baseline justify-between gap-3">
+                <div className="min-w-0"><p className="truncate text-sm font-semibold text-primary">{category?.name ?? 'Other'}</p><p className="mt-0.5 text-xs font-medium text-muted">{Math.round(share)}% of spending · #{index + 1}</p></div>
+                <p className="shrink-0 text-sm font-semibold tabular-nums text-primary">{formatCurrency(item.amount, currency)}</p>
+              </div>
+              <div className="mt-2 h-1.5 overflow-hidden rounded-full bg-surface-muted"><div className="h-full rounded-full bg-accent" style={{ width: `${share}%` }} /></div>
+            </div>
+          </div>
+        );
+      })}
+    </div>
+  );
+}
+
+function InsightBlock({ label, value, detail, tone = 'neutral' }: { label: string; value: string; detail?: string; tone?: 'neutral' | 'good' | 'bad' }) {
+  return <div className="border-b border-subtle pb-5 last:border-b-0 last:pb-0"><p className="text-xs font-medium text-muted">{label}</p><div className="mt-1 flex flex-wrap items-baseline justify-between gap-2"><p className={cn('text-lg font-semibold tracking-tight', tone === 'good' ? 'text-success' : tone === 'bad' ? 'text-danger' : 'text-primary')}>{value}</p>{detail ? <p className="text-sm font-semibold tabular-nums text-secondary">{detail}</p> : null}</div></div>;
+}
+
+function ReportHeroMetric({ label, value, currency, loading, tone }: { label: string; value: number; currency: Currency; loading: boolean; tone: 'neutral' | 'good' }) {
+  return <div><p className="text-xs font-medium text-blue-100/60">{label}</p><p className={cn('mt-1 text-lg font-semibold tracking-tight tabular-nums', tone === 'good' ? 'text-emerald-300' : 'text-white')}>{loading ? '…' : formatCurrency(value, currency)}</p></div>;
 }
 
 function ChartTooltip({ active, payload, label, currency }: { active?: boolean; payload?: Array<{ name?: string; value?: number | string }>; label?: string | number; currency: Currency }) {
   if (!active || !payload?.length) return null;
-  return <div className="rounded-lg border border-subtle bg-surface px-3 py-2 text-sm shadow-[var(--shadow-overlay)]">{label ? <p className="mb-1.5 font-medium text-muted">{label}</p> : null}<div className="space-y-1">{payload.map((entry) => <div key={entry.name} className="flex items-center justify-between gap-4"><span className="font-medium text-secondary">{entry.name ?? 'Amount'}</span><span className="font-semibold tabular-nums text-primary">{formatMoney(Number(entry.value), currency)}</span></div>)}</div></div>;
+  return <div className="rounded-xl bg-surface px-3 py-2 text-sm shadow-[var(--shadow-overlay)] ring-1 ring-subtle">{label ? <p className="mb-1.5 font-medium text-muted">{label}</p> : null}<div className="space-y-1">{payload.map((entry) => <div key={entry.name} className="flex items-center justify-between gap-4"><span className="font-medium text-secondary">{entry.name ?? 'Amount'}</span><span className="font-semibold tabular-nums text-primary">{formatCurrency(Number(entry.value), currency)}</span></div>)}</div></div>;
 }
 
 function ChartLegend() {
-  return <div className="flex flex-wrap gap-4 text-xs font-medium text-secondary" aria-label="Chart legend"><span className="inline-flex items-center gap-2"><span className="h-2.5 w-2.5 rounded-sm" style={{ background: 'var(--chart-2)' }} aria-hidden="true" />Income</span><span className="inline-flex items-center gap-2"><span className="h-2.5 w-2.5 rounded-sm" style={{ background: 'var(--chart-3)' }} aria-hidden="true" />Expenses</span></div>;
+  return <div className="mt-4 flex flex-wrap gap-4 text-xs font-medium text-secondary" aria-label="Chart legend"><span className="inline-flex items-center gap-2"><span className="h-2.5 w-2.5 rounded-sm" style={{ background: 'var(--chart-2)' }} aria-hidden="true" />Income</span><span className="inline-flex items-center gap-2"><span className="h-2.5 w-2.5 rounded-sm" style={{ background: 'var(--chart-3)' }} aria-hidden="true" />Expenses</span></div>;
 }
 
 function DataDisclosure({ label, children }: { label: string; children: ReactNode }) {
-  return <details className="group mt-4 rounded-lg border border-subtle bg-surface-muted"><summary className={cn('flex min-h-11 cursor-pointer list-none items-center rounded-lg px-3 py-2 text-sm font-semibold text-secondary select-none [&::-webkit-details-marker]:hidden', focusVisibleRing)}><span>{label}</span><span aria-hidden="true" className="ml-auto text-muted transition-transform group-open:rotate-180">⌄</span></summary><div className="overflow-x-auto border-t border-subtle p-3">{children}</div></details>;
+  return <details className="group mt-4 rounded-xl bg-surface-muted ring-1 ring-subtle/70"><summary className={cn('flex min-h-11 cursor-pointer list-none items-center rounded-xl px-3 py-2 text-sm font-semibold text-secondary select-none [&::-webkit-details-marker]:hidden', focusVisibleRing)}><span>{label}</span><span aria-hidden="true" className="ml-auto text-muted transition-transform group-open:rotate-180">⌄</span></summary><div className="overflow-x-auto border-t border-subtle p-3">{children}</div></details>;
 }
 
 function SpendingTable({ rows, currency }: { rows: SpendingRow[]; currency: Currency }) {
-  return <table className="w-full min-w-64 text-left text-sm"><caption className="sr-only">Spending by date</caption><thead><tr className="text-xs text-muted"><th scope="col" className="pb-2 pr-4 font-semibold">Date</th><th scope="col" className="pb-2 text-right font-semibold">Spent</th></tr></thead><tbody className="divide-y divide-subtle">{rows.map((row) => <tr key={row.date}><th scope="row" className="py-2 pr-4 font-medium text-secondary">{row.date}</th><td className="py-2 text-right font-semibold tabular-nums text-primary">{formatMoney(row.amount, currency)}</td></tr>)}</tbody></table>;
+  return <table className="w-full min-w-64 text-left text-sm"><caption className="sr-only">Spending by date</caption><thead><tr className="text-xs text-muted"><th scope="col" className="pb-2 pr-4 font-semibold">Date</th><th scope="col" className="pb-2 text-right font-semibold">Spent</th></tr></thead><tbody className="divide-y divide-subtle">{rows.map((row) => <tr key={row.date}><th scope="row" className="py-2 pr-4 font-medium text-secondary">{row.date}</th><td className="py-2 text-right font-semibold tabular-nums text-primary">{formatCurrency(row.amount, currency)}</td></tr>)}</tbody></table>;
+}
+
+function CashFlowTable({ rows, currency }: { rows: CashFlowRow[]; currency: Currency }) {
+  return <table className="w-full min-w-64 text-left text-sm"><caption className="sr-only">Cumulative net movement by date</caption><thead><tr className="text-xs text-muted"><th scope="col" className="pb-2 pr-4 font-semibold">Date</th><th scope="col" className="pb-2 text-right font-semibold">Net movement</th></tr></thead><tbody className="divide-y divide-subtle">{rows.map((row) => <tr key={row.date}><th scope="row" className="py-2 pr-4 font-medium text-secondary">{row.date}</th><td className="py-2 text-right font-semibold tabular-nums text-primary">{formatSignedCurrency(row.amount, currency)}</td></tr>)}</tbody></table>;
 }
 
 function ComparisonTable({ rows, currency }: { rows: ComparisonRow[]; currency: Currency }) {
-  return <table className="w-full min-w-80 text-left text-sm"><caption className="sr-only">Income and expenses by period</caption><thead><tr className="text-xs text-muted"><th scope="col" className="pb-2 pr-4 font-semibold">Period</th><th scope="col" className="pb-2 text-right font-semibold">Income</th><th scope="col" className="pb-2 text-right font-semibold">Expenses</th></tr></thead><tbody className="divide-y divide-subtle">{rows.map((row) => <tr key={row.label}><th scope="row" className="py-2 pr-4 font-medium text-secondary">{row.label}</th><td className="py-2 text-right font-semibold tabular-nums text-primary">{formatMoney(row.income, currency)}</td><td className="py-2 text-right font-semibold tabular-nums text-primary">{formatMoney(row.expense, currency)}</td></tr>)}</tbody></table>;
+  return <table className="w-full min-w-80 text-left text-sm"><caption className="sr-only">Income and expenses by period</caption><thead><tr className="text-xs text-muted"><th scope="col" className="pb-2 pr-4 font-semibold">Period</th><th scope="col" className="pb-2 text-right font-semibold">Income</th><th scope="col" className="pb-2 text-right font-semibold">Expenses</th></tr></thead><tbody className="divide-y divide-subtle">{rows.map((row) => <tr key={row.label}><th scope="row" className="py-2 pr-4 font-medium text-secondary">{row.label}</th><td className="py-2 text-right font-semibold tabular-nums text-primary">{formatCurrency(row.income, currency)}</td><td className="py-2 text-right font-semibold tabular-nums text-primary">{formatCurrency(row.expense, currency)}</td></tr>)}</tbody></table>;
+}
+
+function CalendarIcon() {
+  return <svg className="h-4 w-4 shrink-0" viewBox="0 0 24 24" fill="none" aria-hidden="true"><path d="M7 3v3M17 3v3M4.5 9h15M6 5h12a2 2 0 0 1 2 2v11a2 2 0 0 1-2 2H6a2 2 0 0 1-2-2V7a2 2 0 0 1 2-2Z" stroke="currentColor" strokeWidth="1.7" strokeLinecap="round" strokeLinejoin="round" /></svg>;
+}
+
+function MoreIcon() {
+  return <svg className="h-5 w-5" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><circle cx="5" cy="12" r="1.5" /><circle cx="12" cy="12" r="1.5" /><circle cx="19" cy="12" r="1.5" /></svg>;
+}
+
+function DownloadIcon() {
+  return <svg className="h-4 w-4" viewBox="0 0 24 24" fill="none" aria-hidden="true"><path d="M12 4v10m0 0 4-4m-4 4-4-4M5 18v2h14v-2" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" /></svg>;
+}
+
+function getPeriodLabel(mode: ReportMode, month: string, start: string, end: string, year: string) {
+  if (mode === 'month') return formatMonthLabel(month);
+  if (mode === 'year') return year;
+  return `${formatShortDate(start)} – ${formatShortDate(end)}`;
+}
+
+function formatMonthLabel(value: string) {
+  const [year, month] = value.split('-').map(Number);
+  if (!year || !month) return value;
+  return new Intl.DateTimeFormat(undefined, { month: 'long', year: 'numeric', timeZone: 'UTC' }).format(new Date(Date.UTC(year, month - 1, 1)));
+}
+
+function formatMonthOnly(value: string) {
+  const [year, month] = value.split('-').map(Number);
+  if (!year || !month) return value;
+  return new Intl.DateTimeFormat(undefined, { month: 'long', timeZone: 'UTC' }).format(new Date(Date.UTC(year, month - 1, 1)));
+}
+
+function formatShortDate(value: string) {
+  const [year, month, day] = value.split('-').map(Number);
+  if (!year || !month || !day) return value;
+  return new Intl.DateTimeFormat(undefined, { month: 'short', day: 'numeric', timeZone: 'UTC' }).format(new Date(Date.UTC(year, month - 1, day)));
+}
+
+function formatSignedCurrency(amount: number, currency: Currency) {
+  if (amount > 0) return `+${formatCurrency(amount, currency)}`;
+  return formatCurrency(amount, currency);
 }
 
 function compactMoney(amount: number, currency: Currency) {

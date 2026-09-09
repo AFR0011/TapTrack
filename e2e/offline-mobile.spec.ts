@@ -11,6 +11,11 @@ const CORE_ROUTES = [
   { path: '/app/settings', heading: 'Settings', nav: 'Settings', placement: 'more' },
 ] as const;
 
+const OFFLINE_SHELL_ROUTES = [
+  ...CORE_ROUTES.map((route) => ({ path: route.path, heading: route.heading, level: undefined })),
+  { path: '/app/add', heading: 'Add transaction', level: 1 as const },
+] as const;
+
 type Page = import('@playwright/test').Page;
 type BrowserDiagnostics = {
   pageErrors: string[];
@@ -26,14 +31,44 @@ async function expectMobileTargetSize(target: ReturnType<Page['getByRole']>) {
 }
 
 async function assertNoHorizontalOverflow(page: Page) {
-  const hasHorizontalOverflow = await page.evaluate(
-    () => document.documentElement.scrollWidth > document.documentElement.clientWidth
-  );
-  expect(hasHorizontalOverflow).toBe(false);
+  const overflow = await page.evaluate(() => {
+    const root = document.documentElement;
+    const viewportWidth = root.clientWidth;
+    const offenders = Array.from(document.querySelectorAll<HTMLElement>('body *'))
+      .map((element) => {
+        const rect = element.getBoundingClientRect();
+        return {
+          tag: element.tagName.toLowerCase(),
+          id: element.id,
+          className: element.className,
+          left: Math.round(rect.left),
+          right: Math.round(rect.right),
+          width: Math.round(rect.width),
+        };
+      })
+      .filter((entry) => entry.right > viewportWidth + 1 || entry.left < -1)
+      .slice(0, 8);
+
+    return {
+      clientWidth: viewportWidth,
+      scrollWidth: root.scrollWidth,
+      offenders,
+    };
+  });
+
+  expect(
+    overflow.scrollWidth,
+    `Horizontal overflow: ${JSON.stringify(overflow)}`
+  ).toBeLessThanOrEqual(overflow.clientWidth);
 }
 
 async function assertMainFocused(page: Page) {
   await expect.poll(() => page.evaluate(() => document.activeElement?.id ?? '')).toBe('main-content');
+}
+
+async function waitForOfflineShell(page: Page) {
+  await expect(page.locator('html')).toHaveAttribute('data-offline-shell', 'ready', { timeout: 30_000 });
+  await expect.poll(() => page.evaluate(() => Boolean(navigator.serviceWorker.controller))).toBe(true);
 }
 
 async function assertMobileLayout(page: Page) {
@@ -104,6 +139,7 @@ async function getRouteDiagnostics(page: Page) {
       bodyText: document.body.innerText.slice(0, 2000),
       readyState: document.readyState,
       online: navigator.onLine,
+      offlineShell: document.documentElement.dataset.offlineShell ?? null,
       controlled: Boolean(navigator.serviceWorker.controller),
       controllerScript: navigator.serviceWorker.controller?.scriptURL ?? null,
       registrations: registrations.map((registration) => ({
@@ -137,6 +173,61 @@ async function expectHeadingWithDiagnostics(
   }
 }
 
+test('fresh app shell opens core routes offline before they have ever been visited', async ({ page, context }) => {
+  test.skip(test.info().project.name !== 'mobile-390', 'One mobile viewport is enough for shell-correctness evidence.');
+
+  const diagnostics: BrowserDiagnostics = {
+    pageErrors: [],
+    consoleErrors: [],
+    failedRequests: [],
+  };
+
+  await page.goto('/app');
+  await completeFreshOnboarding(page);
+  await expectHeadingWithDiagnostics(page, 'Dashboard', 'Fresh app shell dashboard', diagnostics);
+  await waitForOfflineShell(page);
+
+  const cacheStatus = await page.evaluate(async (expectedPaths) => {
+    const keys = (await caches.keys()).filter((key) => key.startsWith('taptrack-shell-'));
+    const key = keys[0] ?? null;
+    if (!key) return { keys, missing: expectedPaths };
+    const cache = await caches.open(key);
+    const missing: string[] = [];
+    for (const path of expectedPaths) {
+      const matched = await cache.match(new Request(`${location.origin}${path}`));
+      if (!matched) missing.push(path);
+    }
+    return { keys, missing };
+  }, OFFLINE_SHELL_ROUTES.map((route) => route.path));
+
+  expect(cacheStatus.keys).toHaveLength(1);
+  expect(cacheStatus.missing).toEqual([]);
+
+  await context.setOffline(true);
+
+  for (const route of OFFLINE_SHELL_ROUTES.filter((candidate) => candidate.path !== '/app')) {
+    await page.goto(route.path);
+    await expectHeadingWithDiagnostics(
+      page,
+      route.heading,
+      `First-ever offline navigation to ${route.path}`,
+      diagnostics,
+      route.level
+    );
+    await assertNoHorizontalOverflow(page);
+
+    await page.reload();
+    await expectHeadingWithDiagnostics(
+      page,
+      route.heading,
+      `Offline reload of previously unvisited ${route.path}`,
+      diagnostics,
+      route.level
+    );
+    await assertNoHorizontalOverflow(page);
+  }
+});
+
 test('device-local ledger works across warmed offline mobile routes', async ({ page, context }) => {
   const externalRequests: string[] = [];
   const diagnostics: BrowserDiagnostics = {
@@ -169,6 +260,7 @@ test('device-local ledger works across warmed offline mobile routes', async ({ p
   await expectHeadingWithDiagnostics(page, 'Dashboard', 'Post-setup app state', diagnostics);
   await assertNoHorizontalOverflow(page);
   await expectMobileTargetSize(page.getByLabel('Add transaction', { exact: true }));
+  await waitForOfflineShell(page);
 
   const mobileNav = page.getByRole('navigation', { name: 'Mobile' });
   await mobileNav.getByRole('link', { name: 'Transactions', exact: true }).click();
@@ -177,13 +269,6 @@ test('device-local ledger works across warmed offline mobile routes', async ({ p
   await mobileNav.getByRole('link', { name: 'Dashboard', exact: true }).click();
   await expectHeadingWithDiagnostics(page, 'Dashboard', 'Client navigation back to dashboard', diagnostics);
   await assertMainFocused(page);
-
-  await page.evaluate(async () => {
-    await navigator.serviceWorker.ready;
-  });
-  await page.reload();
-  await expectHeadingWithDiagnostics(page, 'Dashboard', 'Service-worker-controlled reload', diagnostics);
-  await expect.poll(() => page.evaluate(() => Boolean(navigator.serviceWorker.controller))).toBe(true);
 
   for (const route of CORE_ROUTES) {
     await page.goto(route.path);
@@ -225,6 +310,14 @@ test('device-local ledger works across warmed offline mobile routes', async ({ p
   await page.getByLabel('What was it?').fill('offlinecheck');
   await page.getByRole('button', { name: 'Cash', exact: true }).click();
   await page.getByRole('button', { name: 'Save expense', exact: true }).click();
+
+  await expectHeadingWithDiagnostics(page, 'Add transaction', 'Post-save capture route', diagnostics, 1);
+  await expect(page).toHaveURL(/\/app\/add$/);
+  await expect(page.getByText('Transaction saved.', { exact: true })).toBeVisible();
+  await expect(page.getByLabel('Amount', { exact: true })).toHaveValue('');
+  await expect(page.getByLabel('What was it?')).toHaveValue('');
+
+  await page.goto('/app');
   await expectHeadingWithDiagnostics(page, 'Dashboard', 'Post-save offline dashboard', diagnostics);
   await expect(page.getByText('offlinecheck', { exact: true }).last()).toBeVisible();
   await page.reload();

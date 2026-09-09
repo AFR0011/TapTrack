@@ -30,13 +30,17 @@ describe('proxy route policy', () => {
     vi.stubEnv('NEXT_PUBLIC_SUPABASE_ANON_KEY', 'test-key');
   });
 
-  it('keeps unauthenticated app routes available', async () => {
+  it('keeps local app routes available without consulting the auth provider', async () => {
     mockUser(null);
 
-    const response = await proxy(request('/app'));
+    const root = await proxy(request('/app'));
+    const reports = await proxy(request('/app/reports'));
 
-    expect(response.status).toBe(200);
-    expect(response.headers.get('location')).toBeNull();
+    expect(root.status).toBe(200);
+    expect(reports.status).toBe(200);
+    expect(root.headers.get('location')).toBeNull();
+    expect(reports.headers.get('location')).toBeNull();
+    expect(createServerClient).not.toHaveBeenCalled();
   });
 
   it('keeps login reachable for unauthenticated users', async () => {
@@ -46,9 +50,10 @@ describe('proxy route policy', () => {
 
     expect(response.status).toBe(200);
     expect(response.headers.get('location')).toBeNull();
+    expect(createServerClient).toHaveBeenCalledTimes(1);
   });
 
-  it('does not redirect public integration API routes', async () => {
+  it('does not consult authentication for integration API routes', async () => {
     mockUser(null);
 
     const exchange = await proxy(request('/api/exchange-rates'));
@@ -58,9 +63,10 @@ describe('proxy route policy', () => {
     expect(webhook.status).toBe(200);
     expect(exchange.headers.get('location')).toBeNull();
     expect(webhook.headers.get('location')).toBeNull();
+    expect(createServerClient).not.toHaveBeenCalled();
   });
 
-  it('does not redirect PWA assets', async () => {
+  it('does not consult authentication for PWA assets', async () => {
     mockUser(null);
 
     const manifest = await proxy(request('/manifest.webmanifest'));
@@ -70,6 +76,7 @@ describe('proxy route policy', () => {
     expect(serviceWorker.status).toBe(200);
     expect(manifest.headers.get('location')).toBeNull();
     expect(serviceWorker.headers.get('location')).toBeNull();
+    expect(createServerClient).not.toHaveBeenCalled();
   });
 
   it('sends authenticated users away from login while leaving root to its page redirect', async () => {
@@ -87,16 +94,16 @@ describe('proxy route policy', () => {
   it('does not construct a provider client when configuration is absent', async () => {
     vi.unstubAllEnvs();
 
-    const response = await proxy(request('/app'));
+    const response = await proxy(request('/login'));
 
     expect(response.status).toBe(200);
     expect(createServerClient).not.toHaveBeenCalled();
   });
 
-  it('keeps the local app available when the provider fails', async () => {
+  it('keeps login available when the provider fails', async () => {
     mockUser(null, new Error('provider down'));
 
-    const response = await proxy(request('/app'));
+    const response = await proxy(request('/login'));
 
     expect(response.status).toBe(200);
     expect(response.headers.get('location')).toBeNull();

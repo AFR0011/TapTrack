@@ -2,8 +2,9 @@ import { db, ensureDatabaseSeeded, type TapTrackDatabase } from '@/database';
 import { DEFAULT_SETTINGS_ID } from '@/defaultData';
 import { formatLocalDate, getCurrentMonth } from '@/dates';
 import { rebuildDerivedBalances } from '@/balances/ledgerService';
+import { resolveActiveCurrencies } from '@/currencies/activeCurrencySelection';
 import { flushSyncQueueBestEffort, queueRecordForSync } from '@/sync/syncService';
-import type { Balance, BalanceCheckpoint } from '@/types';
+import type { Balance, BalanceCheckpoint, Settings } from '@/types';
 
 export type ReconciliationObservedAmounts = Record<string, number>;
 
@@ -36,6 +37,11 @@ async function getMonthCompletionCheckpoints(
     .toArray();
 }
 
+function getActiveBalances(settings: Settings, balances: Balance[]): Balance[] {
+  const activeCurrencies = new Set(resolveActiveCurrencies(settings, balances));
+  return balances.filter((balance) => activeCurrencies.has(balance.currency));
+}
+
 /**
  * Pure ledger read used by live-query observers. Database bootstrap/seeding must
  * happen before this function is observed; doing writes from a Dexie live query
@@ -46,13 +52,21 @@ export async function getMonthlyReconciliationState(
   database: TapTrackDatabase = db
 ): Promise<MonthlyReconciliationState> {
   const settings = await database.settings.get(DEFAULT_SETTINGS_ID);
-  const balances = await database.balances.toArray();
+  const allBalances = await database.balances.toArray();
+  const balances = settings ? getActiveBalances(settings, allBalances) : allBalances;
   if (!settings?.setupCompleted) {
     return { month, required: false, balances, completedBalanceIds: [] };
   }
 
   const checkpoints = await getMonthCompletionCheckpoints(month, database);
-  const completedBalanceIds = [...new Set(checkpoints.map((checkpoint) => checkpoint.balanceId))];
+  const activeBalanceIds = new Set(balances.map((balance) => balance.id));
+  const completedBalanceIds = [
+    ...new Set(
+      checkpoints
+        .map((checkpoint) => checkpoint.balanceId)
+        .filter((balanceId) => activeBalanceIds.has(balanceId))
+    ),
+  ];
   const completed = new Set(completedBalanceIds);
 
   return {
@@ -64,10 +78,10 @@ export async function getMonthlyReconciliationState(
 }
 
 /**
- * Records one absolute observation for every tracked balance. All checkpoints
- * share one exact boundary so historical activity can be ordered consistently
- * before or after the monthly reconciliation. The checkpoint rows and durable
- * sync intent commit in the same IndexedDB transaction.
+ * Records absolute observations for active balances that have not already been
+ * confirmed in this calendar month. Opening checkpoints created by a newly
+ * activated currency count only for those new balance buckets; they no longer
+ * block reconciliation of the older buckets. Archived currencies are excluded.
  */
 export async function reconcileCurrentMonth(
   observedAmounts: ReconciliationObservedAmounts,
@@ -84,17 +98,20 @@ export async function reconcileCurrentMonth(
   const month = getCurrentMonth(nowDate);
   const date = formatLocalDate(nowDate);
   const effectiveAt = nowDate.toISOString();
-  const balances = await database.balances.toArray();
+  const allBalances = await database.balances.toArray();
+  const balances = getActiveBalances(settings, allBalances);
   if (balances.length === 0) {
-    throw new InvalidReconciliationError('No balances are available to reconcile.');
+    throw new InvalidReconciliationError('No active balances are available to reconcile.');
   }
 
   const completionCheckpoints = await getMonthCompletionCheckpoints(month, database);
-  if (completionCheckpoints.length > 0) {
+  const completed = new Set(completionCheckpoints.map((checkpoint) => checkpoint.balanceId));
+  const pendingBalances = balances.filter((balance) => !completed.has(balance.id));
+  if (pendingBalances.length === 0) {
     throw new InvalidReconciliationError('This month has already been reconciled.');
   }
 
-  for (const balance of balances) {
+  for (const balance of pendingBalances) {
     const observed = observedAmounts[balance.id];
     if (typeof observed !== 'number' || !Number.isFinite(observed) || observed < 0) {
       throw new InvalidReconciliationError(
@@ -103,7 +120,7 @@ export async function reconcileCurrentMonth(
     }
   }
 
-  const checkpoints: BalanceCheckpoint[] = balances.map((balance) => {
+  const checkpoints: BalanceCheckpoint[] = pendingBalances.map((balance) => {
     const observedAmount = observedAmounts[balance.id]!;
     return {
       id: `reconciliation-${month}-${balance.id}`,

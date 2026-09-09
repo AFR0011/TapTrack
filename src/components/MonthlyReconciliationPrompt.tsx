@@ -9,6 +9,7 @@ import {
   getMonthlyReconciliationState,
   reconcileCurrentMonth,
 } from '@/balances/reconciliationService';
+import { OPEN_BALANCE_CHECK_EVENT } from '@/balances/reconciliationEvents';
 import { ConfirmDialog } from '@/components/ConfirmDialog';
 
 export default function MonthlyReconciliationPrompt() {
@@ -27,6 +28,15 @@ export default function MonthlyReconciliationPrompt() {
     );
     setError('');
   }, [state]);
+
+  useEffect(() => {
+    const handleOpenBalanceCheck = () => {
+      setDismissedMonth(null);
+      setError('');
+    };
+    window.addEventListener(OPEN_BALANCE_CHECK_EVENT, handleOpenBalanceCheck);
+    return () => window.removeEventListener(OPEN_BALANCE_CHECK_EVENT, handleOpenBalanceCheck);
+  }, []);
 
   const parsedAmounts = useMemo(() => {
     if (!state) return null;

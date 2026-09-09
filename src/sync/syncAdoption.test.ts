@@ -9,6 +9,7 @@ vi.mock('@/sync/syncBinding', async () => {
     ...actual,
     inspectDeviceLedgerLinkToCurrentUser: vi.fn(),
     linkDeviceLedgerToCurrentUser: vi.fn(),
+    prepareDeviceLedgerBindingToCurrentUser: vi.fn(),
   };
 });
 vi.mock('@/sync/syncService', async () => {
@@ -25,6 +26,7 @@ import { createSupabaseBrowserClient } from '@/lib/supabase';
 import {
   inspectDeviceLedgerLinkToCurrentUser,
   linkDeviceLedgerToCurrentUser,
+  prepareDeviceLedgerBindingToCurrentUser,
 } from '@/sync/syncBinding';
 import { pullUpdates, pushLocalChanges, pushRecord } from '@/sync/syncService';
 import { adoptCloudLedger, linkEmptyCloudLedger, mergeLocalLedgerIntoCloud } from './syncAdoption';
@@ -62,6 +64,13 @@ describe('cloud ledger adoption', () => {
       localHasUserData: true,
       remoteHasData: true,
     });
+    vi.mocked(prepareDeviceLedgerBindingToCurrentUser).mockResolvedValue({
+      id: DEVICE_LEDGER_BINDING_ID,
+      syncOwnerUserId: 'user-1',
+      linkedAt: '2026-09-07T00:00:00.000Z',
+      cloudRevision: 1,
+      cloudGeneration: '11111111-1111-4111-8111-111111111111',
+    });
     vi.mocked(linkDeviceLedgerToCurrentUser).mockResolvedValue({
       id: DEVICE_LEDGER_BINDING_ID,
       syncOwnerUserId: 'user-1',
@@ -93,10 +102,79 @@ describe('cloud ledger adoption', () => {
 
     await expect(adoptCloudLedger(database)).rejects.toThrow('categories');
     await expect(database.transactions.get('local-transaction')).resolves.toBeDefined();
-    expect(linkDeviceLedgerToCurrentUser).not.toHaveBeenCalled();
+    await expect(database.deviceMetadata.get(DEVICE_LEDGER_BINDING_ID)).resolves.toBeUndefined();
+    expect(prepareDeviceLedgerBindingToCurrentUser).not.toHaveBeenCalled();
   });
 
-  it('repairs only seed rows missing from a legacy cloud snapshot', async () => {
+  it('leaves the local ledger untouched when the pre-replacement safety step fails', async () => {
+    await database.transactions.add({
+      id: 'local-before-replace',
+      type: 'expense',
+      amount: 45,
+      currency: 'TRY',
+      title: 'keep me safe',
+      categoryId: 'cat-other',
+      method: 'card',
+      date: '2026-09-07',
+      createdAt: '2026-09-07T11:00:00.000Z',
+      updatedAt: '2026-09-07T11:00:00.000Z',
+    });
+    vi.mocked(createSupabaseBrowserClient).mockReturnValue(createCloudClient() as never);
+    const beforeReplace = vi.fn(async () => {
+      await expect(database.transactions.get('local-before-replace')).resolves.toBeDefined();
+      await expect(database.deviceMetadata.get(DEVICE_LEDGER_BINDING_ID)).resolves.toBeUndefined();
+      throw new Error('safety backup failed');
+    });
+
+    await expect(adoptCloudLedger(database, beforeReplace)).rejects.toThrow('safety backup failed');
+
+    expect(beforeReplace).toHaveBeenCalledTimes(1);
+    await expect(database.transactions.get('local-before-replace')).resolves.toBeDefined();
+    await expect(database.deviceMetadata.get(DEVICE_LEDGER_BINDING_ID)).resolves.toBeUndefined();
+  });
+
+  it('rolls back both the binding and canonical replacement when adoption fails mid-transaction', async () => {
+    await database.transactions.add({
+      id: 'local-survivor',
+      type: 'income',
+      amount: 75,
+      currency: 'TRY',
+      title: 'local survivor',
+      categoryId: 'cat-income',
+      method: 'cash',
+      date: '2026-09-07',
+      createdAt: '2026-09-07T09:00:00.000Z',
+      updatedAt: '2026-09-07T09:00:00.000Z',
+    });
+    vi.mocked(createSupabaseBrowserClient).mockReturnValue(
+      createCloudClient({
+        tableData: {
+          transactions: [
+            {
+              user_id: 'user-1',
+              type: 'expense',
+              amount: 20,
+              currency: 'TRY',
+              title: 'invalid missing id',
+              category_id: 'cat-other',
+              method: 'card',
+              date: '2026-09-07',
+              created_at: '2026-09-07T12:00:00.000Z',
+              updated_at: '2026-09-07T12:00:00.000Z',
+              deleted_at: null,
+            },
+          ],
+        },
+      }) as never
+    );
+
+    await expect(adoptCloudLedger(database)).rejects.toThrow();
+
+    await expect(database.transactions.get('local-survivor')).resolves.toBeDefined();
+    await expect(database.deviceMetadata.get(DEVICE_LEDGER_BINDING_ID)).resolves.toBeUndefined();
+  });
+
+  it('repairs only seed rows missing from a legacy cloud snapshot and binds atomically', async () => {
     vi.mocked(createSupabaseBrowserClient).mockReturnValue(
       createCloudClient({
         tableData: {
@@ -138,7 +216,12 @@ describe('cloud ledger adoption', () => {
 
     await adoptCloudLedger(database);
 
-    expect(linkDeviceLedgerToCurrentUser).toHaveBeenCalledWith(database, 'use-cloud');
+    expect(prepareDeviceLedgerBindingToCurrentUser).toHaveBeenCalledWith(database, 'use-cloud');
+    expect(linkDeviceLedgerToCurrentUser).not.toHaveBeenCalled();
+    await expect(database.deviceMetadata.get(DEVICE_LEDGER_BINDING_ID)).resolves.toMatchObject({
+      syncOwnerUserId: 'user-1',
+      cloudRevision: 1,
+    });
     await expect(database.transactions.get('cloud-transaction')).resolves.toBeDefined();
     await expect(database.categories.get('cat-food')).resolves.toMatchObject({ name: 'Meals' });
     await expect(database.categories.get('cat-other')).resolves.toMatchObject({ name: 'Other' });

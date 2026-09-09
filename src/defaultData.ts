@@ -58,6 +58,7 @@ export function findCategoryForTransaction(
   type: TransactionType,
   _title: string
 ) {
+  void _title;
   const typedCategories = categories.filter((category) => category.type === type);
 
   // Deliberately semantic-free. Smart Categories owns transaction classification;

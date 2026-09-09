@@ -3,12 +3,17 @@ import { createServerClient } from '@supabase/ssr';
 
 export async function proxy(request: NextRequest) {
   let supabaseResponse = NextResponse.next({ request });
+  const { pathname } = request.nextUrl;
+
+  // The local ledger and its APIs must not wait on authentication just to render or respond.
+  // Protected API routes authenticate inside their own handlers when cloud features are used.
+  if (pathname !== '/login') {
+    return supabaseResponse;
+  }
+
   const url = process.env.NEXT_PUBLIC_SUPABASE_URL;
   const key = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY;
 
-  const { pathname } = request.nextUrl;
-
-  // Authentication enables optional sync; it never gates the device-local app.
   if (url && key) {
     try {
       const supabase = createServerClient(url, key, {
@@ -30,13 +35,13 @@ export async function proxy(request: NextRequest) {
         data: { user },
       } = await supabase.auth.getUser();
 
-      if (user && pathname === '/login') {
+      if (user) {
         const appUrl = request.nextUrl.clone();
         appUrl.pathname = '/app';
         return NextResponse.redirect(appUrl);
       }
     } catch {
-      // Provider availability must not block the local ledger.
+      // Provider availability must not prevent the sign-in page from rendering.
     }
   }
 
@@ -44,7 +49,5 @@ export async function proxy(request: NextRequest) {
 }
 
 export const config = {
-  matcher: [
-    '/((?!_next/static|_next/image|favicon\\.ico|.*\\.(?:svg|png|jpg|jpeg|gif|webp)$).*)',
-  ],
+  matcher: ['/login'],
 };

@@ -1,25 +1,17 @@
 'use client';
 
-import { useMemo, useState } from 'react';
+import { useMemo } from 'react';
 import Link from 'next/link';
-import { AnimatePresence, motion, useReducedMotion } from 'framer-motion';
+import { motion, useReducedMotion } from 'framer-motion';
 import { useLiveQuery } from 'dexie-react-hooks';
 import { CategoryIcon } from '@/categories/categoryVisuals';
 import { db } from '@/database';
 import { formatMoney } from '@/format';
 import { SkeletonListRows } from '@/components/ui/Skeleton';
 import { cn, focusVisibleRing } from '@/lib/cn';
-import type { Transaction } from '@/types';
-
-const itemVariants = {
-  hidden: { opacity: 0, x: -12 },
-  visible: { opacity: 1, x: 0 },
-  exit: { opacity: 0, x: 12, transition: { duration: 0.15 } },
-};
 
 export default function RecentTransactions() {
   const reduceMotion = useReducedMotion();
-  const [filter, setFilter] = useState<'all' | 'income' | 'expense'>('all');
   const transactions = useLiveQuery(() => db.transactions.toArray());
   const categories = useLiveQuery(() => db.categories.toArray());
 
@@ -35,86 +27,76 @@ export default function RecentTransactions() {
       }),
     [transactions]
   );
-  const filteredTransactions = sortedTransactions.filter((transaction: Transaction) =>
-    filter === 'all' ? true : transaction.type === filter
-  );
 
   return (
     <motion.section
-      initial={reduceMotion ? false : { opacity: 0, y: 16 }}
+      initial={reduceMotion ? false : { opacity: 0, y: 10 }}
       animate={{ opacity: 1, y: 0 }}
-      transition={reduceMotion ? { duration: 0 } : { duration: 0.35, ease: 'easeOut', delay: 0.14 }}
-      className="rounded-2xl border border-subtle bg-surface"
+      transition={reduceMotion ? { duration: 0 } : { duration: 0.28, ease: 'easeOut', delay: 0.06 }}
     >
-      <div className="flex flex-col gap-3 border-b border-subtle p-4 sm:flex-row sm:items-center sm:justify-between">
-        <h2 className="text-base font-semibold text-primary">Recent transactions</h2>
-        <div className="flex gap-1" aria-label="Filter recent transactions">
-          {(['all', 'income', 'expense'] as const).map((option) => (
-            <button
-              key={option}
-              type="button"
-              onClick={() => setFilter(option)}
-              aria-pressed={filter === option}
-              className={cn(
-                'relative min-h-11 min-w-11 rounded-lg px-3 py-2 text-sm font-semibold capitalize transition-colors',
-                focusVisibleRing,
-                filter === option ? 'text-white' : 'bg-surface-muted text-secondary hover:bg-surface-raised'
-              )}
-            >
-              {filter === option ? (
-                <motion.span
-                  layoutId="filter-pill"
-                  className="absolute inset-0 rounded-lg bg-action-primary"
-                  transition={reduceMotion ? { duration: 0 } : { type: 'spring', stiffness: 500, damping: 35 }}
-                />
-              ) : null}
-              <span className="relative z-10">{option}</span>
-            </button>
-          ))}
+      <div className="mb-3 flex items-end justify-between gap-3">
+        <div>
+          <p className="text-xs font-semibold uppercase tracking-[0.16em] text-muted">Activity</p>
+          <h2 className="mt-1 text-lg font-semibold tracking-tight text-primary">Recent activity</h2>
         </div>
+        <Link
+          href="/app/transactions"
+          prefetch={false}
+          className={cn(
+            'inline-flex min-h-11 items-center gap-1.5 rounded-xl bg-surface px-3.5 text-sm font-semibold text-secondary shadow-sm ring-1 ring-subtle transition-colors hover:bg-surface-muted hover:text-primary',
+            focusVisibleRing
+          )}
+        >
+          View all <span aria-hidden="true">→</span>
+        </Link>
       </div>
 
-      <div className="divide-y divide-subtle">
+      <div className="overflow-hidden rounded-[1.5rem] bg-surface shadow-[0_8px_28px_rgba(15,23,42,0.05)] ring-1 ring-subtle/70 dark:shadow-none">
         {transactions === undefined || categories === undefined ? (
-          <div aria-busy="true" aria-label="Loading recent transactions"><SkeletonListRows count={4} /></div>
-        ) : filteredTransactions.length === 0 ? (
-          <div className="p-6 text-center">
-            <p className="text-sm font-semibold text-secondary">No matching transactions yet.</p>
-            <p className="mt-1 text-sm font-medium text-muted">Add one now or choose a different filter.</p>
-            <Link href="/app/add" prefetch={false} className={cn('mt-3 inline-flex min-h-11 items-center rounded-lg px-3 text-sm font-semibold text-accent hover:bg-surface-muted', focusVisibleRing)}>Add transaction</Link>
+          <div aria-busy="true" aria-label="Loading recent transactions">
+            <SkeletonListRows count={4} />
+          </div>
+        ) : sortedTransactions.length === 0 ? (
+          <div className="px-5 py-7 text-center">
+            <p className="text-sm font-semibold text-secondary">No transactions yet.</p>
+            <Link
+              href="/app/add"
+              prefetch={false}
+              className={cn('mt-3 inline-flex min-h-11 items-center rounded-lg px-3 text-sm font-semibold text-accent hover:bg-surface-muted', focusVisibleRing)}
+            >
+              Add transaction
+            </Link>
           </div>
         ) : (
-          <AnimatePresence initial={false}>
-            {filteredTransactions.slice(0, 10).map((transaction, index) => {
+          <div className="divide-y divide-subtle">
+            {sortedTransactions.slice(0, 4).map((transaction, index) => {
               const category = categoryMap.get(transaction.categoryId);
               return (
                 <motion.div
                   key={transaction.id}
-                  layout={!reduceMotion}
-                  variants={reduceMotion ? undefined : itemVariants}
-                  initial={reduceMotion ? false : 'hidden'}
-                  animate={reduceMotion ? undefined : 'visible'}
-                  exit={reduceMotion ? undefined : 'exit'}
-                  transition={reduceMotion ? { duration: 0 } : { duration: 0.22, ease: 'easeOut', delay: index * 0.025 }}
+                  initial={reduceMotion ? false : { opacity: 0, y: 5 }}
+                  animate={{ opacity: 1, y: 0 }}
+                  transition={reduceMotion ? { duration: 0 } : { duration: 0.2, ease: 'easeOut', delay: index * 0.02 }}
                   className="flex items-center gap-3 px-4 py-3"
                 >
-                  <CategoryIcon icon={category?.icon} color={category?.color} />
+                  <CategoryIcon icon={category?.icon} color={category?.color} className="h-9 w-9 rounded-2xl" />
                   <div className="min-w-0 flex-1">
                     <p className="truncate text-sm font-semibold text-primary">{transaction.title}</p>
-                    <p className="mt-1 truncate text-xs font-medium text-muted">{transaction.date} · {capitalize(transaction.method)} · {category?.name ?? 'Unknown category'}</p>
+                    <p className="mt-0.5 truncate text-xs font-medium text-muted">
+                      {category?.name ?? 'Other'} · {capitalize(transaction.method)}
+                    </p>
                   </div>
-                  <p className={cn('shrink-0 text-right text-sm font-bold tabular-nums', transaction.type === 'income' ? 'text-success' : 'text-danger')}>
-                    {transaction.type === 'income' ? '+' : '-'}{formatMoney(transaction.amount, transaction.currency)}
-                  </p>
+                  <div className="shrink-0 text-right">
+                    <p className={cn('text-sm font-bold tabular-nums', transaction.type === 'income' ? 'text-success' : 'text-primary')}>
+                      {transaction.type === 'income' ? '+' : '-'}{formatMoney(transaction.amount, transaction.currency)}
+                    </p>
+                    <p className="mt-0.5 text-[11px] font-medium text-muted">{formatShortDate(transaction.date)}</p>
+                  </div>
                 </motion.div>
               );
             })}
-          </AnimatePresence>
+          </div>
         )}
-      </div>
-
-      <div className="border-t border-subtle p-4">
-        <Link href="/app/transactions" prefetch={false} className={cn('inline-flex min-h-11 items-center rounded-lg text-sm font-semibold text-accent transition-colors hover:text-accent', focusVisibleRing)}>View all transactions</Link>
       </div>
     </motion.section>
   );
@@ -122,4 +104,10 @@ export default function RecentTransactions() {
 
 function capitalize(value: string) {
   return value.charAt(0).toUpperCase() + value.slice(1);
+}
+
+function formatShortDate(value: string) {
+  const date = new Date(`${value}T12:00:00`);
+  if (Number.isNaN(date.getTime())) return value;
+  return date.toLocaleDateString(undefined, { month: 'short', day: 'numeric' });
 }

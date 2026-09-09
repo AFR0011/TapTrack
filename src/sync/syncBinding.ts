@@ -217,12 +217,11 @@ export async function inspectDeviceLedgerLinkToCurrentUser(
 }
 
 /**
- * Creates the immutable browser-to-account binding after the caller has made
- * the appropriate adoption decision. `empty-only` remains fail-closed if cloud
- * data appears between preflight and linking; the explicit adoption modes allow
- * an existing cloud ledger because the caller has chosen how to reconcile it.
+ * Performs every remote/auth precondition needed to bind this browser, but does
+ * not mutate IndexedDB. Cloud adoption uses this preparation step so the binding
+ * can be committed in the same Dexie transaction as the canonical replacement.
  */
-export async function linkDeviceLedgerToCurrentUser(
+export async function prepareDeviceLedgerBindingToCurrentUser(
   database: TapTrackDatabase = db,
   mode: LedgerLinkMode = 'empty-only'
 ): Promise<DeviceMetadata> {
@@ -249,20 +248,35 @@ export async function linkDeviceLedgerToCurrentUser(
   }
 
   const cloudVersion = await ensureCloudLedgerVersion(client, user.id);
-  const binding: DeviceMetadata = {
+  return {
     id: DEVICE_LEDGER_BINDING_ID,
     syncOwnerUserId: user.id,
     linkedAt: new Date().toISOString(),
     cloudRevision: cloudVersion.revision,
     cloudGeneration: cloudVersion.generation,
   };
+}
+
+/**
+ * Creates the immutable browser-to-account binding after the caller has made
+ * the appropriate adoption decision. `empty-only` remains fail-closed if cloud
+ * data appears between preflight and linking; the explicit adoption modes allow
+ * an existing cloud ledger because the caller has chosen how to reconcile it.
+ */
+export async function linkDeviceLedgerToCurrentUser(
+  database: TapTrackDatabase = db,
+  mode: LedgerLinkMode = 'empty-only'
+): Promise<DeviceMetadata> {
+  const binding = await prepareDeviceLedgerBindingToCurrentUser(database, mode);
+  const existing = await database.deviceMetadata.get(DEVICE_LEDGER_BINDING_ID);
+  if (existing) return existing;
 
   try {
     await database.deviceMetadata.add(binding);
     return binding;
   } catch {
     const raced = await database.deviceMetadata.get(DEVICE_LEDGER_BINDING_ID);
-    if (raced && raced.syncOwnerUserId === user.id) return raced;
+    if (raced && raced.syncOwnerUserId === binding.syncOwnerUserId) return raced;
     throw new Error('This device ledger was linked by another operation.');
   }
 }

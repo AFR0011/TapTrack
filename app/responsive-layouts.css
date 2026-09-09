@@ -1,0 +1,27 @@
+/* Responsive grid children must be allowed to shrink below their min-content width.
+   This keeps intentionally scrollable mobile content from widening the document. */
+[data-layout='dashboard-summary'] > [data-dashboard-column],
+[data-layout='budgets-content'] > *,
+[data-layout='conversions-content'],
+[data-layout='conversions-workspace'],
+[data-layout='conversions-workspace'] > *,
+[data-move-source],
+[data-move-destination],
+[data-move-source] > *,
+[data-move-destination] > * {
+  min-width: 0;
+  max-width: 100%;
+}
+
+[data-layout='conversions-content'],
+[data-layout='conversions-workspace'] {
+  width: 100%;
+}
+
+[data-move-source] input,
+[data-move-source] select,
+[data-move-destination] input,
+[data-move-destination] select {
+  min-width: 0;
+  max-width: 100%;
+}

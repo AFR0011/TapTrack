@@ -4,6 +4,7 @@ import { TapTrackDatabase, ensureDatabaseSeeded } from '@/database';
 import type { Currency, Method, TransactionDraft } from '@/types';
 import {
   InsufficientBalanceError,
+  InvalidTransactionDateError,
   createTransaction,
   deleteTransaction,
   updateTransaction,
@@ -65,8 +66,10 @@ describe('createTransaction', () => {
     }
   });
 
-  it('commits transaction and sync intent together before delivery', async () => {
+  it('commits only the transaction sync intent and leaves explicit default settings unchanged', async () => {
     await setOpeningBalance('TRY', 'cash', 200);
+    const settingsBefore = await database.settings.get(DEFAULT_SETTINGS_ID);
+    expect(settingsBefore?.lastUsedMethod).toBe('card');
 
     const transaction = await createTransaction(baseExpense, database);
     const transactionOutbox = await database.syncOutbox.get(`transactions:${transaction.id}`);
@@ -84,11 +87,32 @@ describe('createTransaction', () => {
       title: 'coffee',
       amount: 120,
     });
-    expect(settingsOutbox).toMatchObject({
-      tableName: 'settings',
-      operation: 'upsert',
-      recordId: DEFAULT_SETTINGS_ID,
+    expect(settingsOutbox).toBeUndefined();
+    await expect(database.settings.get(DEFAULT_SETTINGS_ID)).resolves.toMatchObject({
+      lastUsedMethod: 'card',
+      updatedAt: settingsBefore?.updatedAt,
     });
+  });
+
+  it('rejects future-dated manual transactions before touching the ledger', async () => {
+    const now = new Date(2026, 4, 18, 14, 30, 0);
+    await expect(
+      createTransaction(
+        {
+          ...baseExpense,
+          type: 'income',
+          amount: 10,
+          title: 'tomorrow',
+          categoryId: 'cat-income',
+          date: '2026-05-19',
+        },
+        database,
+        now
+      )
+    ).rejects.toBeInstanceOf(InvalidTransactionDateError);
+
+    expect(await database.transactions.count()).toBe(0);
+    expect((await database.syncOutbox.toArray()).some((item) => item.tableName === 'transactions')).toBe(false);
   });
 
   it('records exact ordering for current-day activity but leaves historical activity unordered', async () => {

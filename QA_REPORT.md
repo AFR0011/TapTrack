@@ -3,70 +3,69 @@
 Workflow schema: `agentic-workflow/v2`
 Project: TapTrack
 Repository profile: software
-Initialized: 2026-09-05
 
-## Current cycle
+## Current promotion
 
-- Batch: TT-B002 — Canonical ledger/sync correctness, restore/reset/disconnect, integrations, and release hardening
-- Implementation verdict: `PASS_WITH_RESIDUAL_RISKS`
-- Release verdict: `PRODUCTION_RELEASED_WITH_RESIDUAL_RISKS`
-- Evidence date: 2026-09-08
-- Production branch: `main`
-- Rollback anchor: `backup/main-pre-b002-20260908` at `cc43524c99e7944a17df13d76578bf83a79fcb15`
+- Scope: completed editorial redesign plus pre-main ledger/sync/reporting hardening
+- Promotion PR: #15
+- Base before promotion: `main` at `0057367c2c7bb2bab1a3a13d3fc768766316a255`
+- Verified code candidate: `0d03ca1da0888744c374689fcd8015d5d67e5b23`
+- Verification run: GitHub Actions `34407468049`
+- Candidate verdict: `PASS`
 
-## Automated evidence
+## Automated evidence for candidate `0d03ca1...`
 
-B002 implementation head `2e01cda7e69e80a4b75fa2bcea20f253fb4ebbc5` passed GitHub Actions run `34206762454`:
+- publication guard: PASS
+- `npm audit --audit-level=high`: 0 vulnerabilities at configured threshold
+- `npm audit --omit=dev --audit-level=high`: 0 vulnerabilities at configured threshold
+- ESLint: PASS; three non-blocking unused-variable warnings remained at this candidate and are removed by the final cleanup commit in PR #15
+- TypeScript: PASS
+- Vitest: 44/44 files, 244/244 tests PASS
+- Next.js 16.3.4 production build: PASS
+- route smoke: 9/9 PASS
+- Playwright: 9 passed / 2 intentionally skipped across mobile 320, mobile 390, and desktop 1440 projects
+- warmed/fresh offline route coverage, offline local-ledger persistence, recurring mobile editing, settings mobile behavior, navigation overlay regression, and desktop responsive compositions remain in the browser gate
 
-- dependency audits: 0 vulnerabilities at configured threshold;
-- ESLint: 0 errors / 3 non-blocking navigation warnings;
-- TypeScript: PASS;
-- Vitest: 32/32 files, 172/172 tests PASS;
-- Next.js production build: PASS;
-- route smoke: 9/9 PASS;
-- offline mobile Playwright: 2/2 PASS.
+The final PR head after warning cleanup and release-record updates must pass the complete gate again. Earlier green evidence is not substituted for exact-head verification.
 
-## Production release evidence
+## Correctness findings closed in this promotion
 
-The B002 application was promoted to `main` and deployed successfully to Vercel production. Production `/login` exposed the configured Supabase account flow.
+### Sync/adoption
 
-Initial protected-sync testing returned `503 {"error":"Protected sync is unavailable."}`. Source inspection showed this response occurs when `SUPABASE_SERVICE_ROLE_KEY` is absent before any database call. The production server credential was then configured, after which the owner confirmed core application/sync behavior was working.
+Cloud adoption no longer clears/replaces canonical local data and binds the device as separate local transactions. Snapshot replacement, derived-balance rebuild, repair rows, outbox reset, and device binding are committed atomically after validation. Account changes during adoption fail closed.
 
-The live Supabase database was verified to contain the required generation-aware and protected RPCs, with protected ledger functions `SECURITY DEFINER`, executable by `service_role`, and unavailable to ordinary authenticated users.
+### Recurring integration
 
-After application smoke testing, `enforce_protected_sync_writes` was applied. Post-migration inspection confirmed canonical finance tables retain owner SELECT policies only; direct authenticated-browser INSERT/UPDATE/DELETE policies are removed.
+Online startup does not generate due recurring entries unless the pre-sync cycle succeeds. Offline startup remains local-first. Reconciliation-date occurrences use explicit before/after ordering rather than repeatedly failing on unresolved same-day ambiguity.
 
-No fresh runtime errors were observed in the checked post-enforcement window for sync, restore, AI categorization, or Telegram webhook routes.
+### Ledger/reconciliation
 
-A follow-up `optimize_rls_and_indexes` migration was tracked in Git and applied. Supabase performance-advisor rerun confirmed the prior 15 RLS initplan warnings and nine duplicate-index warnings were cleared. Four unused-index findings remain informational and are intentionally retained pending representative workload evidence.
+Future-dated manual transaction/conversion writes are rejected. Monthly reconciliation is evaluated per active balance, including balances introduced during a month, while archived currencies do not block completion.
 
-## Functional acceptance retained from B002
+### FX/reporting
 
-- checkpoint-based canonical balance reconstruction and reconciliation;
-- deterministic ordering around reconciliation checkpoints;
-- atomic local canonical mutation + durable IndexedDB outbox intent;
-- explicit cloud-use vs local-merge adoption;
-- generation-aware multi-device convergence and stale-client protection;
-- explicit device/account restore and reset scope;
-- explicit device cloud disconnect;
-- anchored recurring schedules and deterministic occurrence IDs;
-- historical FX/report valuation;
-- authenticated server-side Groq categorization with protected quota accounting;
-- private-owner Telegram writes with atomic batch semantics and `update_id` idempotency;
-- authenticated-layout service-worker registration and offline Chromium coverage.
+Historical cache fallback cannot select a rate observation later than the requested historical date. Dashboard financial maps are bound to the quote currency that produced them, preventing stale default-currency values after a preference switch. PDF report text wraps and paginates rather than flowing below a one-page content stream.
 
-## Residuals
+### Preference conflict domain
 
-Release does not prove away:
+Creating ordinary ledger transactions no longer updates the synchronized Settings row merely to remember the most recently used cash/card method. The Settings payment method is treated as an explicit default preference, reducing unnecessary multi-device same-record conflicts.
 
-- native installed Safari/iOS relaunch, upgrade, or storage-eviction behavior;
-- the empty-cloud claim/seed TOCTOU between final emptiness check and initial seed;
-- JavaScript `number` monetary precision;
-- application-level encryption of IndexedDB;
-- exhaustive full-object/reflog historical secret scanning;
-- Supabase leaked-password protection, which remains disabled as a project-level Auth setting;
-- any provider-backed scenario that the owner did not explicitly exercise during production smoke testing.
+## Release acceptance rule
 
-## Current verdict
+Promotion is accepted only when all of the following are true:
 
-TT-B002 is released to production with the intended server-mediated write boundary enforced. Core production behavior and sync were confirmed working after server configuration was corrected, automated verification remains green, and post-release database advisor cleanup is complete except for informational unused-index notices and the separate leaked-password Auth setting.
+1. PR #15 exact head passes the full GitHub Actions gate.
+2. PR #15 is mergeable against unchanged `main` and is merged with expected-head protection.
+3. GitHub Actions succeeds for the resulting exact `main` merge SHA.
+4. The corresponding Vercel production deployment reaches READY.
+5. Production smoke confirms the public/authenticated shell responds without fresh deployment errors.
+
+## Residuals not closed by this release
+
+- native Safari/iOS installed-PWA relaunch/upgrade/storage-eviction behavior;
+- empty-cloud claim + seed TOCTOU across provider boundaries;
+- JavaScript-number monetary precision;
+- IndexedDB at-rest exposure without application-level encryption;
+- exhaustive all-object/reflog historical secret scanning;
+- Supabase leaked-password protection project setting;
+- repository branch protection, tracked by issue #14 because repository-administration write permission is unavailable through the connected GitHub App.
