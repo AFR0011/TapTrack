@@ -47,8 +47,10 @@ async function assertMobileLayout(page: Page) {
   await expectMobileTargetSize(moreButton);
   await moreButton.click();
 
+  const moreNavigation = mobileNav.getByRole('group', { name: 'More navigation' });
+  await expect(moreNavigation).toBeVisible();
   for (const route of moreRoutes) {
-    await expectMobileTargetSize(mobileNav.getByRole('menuitem', { name: route.nav, exact: true }));
+    await expectMobileTargetSize(moreNavigation.getByRole('link', { name: route.nav, exact: true }));
   }
 
   await moreButton.click();
@@ -161,7 +163,7 @@ test('device-local ledger works across warmed offline mobile routes', async ({ p
   await completeFreshOnboarding(page);
   await expectHeadingWithDiagnostics(page, 'Dashboard', 'Post-setup app state', diagnostics);
   await assertNoHorizontalOverflow(page);
-  await expectMobileTargetSize(page.getByRole('link', { name: 'Add transaction', exact: true }));
+  await expectMobileTargetSize(page.getByLabel('Add transaction', { exact: true }));
 
   await page.evaluate(async () => {
     await navigator.serviceWorker.ready;

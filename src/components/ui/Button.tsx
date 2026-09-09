@@ -7,13 +7,13 @@ const buttonVariants = cva(
   {
     variants: {
       variant: {
-        primary: 'bg-blue-500 text-white hover:bg-blue-600',
+        primary: 'bg-action-primary text-white hover:bg-action-primary-hover',
         secondary: 'border border-subtle bg-surface text-secondary hover:bg-surface-muted',
         ghost: 'text-muted hover:bg-surface-muted hover:text-primary',
-        danger: 'bg-danger text-white hover:bg-danger/90',
+        danger: 'bg-action-danger text-white hover:bg-action-danger-hover',
         dangerGhost: 'text-danger hover:bg-danger-muted',
         subtle: 'bg-surface-muted text-secondary hover:bg-surface-raised',
-        success: 'bg-emerald-600 text-white hover:bg-emerald-700',
+        success: 'bg-action-success text-white hover:bg-action-success-hover',
         link: 'min-h-11 min-w-11 px-3 text-accent hover:bg-surface-muted hover:text-accent',
       },
       size: {

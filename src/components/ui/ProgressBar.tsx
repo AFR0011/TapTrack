@@ -8,6 +8,8 @@ type ProgressBarProps = {
   label?: string;
   usedLabel?: string;
   remainingLabel?: string;
+  ariaLabel?: string;
+  ariaValueText?: string;
 };
 
 function barColor(percent: number) {
@@ -24,9 +26,13 @@ export function ProgressBar({
   label,
   usedLabel,
   remainingLabel,
+  ariaLabel,
+  ariaValueText,
 }: ProgressBarProps) {
   const clamped = Math.min(Math.max(percent, 0), 100);
   const hasFooter = Boolean(usedLabel || remainingLabel);
+  const accessibleLabel = ariaLabel ?? label ?? 'Progress';
+  const accessibleValueText = ariaValueText ?? usedLabel ?? `${Math.round(clamped)}%`;
 
   return (
     <div className={className}>
@@ -36,9 +42,11 @@ export function ProgressBar({
       <div
         className={cn('overflow-hidden rounded-full bg-surface-muted', compact ? 'h-1.5' : 'h-2')}
         role="progressbar"
+        aria-label={accessibleLabel}
         aria-valuenow={clamped}
         aria-valuemin={0}
         aria-valuemax={100}
+        aria-valuetext={accessibleValueText}
       >
         <div
           className={cn('h-full rounded-full transition-[width] duration-300 ease-out', barColor(percent))}

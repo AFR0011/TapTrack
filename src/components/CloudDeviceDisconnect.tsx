@@ -26,12 +26,12 @@ export function CloudDeviceDisconnect({ onDisconnected }: CloudDeviceDisconnectP
     try {
       const changed = await disconnectDeviceLedger(db);
       if (changed) {
-        toast.success('This device was disconnected from cloud sync. Local finance data was kept.');
+        toast.success('This device was disconnected from sync. Its TapTrack data was kept.');
       }
       setConfirmOpen(false);
       await onDisconnected?.();
     } catch (err) {
-      toast.error(err instanceof Error ? err.message : 'This device could not be disconnected.');
+      toast.error(err instanceof Error ? err.message : 'This device could not be disconnected. Try again.');
     } finally {
       setBusy(false);
     }
@@ -40,11 +40,9 @@ export function CloudDeviceDisconnect({ onDisconnected }: CloudDeviceDisconnectP
   return (
     <>
       <div className="mt-3 rounded-xl border border-subtle bg-surface-muted p-4">
-        <p className="text-sm font-semibold text-primary">Device cloud link</p>
+        <p className="text-sm font-semibold text-primary">This device</p>
         <p className="mt-1 text-xs font-medium text-muted">
-          Disconnecting keeps this browser’s ledger and leaves the cloud account unchanged. Pending
-          sync operations for the current link are cleared; relinking later requires an explicit
-          cloud/adoption choice.
+          Disconnecting stops this device from syncing. The TapTrack data already on this device stays here, and your synced account is not changed.
         </p>
         <Button
           type="button"
@@ -53,14 +51,14 @@ export function CloudDeviceDisconnect({ onDisconnected }: CloudDeviceDisconnectP
           onClick={() => setConfirmOpen(true)}
           disabled={busy}
         >
-          Disconnect this device
+          Disconnect from sync
         </Button>
       </div>
 
       <ConfirmDialog
         open={confirmOpen}
-        title="Disconnect this device from cloud sync?"
-        message="Your local finance ledger will stay on this browser and the cloud account will not be changed. Pending sync operations for this device link will be discarded. If you link again later, TapTrack will ask how to reconcile local and cloud data."
+        title="Disconnect this device from sync?"
+        message="TapTrack will keep the data already on this device and leave your synced account unchanged. If you connect this device again later, TapTrack will ask how you want to combine the two sets of data."
         confirmLabel="Disconnect device"
         onConfirm={() => void disconnect()}
         onCancel={() => setConfirmOpen(false)}

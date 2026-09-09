@@ -47,7 +47,7 @@ export function CurrencySettingsCard() {
       toast.success(`${currencyToAdd} added.`);
       setCurrencyToAdd('');
     } catch (error) {
-      toast.error(error instanceof Error ? error.message : 'Currency could not be added.');
+      toast.error(error instanceof Error ? error.message : 'Currency could not be added. Try again.');
     } finally {
       setBusy(false);
     }
@@ -57,29 +57,29 @@ export function CurrencySettingsCard() {
     setBusy(true);
     try {
       await setDefaultCurrency(currency);
-      toast.success(`Default currency changed to ${currency}.`);
+      toast.success(`Main currency changed to ${currency}.`);
     } catch (error) {
-      toast.error(error instanceof Error ? error.message : 'Default currency could not be changed.');
+      toast.error(error instanceof Error ? error.message : 'Main currency could not be changed. Try again.');
     } finally {
       setBusy(false);
     }
   };
 
   return (
-    <section className="rounded-2xl border border-subtle bg-surface p-5">
+    <section id="currencies" className="scroll-mt-24 rounded-2xl border border-subtle bg-surface p-5">
       <div className="flex flex-col gap-1 sm:flex-row sm:items-start sm:justify-between sm:gap-4">
         <div>
           <h2 className="text-base font-semibold text-primary">Currencies</h2>
-          <p className="mt-1 text-sm text-muted">Choose what you use and which currency TapTrack uses for summaries.</p>
+          <p className="mt-1 text-sm text-muted">Add the currencies you use and choose which one TapTrack uses for summaries.</p>
         </div>
         <span className="w-fit rounded-full bg-accent-muted px-2.5 py-1 text-xs font-semibold text-accent">
-          {settings.defaultCurrency} default
+          {settings.defaultCurrency} main
         </span>
       </div>
 
       <div className="mt-5 grid gap-3 sm:grid-cols-2">
         <SelectField
-          label="Default currency"
+          label="Main currency"
           value={settings.defaultCurrency}
           onChange={(event) => void handleDefaultChange(event.target.value)}
           options={activeCurrencies.map((code) => ({ value: code, label: currencyLabel(code, catalog) }))}
@@ -102,7 +102,7 @@ export function CurrencySettingsCard() {
         </div>
       </div>
 
-      <div className="mt-4 flex flex-wrap gap-2" aria-label="Active currencies">
+      <div className="mt-4 flex flex-wrap gap-2" aria-label="Currencies in use">
         {activeCurrencies.map((code) => (
           <span
             key={code}

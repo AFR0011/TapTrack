@@ -11,14 +11,23 @@
   --text-secondary: #475569;
   --text-muted: #64748b;
   --border: #e2e8f0;
-  --accent: #2563eb;
+  --accent: #1d4ed8;
   --accent-muted: #dbeafe;
-  --danger: #dc2626;
+  --danger: #b91c1c;
   --danger-muted: #fef2f2;
-  --success: #059669;
+  --success: #047857;
   --success-muted: #ecfdf5;
-  --warning: #d97706;
+  --warning: #b45309;
   --warning-muted: #fffbeb;
+
+  /* Filled actions use dedicated colors so white labels remain WCAG AA. */
+  --action-primary: #2563eb;
+  --action-primary-hover: #1d4ed8;
+  --action-success: #047857;
+  --action-success-hover: #065f46;
+  --action-danger: #dc2626;
+  --action-danger-hover: #b91c1c;
+
   --chart-1: #2563eb;
   --chart-2: #059669;
   --chart-3: #db2777;
@@ -46,7 +55,7 @@
   --text-secondary: #b6c2d4;
   --text-muted: #8a98ad;
   --border: #283349;
-  --accent: #3b82f6;
+  --accent: #60a5fa;
   --accent-muted: #1e3a5f;
   --danger: #f87171;
   --danger-muted: #3f1515;
@@ -54,6 +63,15 @@
   --success-muted: #052e1f;
   --warning: #fbbf24;
   --warning-muted: #3b2a06;
+
+  /* Keep bright semantic text while using darker accessible action fills. */
+  --action-primary: #2563eb;
+  --action-primary-hover: #1d4ed8;
+  --action-success: #047857;
+  --action-success-hover: #065f46;
+  --action-danger: #dc2626;
+  --action-danger-hover: #b91c1c;
+
   --chart-1: #3b82f6;
   --chart-2: #34d399;
   --chart-3: #f472b6;
@@ -83,7 +101,7 @@ body {
 }
 
 ::selection {
-  background: var(--accent);
+  background: var(--action-primary);
   color: white;
 }
 
@@ -101,4 +119,19 @@ body {
 }
 ::-webkit-scrollbar-thumb:hover {
   background: var(--text-muted);
+}
+
+@media (prefers-reduced-motion: reduce) {
+  html {
+    scroll-behavior: auto;
+  }
+
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    scroll-behavior: auto !important;
+    transition-duration: 0.01ms !important;
+  }
 }

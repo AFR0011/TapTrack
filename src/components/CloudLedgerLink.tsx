@@ -9,6 +9,7 @@ import {
 } from '@/sync/syncAdoption';
 import type { LedgerLinkPlan } from '@/sync/syncBinding';
 import { Button } from '@/components/ui/Button';
+import { ConfirmDialog } from './ConfirmDialog';
 import { toast } from 'sonner';
 
 type CloudLedgerLinkProps = {
@@ -18,6 +19,7 @@ type CloudLedgerLinkProps = {
 export function CloudLedgerLink({ onLinked }: CloudLedgerLinkProps) {
   const [plan, setPlan] = useState<LedgerLinkPlan | null>(null);
   const [open, setOpen] = useState(false);
+  const [confirmReplace, setConfirmReplace] = useState(false);
   const [busy, setBusy] = useState(false);
   const titleId = useId();
   const descriptionId = useId();
@@ -30,43 +32,44 @@ export function CloudLedgerLink({ onLinked }: CloudLedgerLinkProps) {
       const nextPlan = await inspectCloudAdoption();
       if (nextPlan.state === 'already-linked') {
         await onLinked();
-        toast.success('This device is already linked to this account.');
+        toast.success('This device is already connected to your synced account.');
         return;
       }
       setPlan(nextPlan);
       setOpen(true);
     } catch (error) {
-      toast.error(error instanceof Error ? error.message : 'Cloud sync could not be checked.');
+      toast.error(error instanceof Error ? error.message : 'TapTrack could not check sync right now. Try again.');
     } finally {
       setBusy(false);
     }
   };
 
-  const run = async (action: 'empty' | 'cloud' | 'merge') => {
+  const run = async (action: 'empty' | 'account' | 'merge') => {
     setBusy(true);
     try {
       if (action === 'empty') await linkEmptyCloudLedger();
-      if (action === 'cloud') await adoptCloudLedger();
+      if (action === 'account') await adoptCloudLedger();
       if (action === 'merge') await mergeLocalLedgerIntoCloud();
       setOpen(false);
+      setConfirmReplace(false);
       setPlan(null);
       await onLinked();
       toast.success(
-        action === 'cloud'
-          ? 'Cloud ledger loaded on this device.'
+        action === 'account'
+          ? 'Synced account data loaded on this device.'
           : action === 'merge'
-            ? 'This device ledger was merged into the account.'
-            : 'This device ledger is now linked and synced.'
+            ? 'The data on this device was combined with your synced account.'
+            : 'This device is now connected to sync.'
       );
     } catch (error) {
-      toast.error(error instanceof Error ? error.message : 'Cloud ledger could not be linked.');
+      toast.error(error instanceof Error ? error.message : 'This device could not be connected to sync. Try again.');
     } finally {
       setBusy(false);
     }
   };
 
   useEffect(() => {
-    if (!open) return;
+    if (!open || confirmReplace) return;
     const previousActive = document.activeElement as HTMLElement | null;
     cancelRef.current?.focus();
 
@@ -78,7 +81,7 @@ export function CloudLedgerLink({ onLinked }: CloudLedgerLinkProps) {
       }
       if (event.key !== 'Tab') return;
       const focusable = panelRef.current?.querySelectorAll<HTMLElement>(
-        'button, [href], input, select, textarea, [tabindex]:not([tabindex="-1"])'
+        'button:not(:disabled), [href], input:not(:disabled), select:not(:disabled), textarea:not(:disabled), [tabindex]:not([tabindex="-1"])'
       );
       if (!focusable?.length) return;
       const first = focusable[0];
@@ -97,7 +100,7 @@ export function CloudLedgerLink({ onLinked }: CloudLedgerLinkProps) {
       document.removeEventListener('keydown', handleKeyDown);
       previousActive?.focus();
     };
-  }, [busy, open]);
+  }, [busy, confirmReplace, open]);
 
   return (
     <>
@@ -109,10 +112,10 @@ export function CloudLedgerLink({ onLinked }: CloudLedgerLinkProps) {
         loading={busy && !open}
         disabled={busy}
       >
-        Link this device ledger
+        Connect this device to sync
       </Button>
 
-      {open && plan ? (
+      {open && plan && !confirmReplace ? (
         <div
           className="fixed inset-0 z-50 flex items-center justify-center bg-[var(--overlay)] p-4"
           onClick={(event) => {
@@ -128,38 +131,23 @@ export function CloudLedgerLink({ onLinked }: CloudLedgerLinkProps) {
             className="w-full max-w-md rounded-xl border border-subtle bg-surface p-5 shadow-[var(--shadow-overlay)]"
           >
             <h3 id={titleId} className="text-base font-semibold text-primary">
-              {plan.state === 'merge-choice' ? 'Choose how to link this device' : 'Link cloud sync'}
+              {plan.state === 'merge-choice' ? 'Choose what to keep' : 'Connect this device to sync'}
             </h3>
             <p id={descriptionId} className="mt-2 text-sm font-medium text-secondary">
               {plan.state === 'remote-empty'
-                ? 'This account has no TapTrack cloud ledger yet. This device will become its starting ledger.'
+                ? 'Your synced account does not have TapTrack data yet. The data on this device will become the starting copy.'
                 : plan.state === 'cloud-only'
-                  ? 'This device has no local finance data to preserve. TapTrack can safely load the existing cloud ledger here.'
-                  : 'Both this device and the account contain TapTrack data. Choose which reconciliation you want. TapTrack will not remember a default choice.'}
+                  ? 'There is no TapTrack data on this device to preserve. TapTrack can load the data already saved to your account.'
+                  : 'This device and your synced account both have TapTrack data. Keeping both is the safest choice.'}
             </p>
 
             {plan.state === 'merge-choice' ? (
               <div className="mt-5 grid gap-3">
-                <div className="rounded-lg border border-subtle bg-surface-muted p-3">
-                  <p className="text-sm font-semibold text-primary">Use cloud data</p>
+                <div className="rounded-lg border border-accent/30 bg-accent-muted/40 p-3">
+                  <span className="inline-flex rounded-full bg-surface px-2 py-0.5 text-xs font-semibold text-accent">Recommended</span>
+                  <p className="mt-2 text-sm font-semibold text-primary">Keep both</p>
                   <p className="mt-1 text-xs font-medium text-muted">
-                    Replace this device’s local ledger with the account’s cloud ledger. The full cloud snapshot is validated before local data is replaced.
-                  </p>
-                  <Button
-                    type="button"
-                    variant="secondary"
-                    className="mt-3 w-full"
-                    onClick={() => void run('cloud')}
-                    disabled={busy}
-                    loading={busy}
-                  >
-                    Use cloud data
-                  </Button>
-                </div>
-                <div className="rounded-lg border border-subtle bg-surface-muted p-3">
-                  <p className="text-sm font-semibold text-primary">Merge this device</p>
-                  <p className="mt-1 text-xs font-medium text-muted">
-                    Upload this device’s canonical records into the account, then download the resulting ledger. For the same record, the later successful sync wins.
+                    Combine the data on this device with the data already saved to your account.
                   </p>
                   <Button
                     type="button"
@@ -168,7 +156,22 @@ export function CloudLedgerLink({ onLinked }: CloudLedgerLinkProps) {
                     disabled={busy}
                     loading={busy}
                   >
-                    Merge this device
+                    Keep both and connect
+                  </Button>
+                </div>
+                <div className="rounded-lg border border-subtle bg-surface-muted p-3">
+                  <p className="text-sm font-semibold text-primary">Use synced account only</p>
+                  <p className="mt-1 text-xs font-medium text-muted">
+                    Replace the TapTrack data on this device with the data already saved to your account.
+                  </p>
+                  <Button
+                    type="button"
+                    variant="secondary"
+                    className="mt-3 w-full"
+                    onClick={() => setConfirmReplace(true)}
+                    disabled={busy}
+                  >
+                    Use synced account
                   </Button>
                 </div>
               </div>
@@ -176,11 +179,11 @@ export function CloudLedgerLink({ onLinked }: CloudLedgerLinkProps) {
               <Button
                 type="button"
                 className="mt-5 w-full"
-                onClick={() => void run(plan.state === 'cloud-only' ? 'cloud' : 'empty')}
+                onClick={() => void run(plan.state === 'cloud-only' ? 'account' : 'empty')}
                 disabled={busy}
                 loading={busy}
               >
-                {plan.state === 'cloud-only' ? 'Use cloud data' : 'Link and sync'}
+                {plan.state === 'cloud-only' ? 'Load synced account data' : 'Connect and sync'}
               </Button>
             )}
 
@@ -197,6 +200,18 @@ export function CloudLedgerLink({ onLinked }: CloudLedgerLinkProps) {
           </div>
         </div>
       ) : null}
+
+      <ConfirmDialog
+        open={confirmReplace}
+        title="Replace the data on this device?"
+        message="TapTrack will replace the current data on this device with the data in your synced account. The two sets of data will not be combined."
+        confirmLabel="Use synced account"
+        confirmVariant="danger"
+        onConfirm={() => void run('account')}
+        onCancel={() => setConfirmReplace(false)}
+        confirmLoading={busy}
+        cancelDisabled={busy}
+      />
     </>
   );
 }

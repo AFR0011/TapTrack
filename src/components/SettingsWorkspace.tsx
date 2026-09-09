@@ -28,6 +28,7 @@ import {
 import { ConfirmDialog } from './ConfirmDialog';
 import { CloudLedgerLink } from './CloudLedgerLink';
 import { CloudDeviceDisconnect } from './CloudDeviceDisconnect';
+import { CurrencySettingsCard } from './CurrencySettingsCard';
 import { QuickCaptureSettings } from './QuickCaptureSettings';
 import { RestoreScopeDialog } from './RestoreScopeDialog';
 import { ResetScopeDialog } from './ResetScopeDialog';
@@ -179,23 +180,23 @@ export default function SettingsWorkspace() {
       toast.success('Category updated.');
       cancelCategoryEdit();
     } catch (err) {
-      toast.error(err instanceof Error ? err.message : 'Category could not be updated.');
+      toast.error(err instanceof Error ? err.message : 'Category could not be updated. Try again.');
     }
   };
 
   const handleExportCSV = async () => {
     downloadText('taptrack-transactions.csv', await exportCSV(), 'text/csv');
-    toast.success('CSV export created.');
+    toast.success('CSV downloaded.');
   };
 
   const handleExportJSON = async () => {
     downloadText('taptrack-backup.json', await exportJSON(), 'application/json');
-    toast.success('JSON backup created.');
+    toast.success('Backup downloaded.');
   };
 
   const handleExportPDF = async () => {
     downloadBlob(`taptrack-${month}-report.pdf`, await exportPDF(month));
-    toast.success('PDF report created.');
+    toast.success('PDF downloaded.');
   };
 
   const persistPreRestoreSafetyBackup = useCallback((safetyBackup: string) => {
@@ -236,11 +237,11 @@ export default function SettingsWorkspace() {
       await refreshSyncStatus();
       toast.success(
         result.legacyMigrated
-          ? 'Legacy backup restored locally and upgraded.'
-          : 'Backup restored locally. Safety backup downloaded.'
+          ? 'Backup restored and updated to the current format. A safety backup was downloaded first.'
+          : 'Backup restored on this device. A safety backup was downloaded first.'
       );
     } catch (err) {
-      toast.error(err instanceof Error ? err.message : 'Backup could not be restored.');
+      toast.error(err instanceof Error ? err.message : 'Backup could not be restored. Check the file and try again.');
     } finally {
       if (!keepPendingFile && importInputRef.current) importInputRef.current.value = '';
     }
@@ -258,12 +259,12 @@ export default function SettingsWorkspace() {
       await refreshSyncStatus();
       toast.success(
         result.legacyMigrated
-          ? 'Legacy backup restored on this device. Cloud account unchanged.'
-          : 'Backup restored on this device. Cloud account unchanged.'
+          ? 'Backup restored and updated on this device. Your synced account was not changed.'
+          : 'Backup restored on this device. Your synced account was not changed.'
       );
       clearPendingRestore();
     } catch (err) {
-      toast.error(err instanceof Error ? err.message : 'This device could not be restored.');
+      toast.error(err instanceof Error ? err.message : 'This device could not be restored. Try again.');
       setShowRestoreScope(true);
     } finally {
       setRestoreBusy(false);
@@ -282,12 +283,12 @@ export default function SettingsWorkspace() {
       await refreshSyncStatus();
       toast.success(
         result.legacyMigrated
-          ? 'Legacy backup restored to the synced account.'
-          : 'Synced account restored.'
+          ? 'Backup restored and updated across your synced account.'
+          : 'Synced account restored from backup.'
       );
       clearPendingRestore();
     } catch (err) {
-      toast.error(err instanceof Error ? err.message : 'Synced account could not be restored.');
+      toast.error(err instanceof Error ? err.message : 'Your synced account could not be restored. Try again.');
       setShowRestoreScope(true);
     } finally {
       setRestoreBusy(false);
@@ -304,11 +305,11 @@ export default function SettingsWorkspace() {
       setShowResetScope(false);
       toast.success(
         syncStatus?.bindingState === 'linked'
-          ? 'This device was reset. Synced account unchanged.'
-          : 'Local data reset. Safety backup downloaded.'
+          ? 'Data on this device was reset. Your synced account was not changed.'
+          : 'Data on this device was reset. A safety backup was downloaded first.'
       );
     } catch (err) {
-      toast.error(err instanceof Error ? err.message : 'This device could not be reset.');
+      toast.error(err instanceof Error ? err.message : 'Data on this device could not be reset. Try again.');
     } finally {
       setResetBusy(false);
     }
@@ -322,9 +323,9 @@ export default function SettingsWorkspace() {
       await refreshSyncStatus();
       setShowAccountResetConfirm(false);
       setShowResetScope(false);
-      toast.success('Synced account reset.');
+      toast.success('Synced account data reset.');
     } catch (err) {
-      toast.error(err instanceof Error ? err.message : 'Synced account could not be reset.');
+      toast.error(err instanceof Error ? err.message : 'Your synced account could not be reset. Try again.');
       setShowResetScope(true);
     } finally {
       setResetBusy(false);
@@ -334,7 +335,7 @@ export default function SettingsWorkspace() {
   const handleChangeDefaultMethod = async (method: Method) => {
     if (!settings) return;
     await updateSettingsPreferences({ lastUsedMethod: method });
-    toast.success('Default method updated.');
+    toast.success('Default payment method updated.');
   };
 
   const handleToggleAI = async () => {
@@ -367,9 +368,9 @@ export default function SettingsWorkspace() {
     try {
       await syncNow();
       await refreshSyncStatus();
-      toast.success('Sync completed.');
+      toast.success('Sync complete.');
     } catch (err) {
-      toast.error(err instanceof Error ? err.message : 'Sync failed.');
+      toast.error(err instanceof Error ? err.message : 'Sync could not finish. Check your connection and try again.');
     } finally {
       setSyncing(false);
     }
@@ -394,27 +395,15 @@ export default function SettingsWorkspace() {
     <div className="space-y-5">
       <PageHeader title="Settings" description="Make TapTrack yours." />
 
-      <section className="rounded-2xl border border-subtle bg-surface p-5">
-        <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
-          <div>
-            <h2 className="text-base font-semibold text-primary">Account</h2>
-            <p className="mt-1 text-sm text-muted">
-              {!accountChecked ? 'Checking…' : accountEmail ? accountEmail : 'Not signed in'}
-            </p>
-          </div>
-          {accountEmail ? (
-            <Button type="button" variant="secondary" onClick={handleSignOut} loading={signingOut} disabled={signingOut}>
-              Sign out
-            </Button>
-          ) : (
-            <Button type="button" variant="secondary" onClick={() => router.push('/login')} disabled={!accountChecked}>
-              Sign in
-            </Button>
-          )}
-        </div>
-      </section>
+      <nav aria-label="Settings sections" className="flex flex-wrap gap-2 rounded-xl border border-subtle bg-surface p-2">
+        <SettingsJump href="#preferences">Personalize</SettingsJump>
+        <SettingsJump href="#quick-capture">Capture</SettingsJump>
+        <SettingsJump href="#balances">Ledger</SettingsJump>
+        <SettingsJump href="#account">Account & sync</SettingsJump>
+        <SettingsJump href="#data">Data</SettingsJump>
+      </nav>
 
-      <section className="rounded-2xl border border-subtle bg-surface p-5">
+      <section id="preferences" className="scroll-mt-24 rounded-2xl border border-subtle bg-surface p-5">
         <h2 className="text-base font-semibold text-primary">Preferences</h2>
         <div className="mt-4">
           <SelectField
@@ -448,17 +437,21 @@ export default function SettingsWorkspace() {
         </div>
       </section>
 
-      <QuickCaptureSettings signedIn={Boolean(accountEmail)} />
+      <CurrencySettingsCard />
 
-      <section className="rounded-2xl border border-subtle bg-surface p-5">
+      <div id="quick-capture" className="scroll-mt-24">
+        <QuickCaptureSettings signedIn={Boolean(accountEmail)} />
+      </div>
+
+      <section id="balances" className="scroll-mt-24 rounded-2xl border border-subtle bg-surface p-5">
         <div className="flex items-center justify-between gap-3">
           <h2 className="text-base font-semibold text-primary">Balances</h2>
           <details className="relative">
             <summary className={cn('cursor-pointer list-none rounded-lg px-2 py-1 text-xs font-semibold text-accent [&::-webkit-details-marker]:hidden', focusVisibleRing)}>
-              How it works
+              How balance checks work
             </summary>
             <div className="absolute right-0 z-20 mt-2 w-72 rounded-xl border border-subtle bg-surface p-3 text-xs leading-5 text-muted shadow-lg">
-              Your opening amounts stay fixed. Reconciliation records a new real-world balance without rewriting transaction history.
+              Your starting balances stay unchanged. When you correct a balance, TapTrack records the new amount from that point forward without changing older transactions.
             </div>
           </details>
         </div>
@@ -473,9 +466,9 @@ export default function SettingsWorkspace() {
       </section>
 
       <section className="rounded-2xl border border-subtle bg-surface p-5">
-        <h2 className="text-base font-semibold text-primary">Reconciliation history</h2>
+        <h2 className="text-base font-semibold text-primary">Balance checks</h2>
         {adjustments.length === 0 ? (
-          <p className="mt-4 rounded-lg border border-subtle bg-surface-muted p-3 text-sm text-muted">Nothing here yet.</p>
+          <p className="mt-4 rounded-lg border border-subtle bg-surface-muted p-3 text-sm text-muted">No balance corrections yet.</p>
         ) : (
           <div className="mt-4 divide-y divide-subtle overflow-hidden rounded-lg border border-subtle">
             {adjustments.map((checkpoint) => <AdjustmentRow key={checkpoint.id} checkpoint={checkpoint} />)}
@@ -514,7 +507,7 @@ export default function SettingsWorkspace() {
           </label>
           <div className="flex flex-col gap-2 sm:flex-row md:col-span-2">
             <Button type="button" className="w-full sm:w-auto" onClick={editingCategory ? saveCategoryEdit : addCategory}>
-              {editingCategory ? 'Save' : 'Add'}
+              {editingCategory ? 'Save changes' : 'Add category'}
             </Button>
             {editingCategory ? (
               <Button type="button" variant="secondary" className="w-full sm:w-auto" onClick={cancelCategoryEdit}>Cancel</Button>
@@ -542,7 +535,27 @@ export default function SettingsWorkspace() {
         </div>
       </section>
 
-      <section className="rounded-2xl border border-subtle bg-surface p-5">
+      <section id="account" className="scroll-mt-24 rounded-2xl border border-subtle bg-surface p-5">
+        <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
+          <div>
+            <h2 className="text-base font-semibold text-primary">Account</h2>
+            <p className="mt-1 text-sm text-muted">
+              {!accountChecked ? 'Checking…' : accountEmail ? accountEmail : 'Not signed in'}
+            </p>
+          </div>
+          {accountEmail ? (
+            <Button type="button" variant="secondary" onClick={handleSignOut} loading={signingOut} disabled={signingOut}>
+              Sign out
+            </Button>
+          ) : (
+            <Button type="button" variant="secondary" onClick={() => router.push('/login')} disabled={!accountChecked}>
+              Sign in
+            </Button>
+          )}
+        </div>
+      </section>
+
+      <section id="sync" className="scroll-mt-24 rounded-2xl border border-subtle bg-surface p-5">
         <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
           <div>
             <h2 className="text-base font-semibold text-primary">Sync</h2>
@@ -550,36 +563,38 @@ export default function SettingsWorkspace() {
           </div>
           <Button type="button" onClick={handleSyncNow} loading={syncing} disabled={syncing || !syncStatus?.syncAllowed}>Sync now</Button>
         </div>
-        <details className="mt-3 rounded-lg border border-subtle bg-surface-muted">
+        <details className="group mt-3 rounded-lg border border-subtle bg-surface-muted">
           <summary className={cn('flex min-h-11 cursor-pointer list-none items-center rounded-lg px-3 py-2 text-sm font-medium text-secondary select-none [&::-webkit-details-marker]:hidden', focusVisibleRing)}>
-            Details
+            <span>Sync details</span>
+            <span aria-hidden="true" className="ml-auto text-muted transition-transform group-open:rotate-180">⌄</span>
           </summary>
           <dl className="divide-y divide-subtle border-t border-subtle px-3 text-sm">
             <SyncDetailRow label="Account" value={syncStatus?.authenticated ? 'Signed in' : 'Not signed in'} />
-            <SyncDetailRow label="Network" value={syncStatus?.online ? 'Online' : 'Offline'} />
-            <SyncDetailRow label="Last download" value={formatSyncTimestamp(syncStatus?.lastSyncAt)} />
-            <SyncDetailRow label="Last upload" value={formatSyncTimestamp(syncStatus?.lastPushAt)} />
-            {(syncStatus?.pendingRetryCount ?? 0) > 0 ? <SyncDetailRow label="Waiting" value={String(syncStatus?.pendingRetryCount ?? 0)} /> : null}
+            <SyncDetailRow label="Connection" value={syncStatus?.online ? 'Online' : 'Offline'} />
+            <SyncDetailRow label="Received from account" value={formatSyncTimestamp(syncStatus?.lastSyncAt)} />
+            <SyncDetailRow label="Saved to account" value={formatSyncTimestamp(syncStatus?.lastPushAt)} />
+            {(syncStatus?.pendingRetryCount ?? 0) > 0 ? <SyncDetailRow label="Waiting to sync" value={String(syncStatus?.pendingRetryCount ?? 0)} /> : null}
           </dl>
         </details>
         {syncStatus?.bindingState === 'unlinked' ? <CloudLedgerLink onLinked={refreshSyncStatus} /> : null}
         <CloudDeviceDisconnect onDisconnected={refreshSyncStatus} />
         {syncStatus?.bindingState === 'account-mismatch' ? (
           <p role="alert" className="mt-4 rounded-lg border border-danger bg-danger-muted p-3 text-sm text-danger">
-            This device is linked to a different account. Cloud reads and writes are blocked.
+            This device is connected to a different account. Sign in with that account before syncing.
           </p>
         ) : null}
       </section>
 
-      <section className="rounded-2xl border border-subtle bg-surface p-5">
-        <h2 className="text-base font-semibold text-primary">Data</h2>
+      <section id="data" className="scroll-mt-24 rounded-2xl border border-subtle bg-surface p-5">
+        <h2 className="text-base font-semibold text-primary">Data & exports</h2>
+        <p className="mt-1 text-sm text-muted">Download reports or keep a restorable copy of your TapTrack data.</p>
         <div className="mt-4 max-w-xs">
           <Field label="Report month" type="month" value={month} onChange={(event) => setMonth(event.target.value)} />
         </div>
         <div className="mt-4 flex flex-wrap gap-2">
           <Button type="button" variant="secondary" size="sm" onClick={handleExportCSV}>Export CSV</Button>
-          <Button type="button" variant="secondary" size="sm" onClick={handleExportJSON}>Backup JSON</Button>
-          <Button type="button" variant="secondary" size="sm" onClick={() => importInputRef.current?.click()}>Restore JSON</Button>
+          <Button type="button" variant="secondary" size="sm" onClick={handleExportJSON}>Download backup</Button>
+          <Button type="button" variant="secondary" size="sm" onClick={() => importInputRef.current?.click()}>Restore backup</Button>
           <Button type="button" variant="secondary" size="sm" onClick={handleExportPDF}>Export PDF</Button>
         </div>
         <input ref={importInputRef} type="file" accept="application/json" className="hidden" onChange={(event) => void handleImportFile(event.target.files?.[0])} />
@@ -587,7 +602,7 @@ export default function SettingsWorkspace() {
 
       <section className="rounded-2xl border border-danger/30 bg-danger-muted p-5">
         <h2 className="text-base font-semibold text-danger">Danger zone</h2>
-        <p className="mt-1 text-sm text-muted">Reset creates a safety backup first. Linked devices choose whether the reset affects this device or the whole account.</p>
+        <p className="mt-1 text-sm text-muted">A safety backup is downloaded before reset. If sync is on, you can reset only this device or your synced account.</p>
         <Button
           type="button"
           variant="danger"
@@ -597,7 +612,7 @@ export default function SettingsWorkspace() {
             else setShowResetConfirm(true);
           }}
         >
-          Reset all data
+          Reset TapTrack data
         </Button>
       </section>
 
@@ -625,9 +640,9 @@ export default function SettingsWorkspace() {
 
       <ConfirmDialog
         open={showAccountRestoreConfirm}
-        title="Replace synced account ledger"
-        message="This replaces the signed-in account with the selected backup. Other linked devices will adopt it, and stale pending changes from before the restore will be discarded."
-        confirmLabel="Replace synced account"
+        title="Replace data in your synced account"
+        message="This replaces the TapTrack data in your synced account with the selected backup. Other connected devices will receive the restored data when they next sync. A safety backup is downloaded first."
+        confirmLabel="Replace synced account data"
         confirmVariant="danger"
         onConfirm={() => {
           setShowAccountRestoreConfirm(false);
@@ -642,7 +657,7 @@ export default function SettingsWorkspace() {
       <ConfirmDialog
         open={showAccountResetConfirm}
         title="Reset synced account everywhere"
-        message="This replaces the signed-in account with a fresh empty ledger. Every linked device will adopt the reset state. A safety backup is downloaded first."
+        message="This clears the TapTrack data in your synced account. Other connected devices will receive the empty account when they next sync. A safety backup is downloaded first."
         confirmLabel="Reset synced account"
         confirmVariant="danger"
         onConfirm={() => {
@@ -657,9 +672,9 @@ export default function SettingsWorkspace() {
 
       <ConfirmDialog
         open={showResetConfirm}
-        title="Reset local app data"
-        message="This replaces this browser's ledger with a fresh empty ledger. A safety backup is downloaded first."
-        confirmLabel="Reset local data"
+        title="Reset data on this device"
+        message="This clears TapTrack on this device and starts it with an empty account. A safety backup is downloaded first."
+        confirmLabel="Reset this device"
         confirmVariant="danger"
         onConfirm={() => void executeDeviceOnlyReset()}
         onCancel={() => setShowResetConfirm(false)}
@@ -668,7 +683,7 @@ export default function SettingsWorkspace() {
       <ConfirmDialog
         open={categoryDeleteConfirm !== null}
         title="Delete category"
-        message={`Delete "${categoryDeleteConfirm?.name}"? Transactions using this category will move to a similar category.`}
+        message={`Delete "${categoryDeleteConfirm?.name}"? Transactions using this category will move to the closest matching category.`}
         confirmLabel="Delete"
         confirmVariant="danger"
         onConfirm={async () => {
@@ -684,6 +699,20 @@ export default function SettingsWorkspace() {
   );
 }
 
+function SettingsJump({ href, children }: { href: string; children: string }) {
+  return (
+    <a
+      href={href}
+      className={cn(
+        'inline-flex min-h-11 items-center rounded-lg px-3 text-sm font-semibold text-secondary hover:bg-surface-muted hover:text-primary',
+        focusVisibleRing
+      )}
+    >
+      {children}
+    </a>
+  );
+}
+
 function AdjustmentRow({ checkpoint }: { checkpoint: BalanceCheckpoint }) {
   const deltaLabel =
     checkpoint.deltaAmount === 0
@@ -695,7 +724,7 @@ function AdjustmentRow({ checkpoint }: { checkpoint: BalanceCheckpoint }) {
       <div className="min-w-0">
         <p className="text-sm font-semibold capitalize text-primary">{checkpoint.currency} {checkpoint.method}</p>
         <p className="mt-0.5 text-xs font-medium text-muted">
-          {checkpoint.month ?? checkpoint.date ?? 'Reconciliation'} · observed {formatMoney(checkpoint.observedAmount, checkpoint.currency)}
+          {checkpoint.month ?? checkpoint.date ?? 'Balance check'} · recorded {formatMoney(checkpoint.observedAmount, checkpoint.currency)}
         </p>
       </div>
       <span
@@ -719,22 +748,22 @@ function CategoryTypeBadge({ type }: { type: TransactionType }) {
 }
 
 function buildSyncSummary(status: SyncStatusSnapshot | null): string {
-  if (!status) return 'Checking…';
+  if (!status) return 'Checking sync…';
 
   const stateLabel = {
-    'provider-unconfigured': 'Cloud sync unavailable',
-    'signed-out': 'Not signed in',
-    unlinked: 'Ready to link',
+    'provider-unconfigured': 'Sync is not available on this setup',
+    'signed-out': 'Sign in to sync',
+    unlinked: 'Ready to connect',
     linked: formatRelativeSyncTime(status.lastSyncAt),
-    'account-mismatch': 'Account mismatch',
-    'provider-unavailable': 'Cloud unavailable',
+    'account-mismatch': 'Different account required',
+    'provider-unavailable': 'Sync is temporarily unavailable',
   }[status.bindingState];
-  const pendingPart = status.pendingRetryCount > 0 ? ` · ${status.pendingRetryCount} pending` : '';
+  const pendingPart = status.pendingRetryCount > 0 ? ` · ${status.pendingRetryCount} waiting to sync` : '';
   return `${stateLabel}${status.online ? '' : ' · Offline'}${pendingPart}`;
 }
 
 function formatRelativeSyncTime(value: string | null | undefined): string {
-  if (!value) return 'Never synced';
+  if (!value) return 'Not synced yet';
   const diffMs = Date.now() - new Date(value).getTime();
   const diffMin = Math.floor(diffMs / 60_000);
   if (diffMin < 1) return 'Synced just now';

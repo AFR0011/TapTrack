@@ -1,6 +1,6 @@
 'use client';
 
-import { useEffect, useState } from 'react';
+import { useEffect, useState, type FormEvent } from 'react';
 import { useLiveQuery } from 'dexie-react-hooks';
 import { db } from '@/database';
 import { useActiveCurrencies } from '@/currencies/useActiveCurrencies';
@@ -45,6 +45,13 @@ type RecurringFormState = {
   endDate: string;
 };
 
+type FieldErrors = {
+  amount?: string;
+  title?: string;
+  startDate?: string;
+  endDate?: string;
+};
+
 function emptyForm(defaultCurrency: Currency): RecurringFormState {
   return {
     type: 'expense',
@@ -67,6 +74,7 @@ export default function RecurringWorkspace() {
   const [form, setForm] = useState<RecurringFormState>(() => emptyForm('TRY'));
   const [saving, setSaving] = useState(false);
   const [status, setStatus] = useState('');
+  const [fieldErrors, setFieldErrors] = useState<FieldErrors>({});
   const [editing, setEditing] = useState<RecurringTransaction | null>(null);
   const [confirmDelete, setConfirmDelete] = useState<RecurringTransaction | null>(null);
   const { success, error: toastError } = {
@@ -96,6 +104,9 @@ export default function RecurringWorkspace() {
 
   const setField = <K extends keyof RecurringFormState>(field: K, value: RecurringFormState[K]) => {
     setForm((current) => ({ ...current, [field]: value }));
+    if (field in fieldErrors) {
+      setFieldErrors((current) => ({ ...current, [field]: undefined }));
+    }
   };
 
   const setType = (type: TransactionType) => {
@@ -104,6 +115,18 @@ export default function RecurringWorkspace() {
       type,
       categoryId: categories?.find((category) => category.type === type)?.id ?? current.categoryId,
     }));
+  };
+
+  const validateForm = (): boolean => {
+    const nextErrors: FieldErrors = {};
+    if (parseAmountInput(form.amount) <= 0) nextErrors.amount = 'Enter an amount greater than zero.';
+    if (!form.title.trim()) nextErrors.title = 'Add a short description.';
+    if (!form.startDate) nextErrors.startDate = 'Choose a start date.';
+    if (form.endDate && form.startDate && form.endDate < form.startDate) {
+      nextErrors.endDate = 'End date must be on or after the start date.';
+    }
+    setFieldErrors(nextErrors);
+    return Object.keys(nextErrors).length === 0;
   };
 
   const handleCreate = async () => {
@@ -125,9 +148,10 @@ export default function RecurringWorkspace() {
       });
       setForm(emptyForm(defaultCurrency));
       setEditing(null);
+      setFieldErrors({});
       success('Recurring transaction saved.');
     } catch (err) {
-      const msg = err instanceof Error ? err.message : 'Recurring transaction could not be saved.';
+      const msg = err instanceof Error ? err.message : 'Recurring transaction could not be saved. Check the details and try again.';
       setStatus(msg);
       toastError(msg);
     } finally {
@@ -154,14 +178,22 @@ export default function RecurringWorkspace() {
       });
       setForm(emptyForm(defaultCurrency));
       setEditing(null);
+      setFieldErrors({});
       success('Recurring transaction updated.');
     } catch (err) {
-      const msg = err instanceof Error ? err.message : 'Recurring transaction could not be updated.';
+      const msg = err instanceof Error ? err.message : 'Recurring transaction could not be updated. Check the details and try again.';
       setStatus(msg);
       toastError(msg);
     } finally {
       setSaving(false);
     }
+  };
+
+  const handleSubmit = (event: FormEvent<HTMLFormElement>) => {
+    event.preventDefault();
+    setStatus('');
+    if (!validateForm()) return;
+    void (editing ? handleUpdate() : handleCreate());
   };
 
   const openEdit = (item: RecurringTransaction) => {
@@ -177,6 +209,7 @@ export default function RecurringWorkspace() {
       startDate: item.startDate,
       endDate: item.endDate ?? '',
     });
+    setFieldErrors({});
     setStatus('');
   };
 
@@ -187,7 +220,7 @@ export default function RecurringWorkspace() {
       const result = await createDueRecurringTransactions();
       success(formatDueCheckMessage(result));
     } catch (err) {
-      const msg = err instanceof Error ? err.message : 'Due recurring check failed.';
+      const msg = err instanceof Error ? err.message : 'Due transactions could not be added. Try again.';
       setStatus(msg);
       toastError(msg);
     } finally {
@@ -204,13 +237,13 @@ export default function RecurringWorkspace() {
 
   const toggleActive = async (item: RecurringTransaction) => {
     await updateRecurringTransaction(item.id, { isActive: !item.isActive });
-    success(item.isActive ? 'Recurring item paused.' : 'Recurring item resumed.');
+    success(item.isActive ? 'Recurring transaction paused.' : 'Recurring transaction resumed.');
   };
 
   if (isLoading) {
     return (
       <div className="space-y-5" aria-busy="true" aria-label="Loading recurring transactions">
-        <PageHeader title="Recurring" description="Repeating income and expenses." />
+        <PageHeader title="Recurring" description="Plan regular income and expenses." />
         <SkeletonCard />
         <SkeletonListCard titleWidth="w-56" count={4} />
       </div>
@@ -221,85 +254,115 @@ export default function RecurringWorkspace() {
     <div className="space-y-5">
       <PageHeader
         title="Recurring"
-        description="Repeating income and expenses."
+        description="Plan regular income and expenses."
         action={
           <Button type="button" variant="secondary" onClick={runDueCheck} loading={saving} disabled={saving}>
-            Process due items
+            Add due transactions
           </Button>
         }
       />
 
       <section className="rounded-2xl border border-subtle bg-surface p-5">
-        <h2 className="text-base font-semibold text-primary">
+        <h2 id="recurring-form-title" className="text-base font-semibold text-primary">
           {editing ? 'Edit recurring transaction' : 'New recurring transaction'}
         </h2>
-        <div className="mt-4 grid gap-3 md:grid-cols-4">
-          <SelectField
-            label="Type"
-            value={form.type}
-            onChange={(event) => setType(event.target.value as TransactionType)}
-            options={TRANSACTION_TYPES.map((type) => ({
-              value: type,
-              label: type.charAt(0).toUpperCase() + type.slice(1),
-            }))}
-          />
-          <Field label="Amount" value={form.amount} onChange={(event) => setField('amount', event.target.value)} inputMode="decimal" />
-          <SelectField
-            label="Currency"
-            value={form.currency}
-            onChange={(event) => setField('currency', event.target.value)}
-            options={activeCurrencies.map((currency) => ({ value: currency, label: currency }))}
-          />
-          <SelectField
-            label="Method"
-            value={form.method}
-            onChange={(event) => setField('method', event.target.value as Method)}
-            options={SUPPORTED_METHODS.map((method) => ({
-              value: method,
-              label: method.charAt(0).toUpperCase() + method.slice(1),
-            }))}
-          />
-          <Field label="Title" value={form.title} onChange={(event) => setField('title', event.target.value)} />
-          <SelectField
-            label="Category"
-            value={selectedCategoryId}
-            onChange={(event) => setField('categoryId', event.target.value)}
-            options={typedCategories.map((category) => ({ value: category.id, label: category.name }))}
-          />
-          <SelectField
-            label="Frequency"
-            value={form.frequency}
-            onChange={(event) => setField('frequency', event.target.value as Frequency)}
-            options={RECURRING_FREQUENCIES.map((frequency) => ({
-              value: frequency,
-              label: formatFrequencyLabel(frequency),
-            }))}
-          />
-          <Field label="Start date" type="date" value={form.startDate} onChange={(event) => setField('startDate', event.target.value)} />
-          <Field label="End date (optional)" type="date" value={form.endDate} onChange={(event) => setField('endDate', event.target.value)} />
-        </div>
-        {status ? (
-          <p role="alert" aria-live="polite" className="mt-3 rounded-lg border border-danger bg-danger-muted px-3 py-2 text-sm font-medium text-danger">
-            {status}
-          </p>
-        ) : null}
-        <div className="mt-4 flex gap-2">
-          <Button type="button" onClick={editing ? handleUpdate : handleCreate} loading={saving} disabled={saving}>
-            {editing ? 'Update recurring' : 'Save recurring'}
-          </Button>
-          {editing ? (
-            <Button
-              type="button"
-              variant="ghost"
-              onClick={() => {
-                setEditing(null);
-                setForm(emptyForm(defaultCurrency));
-              }}
-            >
-              Cancel
-            </Button>
+        <form onSubmit={handleSubmit} aria-labelledby="recurring-form-title" className="mt-4" noValidate>
+          <div className="grid gap-3 md:grid-cols-4">
+            <SelectField
+              label="Type"
+              value={form.type}
+              onChange={(event) => setType(event.target.value as TransactionType)}
+              options={TRANSACTION_TYPES.map((type) => ({
+                value: type,
+                label: type.charAt(0).toUpperCase() + type.slice(1),
+              }))}
+            />
+            <Field
+              label="Amount"
+              value={form.amount}
+              onChange={(event) => setField('amount', event.target.value)}
+              inputMode="decimal"
+              error={fieldErrors.amount}
+              required
+            />
+            <SelectField
+              label="Currency"
+              value={form.currency}
+              onChange={(event) => setField('currency', event.target.value)}
+              options={activeCurrencies.map((currency) => ({ value: currency, label: currency }))}
+            />
+            <SelectField
+              label="Method"
+              value={form.method}
+              onChange={(event) => setField('method', event.target.value as Method)}
+              options={SUPPORTED_METHODS.map((method) => ({
+                value: method,
+                label: method.charAt(0).toUpperCase() + method.slice(1),
+              }))}
+            />
+            <Field
+              label="Description"
+              value={form.title}
+              onChange={(event) => setField('title', event.target.value)}
+              error={fieldErrors.title}
+              required
+            />
+            <SelectField
+              label="Category"
+              value={selectedCategoryId}
+              onChange={(event) => setField('categoryId', event.target.value)}
+              options={typedCategories.map((category) => ({ value: category.id, label: category.name }))}
+            />
+            <SelectField
+              label="Frequency"
+              value={form.frequency}
+              onChange={(event) => setField('frequency', event.target.value as Frequency)}
+              options={RECURRING_FREQUENCIES.map((frequency) => ({
+                value: frequency,
+                label: formatFrequencyLabel(frequency),
+              }))}
+            />
+            <Field
+              label="Start date"
+              type="date"
+              value={form.startDate}
+              onChange={(event) => setField('startDate', event.target.value)}
+              error={fieldErrors.startDate}
+              required
+            />
+            <Field
+              label="End date (optional)"
+              type="date"
+              value={form.endDate}
+              onChange={(event) => setField('endDate', event.target.value)}
+              error={fieldErrors.endDate}
+            />
+          </div>
+          {status ? (
+            <p role="alert" aria-live="polite" className="mt-3 rounded-lg border border-danger bg-danger-muted px-3 py-2 text-sm font-medium text-danger">
+              {status}
+            </p>
           ) : null}
-        </div>
+          <div className="mt-4 flex gap-2">
+            <Button type="submit" loading={saving} disabled={saving}>
+              {editing ? 'Save changes' : 'Save recurring transaction'}
+            </Button>
+            {editing ? (
+              <Button
+                type="button"
+                variant="ghost"
+                onClick={() => {
+                  setEditing(null);
+                  setForm(emptyForm(defaultCurrency));
+                  setFieldErrors({});
+                  setStatus('');
+                }}
+              >
+                Cancel
+              </Button>
+            ) : null}
+          </div>
+        </form>
       </section>
 
       <section className="overflow-hidden rounded-2xl border border-subtle bg-surface">
@@ -307,7 +370,7 @@ export default function RecurringWorkspace() {
           <div className="p-8 text-center">
             <p className="text-sm font-semibold text-secondary">No recurring transactions yet.</p>
             <p className="mt-1 text-sm font-medium text-muted">
-              Use the form above for rent, subscriptions, salary, or other repeated entries.
+              Add rent, subscriptions, salary, or anything else that repeats.
             </p>
           </div>
         ) : (
@@ -322,7 +385,7 @@ export default function RecurringWorkspace() {
                       <RecurringStatusBadge isActive={item.isActive} />
                     </div>
                     <p className="mt-1 text-xs font-medium text-muted">
-                      Next run {item.nextRunDate} · {formatFrequencyLabel(item.frequency)} · {item.method}
+                      Next on {item.nextRunDate} · {formatFrequencyLabel(item.frequency)} · {item.method}
                     </p>
                   </div>
                   <p className={`text-right text-sm font-semibold tabular-nums ${item.type === 'income' ? 'text-success' : 'text-danger'}`}>
@@ -342,7 +405,7 @@ export default function RecurringWorkspace() {
       <ConfirmDialog
         open={confirmDelete !== null}
         title="Delete recurring transaction"
-        message={`Delete "${confirmDelete?.title ?? ''}"? Future scheduled entries from this rule will stop.`}
+        message={`Delete "${confirmDelete?.title ?? ''}"? No future transactions will be added from it.`}
         confirmLabel="Delete"
         confirmVariant="danger"
         onConfirm={() => confirmDelete && void handleDelete(confirmDelete)}
@@ -353,9 +416,9 @@ export default function RecurringWorkspace() {
 }
 
 function formatDueCheckMessage(result: { created: number; skipped: number; failed: number }) {
-  const parts = [`Added ${result.created} scheduled transaction${result.created === 1 ? '' : 's'}`];
-  if (result.skipped > 0) parts.push(`skipped ${result.skipped}`);
-  if (result.failed > 0) parts.push(`failed ${result.failed}`);
+  const parts = [`Added ${result.created} due transaction${result.created === 1 ? '' : 's'}`];
+  if (result.skipped > 0) parts.push(`${result.skipped} skipped`);
+  if (result.failed > 0) parts.push(`${result.failed} need attention`);
   return parts.join(' · ');
 }
 

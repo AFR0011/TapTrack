@@ -36,7 +36,7 @@ export function RestoreScopeDialog({
       }
       if (event.key !== 'Tab') return;
       const focusable = panelRef.current?.querySelectorAll<HTMLElement>(
-        'button, [href], input, select, textarea, [tabindex]:not([tabindex="-1"])'
+        'button:not(:disabled), [href], input:not(:disabled), select:not(:disabled), textarea:not(:disabled), [tabindex]:not([tabindex="-1"])'
       );
       if (!focusable?.length) return;
       const first = focusable[0];
@@ -78,15 +78,14 @@ export function RestoreScopeDialog({
           Where should this backup be restored?
         </h3>
         <p id={descriptionId} className="mt-2 text-sm font-medium text-secondary">
-          This browser is linked to cloud sync. TapTrack will not remember a default restore scope.
+          This device is connected to sync. Choose whether the backup should replace data only here or across your synced account.
         </p>
 
         <div className="mt-5 grid gap-3">
           <div className="rounded-lg border border-danger/40 bg-danger-muted p-4">
             <p className="text-sm font-semibold text-danger">Restore synced account</p>
             <p className="mt-1 text-xs font-medium text-secondary">
-              Replace the account’s canonical finance ledger with this backup. Other linked devices
-              will adopt the restored ledger and stale pre-restore sync operations will be discarded.
+              Replace the TapTrack data in your synced account with this backup. Other connected devices will receive the restored data when they next sync.
             </p>
             <Button
               type="button"
@@ -102,8 +101,7 @@ export function RestoreScopeDialog({
           <div className="rounded-lg border border-subtle bg-surface-muted p-4">
             <p className="text-sm font-semibold text-primary">Restore only this device</p>
             <p className="mt-1 text-xs font-medium text-muted">
-              Disconnect this browser from cloud sync, restore the backup locally, and leave the
-              synced account plus every other device unchanged.
+              Disconnect this device from sync, restore the backup here, and leave your synced account and other devices unchanged.
             </p>
             <Button
               type="button"

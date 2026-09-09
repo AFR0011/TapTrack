@@ -34,6 +34,7 @@ import { PageHeader } from '@/components/ui/PageHeader';
 import { SkeletonCard, SkeletonMetric } from '@/components/ui/Skeleton';
 import { StatCard, StatRow } from '@/components/ui/StatRow';
 import { ToggleRow } from '@/components/ui/Toggle';
+import { cn, focusVisibleRing } from '@/lib/cn';
 import { downloadBlob } from '@/lib/download';
 import type { Currency, Transaction } from '@/types';
 
@@ -70,6 +71,17 @@ const CHART_TOOLTIP_PROPS = {
 } as const;
 
 type ReportMode = 'month' | 'range' | 'year';
+
+type ComparisonRow = {
+  label: string;
+  income: number;
+  expense: number;
+};
+
+type SpendingRow = {
+  date: string;
+  amount: number;
+};
 
 function getReportTransactionAmount(
   transaction: Transaction,
@@ -191,7 +203,7 @@ export default function ReportsWorkspace() {
         setRateError(
           error instanceof Error
             ? error.message
-            : 'Historical exchange rates are temporarily unavailable.'
+            : 'Exchange rates are temporarily unavailable.'
         );
       })
       .finally(() => {
@@ -240,7 +252,7 @@ export default function ReportsWorkspace() {
       .sort((a, b) => b.amount - a.amount);
   }, [activeTransactions, categoryById, convertAll, historicalRates, reportCurrency]);
 
-  const spendingOverTime = useMemo(() => {
+  const spendingOverTime = useMemo<SpendingRow[]>(() => {
     const spending = new Map<string, number>();
     for (const transaction of activeTransactions) {
       if (transaction.type !== 'expense') continue;
@@ -262,7 +274,7 @@ export default function ReportsWorkspace() {
       .sort((a, b) => a.date.localeCompare(b.date));
   }, [activeTransactions, convertAll, historicalRates, reportCurrency, reportMode]);
 
-  const comparisonData = useMemo(() => {
+  const comparisonData = useMemo<ComparisonRow[]>(() => {
     if (reportMode === 'month') {
       return [
         {
@@ -319,13 +331,21 @@ export default function ReportsWorkspace() {
   const rateLabel =
     convertAll && !ratesLoading
       ? historicalRateCount === 0
-        ? `No foreign-currency transactions need conversion into ${reportCurrency}.`
-        : `Using ${historicalRateCount} historical Frankfurter rate${historicalRateCount === 1 ? '' : 's'} into ${reportCurrency}${
+        ? `No other currencies need conversion into ${reportCurrency} for this report.`
+        : `${historicalRateCount} transaction-date rate${historicalRateCount === 1 ? '' : 's'} used${
             priorAvailableRateCount > 0
-              ? `; ${priorAvailableRateCount} used the most recent prior published date`
+              ? `; ${priorAvailableRateCount} used the nearest earlier available date`
               : ''
           }.`
       : '';
+
+  const largestCategory = categoryData[0];
+  const reportSummary = buildReportSummary({
+    net: incomeVsExpense.net,
+    expense: incomeVsExpense.expense,
+    currency: reportCurrency,
+    largestCategory,
+  });
 
   const handleExportPDF = async () => {
     setExporting(true);
@@ -352,7 +372,7 @@ export default function ReportsWorkspace() {
       const blob = await exportPDF(options);
       downloadBlob(`taptrack-${reportMode}-report.pdf`, blob);
     } catch (err) {
-      setExportError(err instanceof Error ? err.message : 'PDF export failed.');
+      setExportError(err instanceof Error ? err.message : 'The PDF could not be created. Try again.');
     } finally {
       setExporting(false);
     }
@@ -394,7 +414,7 @@ export default function ReportsWorkspace() {
         title="Reports"
         description={`Income, spending, and budgets · ${reportCurrency}`}
         action={
-          <div className="flex flex-wrap items-center gap-2">
+          <div className="flex flex-wrap items-center gap-2" aria-label="Report period">
             <ModeButton mode="month" activeMode={reportMode} onClick={setReportMode} />
             <ModeButton mode="range" activeMode={reportMode} onClick={setReportMode} />
             <ModeButton mode="year" activeMode={reportMode} onClick={setReportMode} />
@@ -420,6 +440,12 @@ export default function ReportsWorkspace() {
             tone={incomeVsExpense.net >= 0 ? 'good' : 'bad'}
           />
         </section>
+
+        {!ratesLoading && activeTransactions.length > 0 ? (
+          <p className="order-1 rounded-xl bg-surface-muted px-4 py-3 text-sm font-medium text-secondary md:order-2">
+            {reportSummary}
+          </p>
+        ) : null}
 
         <section className="order-2 rounded-2xl border border-subtle bg-surface p-5 md:order-1">
           <div className="flex flex-col gap-3 sm:flex-row sm:items-end sm:justify-between">
@@ -502,17 +528,17 @@ export default function ReportsWorkspace() {
           <p className="mt-3 text-sm font-medium text-muted" role="status">
             {convertAll
               ? ratesLoading
-                ? `Loading historical rates into ${reportCurrency}…`
-                : `Foreign transactions are converted into ${reportCurrency} using each transaction date; when a date has no published rate, the most recent prior rate is used.`
-              : `Showing ${reportCurrency} transactions only. Turn on conversion to include the rest.`}
+                ? `Loading exchange rates into ${reportCurrency}…`
+                : `Transactions in other currencies are converted using the rate for each transaction date. If no rate was published that day, the nearest earlier available date is used.`
+              : `Showing ${reportCurrency} transactions only. Turn on conversion to include other currencies.`}
           </p>
 
           {rateError ? (
             <p className="mt-3 text-sm font-medium text-danger" role="alert">
-              {rateError} {reportCurrency}-only reporting was restored; no estimated FX fallback was used.
+              {rateError} This report is showing {reportCurrency} transactions only.
             </p>
           ) : null}
-          {exportError ? <p className="mt-3 text-sm font-medium text-danger">{exportError}</p> : null}
+          {exportError ? <p className="mt-3 text-sm font-medium text-danger" role="alert">{exportError}</p> : null}
         </section>
 
         <section className="order-3 grid gap-4 lg:grid-cols-2">
@@ -521,63 +547,77 @@ export default function ReportsWorkspace() {
           </ChartPanel>
 
           <ChartPanel title="Spending over time" empty={spendingOverTime.length === 0}>
-            <ResponsiveContainer width="100%" height={260}>
-              <LineChart data={spendingOverTime}>
-                <XAxis
-                  dataKey="date"
-                  tick={{ fill: 'var(--text-muted)', fontSize: 12 }}
-                  tickLine={false}
-                  axisLine={false}
-                  minTickGap={18}
-                />
-                <YAxis {...yAxis} />
-                <Tooltip
-                  content={<ChartTooltip currency={reportCurrency} />}
-                  {...CHART_TOOLTIP_PROPS}
-                />
-                <Line
-                  type="monotone"
-                  dataKey="amount"
-                  name="Spent"
-                  stroke="var(--chart-1)"
-                  strokeWidth={3}
-                  dot={false}
-                />
-              </LineChart>
-            </ResponsiveContainer>
+            <p className="mb-3 text-xs font-medium text-muted">
+              {spendingOverTime.length} day{spendingOverTime.length === 1 ? '' : 's'} with spending · {formatMoney(spendingOverTime.reduce((sum, row) => sum + row.amount, 0), reportCurrency)} total
+            </p>
+            <div aria-hidden="true">
+              <ResponsiveContainer width="100%" height={260}>
+                <LineChart data={spendingOverTime}>
+                  <XAxis
+                    dataKey="date"
+                    tick={{ fill: 'var(--text-muted)', fontSize: 12 }}
+                    tickLine={false}
+                    axisLine={false}
+                    minTickGap={18}
+                  />
+                  <YAxis {...yAxis} />
+                  <Tooltip
+                    content={<ChartTooltip currency={reportCurrency} />}
+                    {...CHART_TOOLTIP_PROPS}
+                  />
+                  <Line
+                    type="monotone"
+                    dataKey="amount"
+                    name="Spent"
+                    stroke="var(--chart-1)"
+                    strokeWidth={3}
+                    dot={false}
+                  />
+                </LineChart>
+              </ResponsiveContainer>
+            </div>
+            <DataDisclosure label="View spending data">
+              <SpendingDataTable rows={spendingOverTime} currency={reportCurrency} />
+            </DataDisclosure>
           </ChartPanel>
 
           <ChartPanel
             title={reportMode === 'year' ? 'Monthly income vs expense' : 'Income vs expense'}
             empty={comparisonData.every((item) => item.income === 0 && item.expense === 0)}
           >
-            <ResponsiveContainer width="100%" height={260}>
-              <BarChart data={comparisonData}>
-                <XAxis
-                  dataKey="label"
-                  tick={{ fill: 'var(--text-muted)', fontSize: 12 }}
-                  tickLine={false}
-                  axisLine={false}
-                />
-                <YAxis {...yAxis} />
-                <Tooltip
-                  content={<ChartTooltip currency={reportCurrency} />}
-                  {...CHART_TOOLTIP_PROPS}
-                />
-                <Bar
-                  dataKey="income"
-                  name="Income"
-                  fill="var(--chart-2)"
-                  radius={[4, 4, 0, 0]}
-                />
-                <Bar
-                  dataKey="expense"
-                  name="Expenses"
-                  fill="var(--chart-3)"
-                  radius={[4, 4, 0, 0]}
-                />
-              </BarChart>
-            </ResponsiveContainer>
+            <ChartLegend />
+            <div className="mt-3" aria-hidden="true">
+              <ResponsiveContainer width="100%" height={260}>
+                <BarChart data={comparisonData}>
+                  <XAxis
+                    dataKey="label"
+                    tick={{ fill: 'var(--text-muted)', fontSize: 12 }}
+                    tickLine={false}
+                    axisLine={false}
+                  />
+                  <YAxis {...yAxis} />
+                  <Tooltip
+                    content={<ChartTooltip currency={reportCurrency} />}
+                    {...CHART_TOOLTIP_PROPS}
+                  />
+                  <Bar
+                    dataKey="income"
+                    name="Income"
+                    fill="var(--chart-2)"
+                    radius={[4, 4, 0, 0]}
+                  />
+                  <Bar
+                    dataKey="expense"
+                    name="Expenses"
+                    fill="var(--chart-3)"
+                    radius={[4, 4, 0, 0]}
+                  />
+                </BarChart>
+              </ResponsiveContainer>
+            </div>
+            <DataDisclosure label="View income and expense data">
+              <ComparisonDataTable rows={comparisonData} currency={reportCurrency} />
+            </DataDisclosure>
           </ChartPanel>
 
           <div className="rounded-2xl border border-subtle bg-surface p-5">
@@ -596,7 +636,7 @@ export default function ReportsWorkspace() {
             {reportMode !== 'month' ? (
               <EmptyState
                 title="Budget view is monthly."
-                description="Switch to Month to review the budget stored for that period."
+                description="Switch to Month to review the budget for that period."
                 className="mt-4"
               />
             ) : (
@@ -616,6 +656,12 @@ export default function ReportsWorkspace() {
                           budgetPerformance.currency
                         )} remaining`
                       : 'Set a monthly total on Budgets'
+                  }
+                  ariaLabel="Monthly budget used"
+                  ariaValueText={
+                    budgetPerformance.available > 0
+                      ? `${Math.round(budgetPercent)}% used, ${formatMoney(Math.max(budgetPerformance.remaining, 0), budgetPerformance.currency)} remaining`
+                      : 'No monthly budget set'
                   }
                 />
                 <div className="mt-4 grid gap-2">
@@ -666,6 +712,29 @@ export default function ReportsWorkspace() {
   );
 }
 
+function buildReportSummary({
+  net,
+  expense,
+  currency,
+  largestCategory,
+}: {
+  net: number;
+  expense: number;
+  currency: Currency;
+  largestCategory?: { name: string; amount: number };
+}) {
+  const parts = [
+    net >= 0
+      ? `Net was ${formatMoney(net, currency)} above zero.`
+      : `Net was ${formatMoney(Math.abs(net), currency)} below zero.`,
+    `Total spending was ${formatMoney(expense, currency)}.`,
+  ];
+  if (largestCategory) {
+    parts.push(`${largestCategory.name} was the largest spending category at ${formatMoney(largestCategory.amount, currency)}.`);
+  }
+  return parts.join(' ');
+}
+
 function ModeButton({
   mode,
   activeMode,
@@ -682,6 +751,7 @@ function ModeButton({
       type="button"
       variant={active ? 'primary' : 'subtle'}
       size="sm"
+      aria-pressed={active}
       onClick={() => onClick(mode)}
     >
       {label}
@@ -769,6 +839,84 @@ function ChartTooltip({
   );
 }
 
+function ChartLegend() {
+  return (
+    <div className="flex flex-wrap gap-4 text-xs font-medium text-secondary" aria-label="Chart legend">
+      <span className="inline-flex items-center gap-2">
+        <span className="h-2.5 w-2.5 rounded-sm" style={{ background: 'var(--chart-2)' }} aria-hidden="true" />
+        Income
+      </span>
+      <span className="inline-flex items-center gap-2">
+        <span className="h-2.5 w-2.5 rounded-sm" style={{ background: 'var(--chart-3)' }} aria-hidden="true" />
+        Expenses
+      </span>
+    </div>
+  );
+}
+
+function DataDisclosure({ label, children }: { label: string; children: ReactNode }) {
+  return (
+    <details className="group mt-4 rounded-lg border border-subtle bg-surface-muted">
+      <summary
+        className={cn(
+          'flex min-h-11 cursor-pointer list-none items-center rounded-lg px-3 py-2 text-sm font-semibold text-secondary select-none [&::-webkit-details-marker]:hidden',
+          focusVisibleRing
+        )}
+      >
+        <span>{label}</span>
+        <span aria-hidden="true" className="ml-auto text-muted transition-transform group-open:rotate-180">⌄</span>
+      </summary>
+      <div className="overflow-x-auto border-t border-subtle p-3">{children}</div>
+    </details>
+  );
+}
+
+function SpendingDataTable({ rows, currency }: { rows: SpendingRow[]; currency: Currency }) {
+  return (
+    <table className="w-full min-w-64 text-left text-sm">
+      <caption className="sr-only">Spending by date</caption>
+      <thead>
+        <tr className="text-xs text-muted">
+          <th scope="col" className="pb-2 pr-4 font-semibold">Date</th>
+          <th scope="col" className="pb-2 text-right font-semibold">Spent</th>
+        </tr>
+      </thead>
+      <tbody className="divide-y divide-subtle">
+        {rows.map((row) => (
+          <tr key={row.date}>
+            <th scope="row" className="py-2 pr-4 font-medium text-secondary">{row.date}</th>
+            <td className="py-2 text-right font-semibold tabular-nums text-primary">{formatMoney(row.amount, currency)}</td>
+          </tr>
+        ))}
+      </tbody>
+    </table>
+  );
+}
+
+function ComparisonDataTable({ rows, currency }: { rows: ComparisonRow[]; currency: Currency }) {
+  return (
+    <table className="w-full min-w-80 text-left text-sm">
+      <caption className="sr-only">Income and expenses by period</caption>
+      <thead>
+        <tr className="text-xs text-muted">
+          <th scope="col" className="pb-2 pr-4 font-semibold">Period</th>
+          <th scope="col" className="pb-2 pr-4 text-right font-semibold">Income</th>
+          <th scope="col" className="pb-2 text-right font-semibold">Expenses</th>
+        </tr>
+      </thead>
+      <tbody className="divide-y divide-subtle">
+        {rows.map((row) => (
+          <tr key={row.label}>
+            <th scope="row" className="py-2 pr-4 font-medium text-secondary">{row.label}</th>
+            <td className="py-2 pr-4 text-right font-semibold tabular-nums text-success">{formatMoney(row.income, currency)}</td>
+            <td className="py-2 text-right font-semibold tabular-nums text-danger">{formatMoney(row.expense, currency)}</td>
+          </tr>
+        ))}
+      </tbody>
+    </table>
+  );
+}
+
 function CategorySpendingList({
   items,
   currency,
@@ -796,7 +944,15 @@ function CategorySpendingList({
                 <span className="font-medium text-muted">{Math.round(percent)}%</span>
               </div>
             </div>
-            <div className="mt-1.5 h-2 overflow-hidden rounded-full bg-surface-muted">
+            <div
+              className="mt-1.5 h-2 overflow-hidden rounded-full bg-surface-muted"
+              role="progressbar"
+              aria-label={`${item.name} share of spending`}
+              aria-valuenow={Math.round(percent)}
+              aria-valuemin={0}
+              aria-valuemax={100}
+              aria-valuetext={`${Math.round(percent)}% of spending`}
+            >
               <div
                 className="h-full rounded-full transition-[width] duration-300"
                 style={{ width: `${percent}%`, background: barColor }}
@@ -816,7 +972,7 @@ function ChartPanel({ title, empty, children }: { title: string; empty: boolean;
       {empty ? (
         <EmptyState
           title="No report data yet."
-          description="Log a transaction for this period."
+          description="Add a transaction for this period."
           className="mt-4"
         />
       ) : (

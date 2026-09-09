@@ -1,6 +1,6 @@
 'use client';
 
-import { useEffect, useMemo, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import { useLiveQuery } from 'dexie-react-hooks';
 import { toast } from 'sonner';
 import { AmbiguousLedgerOrderingError } from '@/balances/ledgerService';
@@ -28,11 +28,14 @@ export type QuickAddPrefill = {
 };
 
 type PendingOrdering = { draft: TransactionDraft; checkpointId: string };
+type FieldErrors = { amount?: string; title?: string };
 
 export function QuickAddTransaction({ prefill, onSaved }: { prefill?: QuickAddPrefill; onSaved?: () => void }) {
   const categories = useLiveQuery(() => db.categories.toArray());
   const balances = useLiveQuery(() => db.balances.toArray());
   const settings = useLiveQuery(() => db.settings.get(DEFAULT_SETTINGS_ID));
+  const amountRef = useRef<HTMLInputElement | null>(null);
+  const titleRef = useRef<HTMLInputElement | null>(null);
   const [type, setType] = useState<TransactionType>(() => prefill?.type ?? 'expense');
   const [amount, setAmount] = useState(() => prefill?.amount ?? '');
   const [title, setTitle] = useState(() => prefill?.title ?? '');
@@ -46,6 +49,7 @@ export function QuickAddTransaction({ prefill, onSaved }: { prefill?: QuickAddPr
   const [showDetails, setShowDetails] = useState(false);
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState('');
+  const [fieldErrors, setFieldErrors] = useState<FieldErrors>({});
   const [pendingOrdering, setPendingOrdering] = useState<PendingOrdering | null>(null);
 
   useEffect(() => {
@@ -76,7 +80,7 @@ export function QuickAddTransaction({ prefill, onSaved }: { prefill?: QuickAddPr
 
   const resetAfterSave = () => {
     setAmount(''); setTitle(''); setNote(''); setCategoryId(''); setCategoryManuallyChosen(false);
-    setDate(formatLocalDate(new Date())); setError(''); setPendingOrdering(null);
+    setDate(formatLocalDate(new Date())); setError(''); setFieldErrors({}); setPendingOrdering(null);
   };
 
   const persistDraft = async (draft: TransactionDraft) => {
@@ -89,9 +93,9 @@ export function QuickAddTransaction({ prefill, onSaved }: { prefill?: QuickAddPr
     } catch (err) {
       if (err instanceof AmbiguousLedgerOrderingError) {
         setPendingOrdering({ draft, checkpointId: err.checkpointId });
-        setError('This transaction is on the same date as a balance reconciliation. Choose when it happened.');
+        setError('This transaction is on the same date as a balance check. Choose whether it happened before or after that balance was recorded.');
       } else {
-        setError(err instanceof InsufficientBalanceError ? err.message : 'Transaction could not be saved.');
+        setError(err instanceof InsufficientBalanceError ? err.message : 'Transaction could not be saved. Check the details and try again.');
       }
     } finally { setSaving(false); }
   };
@@ -99,15 +103,29 @@ export function QuickAddTransaction({ prefill, onSaved }: { prefill?: QuickAddPr
   const handleSave = async () => {
     const parsedAmount = parseAmountInput(amount);
     const trimmedTitle = title.trim();
-    if (!Number.isFinite(parsedAmount) || parsedAmount <= 0) { setError('Enter a valid amount greater than zero.'); return; }
-    if (!trimmedTitle) { setError('Add a short title for this transaction.'); return; }
+    const nextFieldErrors: FieldErrors = {};
+    if (!Number.isFinite(parsedAmount) || parsedAmount <= 0) nextFieldErrors.amount = 'Enter an amount greater than zero.';
+    if (!trimmedTitle) nextFieldErrors.title = 'Add a short description.';
+
+    if (Object.keys(nextFieldErrors).length > 0) {
+      setFieldErrors(nextFieldErrors);
+      setError('');
+      setPendingOrdering(null);
+      requestAnimationFrame(() => {
+        if (nextFieldErrors.amount) amountRef.current?.focus();
+        else titleRef.current?.focus();
+      });
+      return;
+    }
+
+    setFieldErrors({});
     await persistDraft({ type, amount: parsedAmount, currency, title: trimmedTitle, categoryId: selectedCategoryId, method, date, note: note.trim() || undefined });
   };
 
   const resolveOrdering = async (relation: HistoricalOrderingRelation) => {
     if (!pendingOrdering) return;
     const checkpoint = await db.balanceCheckpoints.get(pendingOrdering.checkpointId);
-    if (!checkpoint) { setError('The reconciliation checkpoint could not be found.'); setPendingOrdering(null); return; }
+    if (!checkpoint) { setError('That balance check could not be found. Return to Balances and try again.'); setPendingOrdering(null); return; }
     await persistDraft({ ...pendingOrdering.draft, occurredAt: resolveHistoricalOccurrenceAroundCheckpoint(checkpoint, relation) });
   };
 
@@ -117,25 +135,139 @@ export function QuickAddTransaction({ prefill, onSaved }: { prefill?: QuickAddPr
 
   return (
     <section className="rounded-2xl border border-subtle bg-surface p-5 ring-1 ring-accent/15">
-      <div className="grid grid-cols-2 rounded-xl bg-surface-muted p-1" aria-label="Transaction type">
-        {(['expense', 'income'] as const).map((option) => <button key={option} type="button" onClick={() => { setType(option); setCategoryId(''); setCategoryManuallyChosen(false); setPendingOrdering(null); }} aria-pressed={type === option} className={`min-h-11 rounded-lg px-4 text-sm font-semibold transition-colors ${type === option ? 'bg-surface text-primary shadow-sm' : 'text-muted hover:text-primary'}`}>{option === 'expense' ? 'Expense' : 'Income'}</button>)}
-      </div>
+      <form
+        onSubmit={(event) => {
+          event.preventDefault();
+          void handleSave();
+        }}
+        noValidate
+      >
+        <fieldset>
+          <legend className="sr-only">Transaction type</legend>
+          <div className="grid grid-cols-2 rounded-xl bg-surface-muted p-1">
+            {(['expense', 'income'] as const).map((option) => (
+              <button
+                key={option}
+                type="button"
+                onClick={() => {
+                  setType(option);
+                  setCategoryId('');
+                  setCategoryManuallyChosen(false);
+                  setPendingOrdering(null);
+                  setError('');
+                }}
+                aria-pressed={type === option}
+                className={`min-h-11 rounded-lg px-4 text-sm font-semibold transition-colors ${type === option ? 'bg-surface text-primary shadow-sm' : 'text-muted hover:text-primary'}`}
+              >
+                {option === 'expense' ? 'Expense' : 'Income'}
+              </button>
+            ))}
+          </div>
+        </fieldset>
 
-      <div className="mt-5"><label htmlFor="quick-add-amount" className="text-xs font-semibold text-muted">Amount</label><div className="mt-1 flex items-baseline gap-2 border-b border-subtle pb-2 focus-within:border-accent"><span className="text-xl font-semibold text-secondary">{currency}</span><input id="quick-add-amount" value={amount} onChange={(event) => setAmount(event.target.value)} inputMode="decimal" autoComplete="off" placeholder="0.00" className="min-w-0 flex-1 bg-transparent text-4xl font-semibold tabular-nums text-primary outline-none placeholder:text-muted/50" /></div></div>
-      <div className="mt-4"><Field label="What was it?" value={title} onChange={(event) => setTitle(event.target.value)} placeholder={type === 'expense' ? 'Coffee, groceries, rent…' : 'Salary, refund, freelance…'} autoComplete="off" /></div>
-
-      <div className="mt-4 grid gap-3 sm:grid-cols-2">
-        <div><SelectField label="Category" value={selectedCategoryId} onChange={(event) => { setCategoryId(event.target.value); setCategoryManuallyChosen(true); }} options={typedCategories.map((category) => ({ value: category.id, label: category.name }))} />
-          {!categoryManuallyChosen && aiSuggestion.status === 'loading' ? <p className="mt-1.5 text-xs font-medium text-ai-text">✦ Finding a smart category…</p> : !categoryManuallyChosen && aiSuggestion.status === 'suggested' && aiCategoryValid ? <p className="mt-1.5 text-xs font-semibold text-ai-text">✦ AI suggestion</p> : !categoryManuallyChosen && aiSuggestion.status === 'unavailable' ? <p className="mt-1.5 text-xs font-medium text-muted">Using the local suggestion for now.</p> : null}
+        <div className="mt-5">
+          <label htmlFor="quick-add-amount" className="text-xs font-semibold text-muted">Amount</label>
+          <div className={`mt-1 flex items-baseline gap-2 border-b pb-2 focus-within:border-accent ${fieldErrors.amount ? 'border-danger' : 'border-subtle'}`}>
+            <span className="text-xl font-semibold text-secondary">{currency}</span>
+            <input
+              ref={amountRef}
+              id="quick-add-amount"
+              value={amount}
+              onChange={(event) => {
+                setAmount(event.target.value);
+                if (fieldErrors.amount) setFieldErrors((current) => ({ ...current, amount: undefined }));
+              }}
+              inputMode="decimal"
+              autoComplete="off"
+              placeholder="0.00"
+              aria-invalid={fieldErrors.amount ? true : undefined}
+              aria-describedby={fieldErrors.amount ? 'quick-add-amount-error' : undefined}
+              className="min-w-0 flex-1 bg-transparent text-4xl font-semibold tabular-nums text-primary outline-none placeholder:text-muted/50"
+            />
+          </div>
+          {fieldErrors.amount ? <p id="quick-add-amount-error" role="alert" className="mt-1.5 text-sm font-medium text-danger">{fieldErrors.amount}</p> : null}
         </div>
-        <div><p className="text-sm font-medium text-secondary">Paid with</p><div className="mt-1 grid grid-cols-2 gap-2">{(['card', 'cash'] as const).map((option) => <button key={option} type="button" onClick={() => setMethodOverride(option)} aria-pressed={method === option} className={`min-h-11 rounded-lg border px-3 text-sm font-semibold ${method === option ? 'border-accent bg-accent-muted text-accent' : 'border-subtle bg-surface text-secondary hover:text-primary'}`}>{option === 'card' ? 'Card' : 'Cash'}</button>)}</div></div>
-      </div>
 
-      <button type="button" onClick={() => setShowDetails((current) => !current)} className="mt-4 flex min-h-11 w-full items-center text-left text-sm font-semibold text-accent hover:underline" aria-expanded={showDetails}>{showDetails ? 'Hide details' : `${collapsedDateLabel} · ${currency} · Add details`}</button>
-      {showDetails ? <div className="mt-2 grid gap-3 sm:grid-cols-2"><SelectField label="Currency" value={currency} onChange={(event) => setCurrencyOverride(event.target.value)} options={activeCurrencies.map((code) => ({ value: code, label: code }))} /><Field label="Date" type="date" value={date} onChange={(event) => setDate(event.target.value)} required /><div className="sm:col-span-2"><Field label="Note" value={note} onChange={(event) => setNote(event.target.value)} placeholder="Optional" /></div></div> : null}
+        <div className="mt-4">
+          <Field
+            ref={titleRef}
+            label="What was it?"
+            value={title}
+            onChange={(event) => {
+              setTitle(event.target.value);
+              if (fieldErrors.title) setFieldErrors((current) => ({ ...current, title: undefined }));
+            }}
+            error={fieldErrors.title}
+            placeholder={type === 'expense' ? 'Coffee, groceries, rent…' : 'Salary, refund, freelance…'}
+            autoComplete="off"
+          />
+        </div>
 
-      {error ? <div role="alert" aria-live="polite" className="mt-4 rounded-lg border border-danger bg-danger-muted px-3 py-2 text-sm font-medium text-danger"><p>{error}</p>{pendingOrdering ? <div className="mt-3 flex flex-wrap gap-2"><Button type="button" variant="secondary" onClick={() => void resolveOrdering('before')} disabled={saving}>Before reconciliation</Button><Button type="button" variant="secondary" onClick={() => void resolveOrdering('after')} disabled={saving}>After reconciliation</Button></div> : null}</div> : null}
-      <div className="mt-5 flex justify-end border-t border-subtle pt-4"><Button type="button" className="w-full sm:w-auto sm:min-w-36" onClick={() => void handleSave()} loading={saving} disabled={saving}>Save {type}</Button></div>
+        <div className="mt-4 grid gap-3 sm:grid-cols-2">
+          <div>
+            <SelectField
+              label="Category"
+              value={selectedCategoryId}
+              onChange={(event) => { setCategoryId(event.target.value); setCategoryManuallyChosen(true); }}
+              options={typedCategories.map((category) => ({ value: category.id, label: category.name }))}
+            />
+            {!categoryManuallyChosen && aiSuggestion.status === 'loading' ? (
+              <p className="mt-1.5 text-xs font-medium text-ai-text">✦ Finding the best category…</p>
+            ) : !categoryManuallyChosen && aiSuggestion.status === 'suggested' && aiCategoryValid ? (
+              <p className="mt-1.5 text-xs font-semibold text-ai-text">✦ Suggested category</p>
+            ) : !categoryManuallyChosen && aiSuggestion.status === 'unavailable' ? (
+              <p className="mt-1.5 text-xs font-medium text-muted">Using the best available match.</p>
+            ) : null}
+          </div>
+          <fieldset>
+            <legend className="text-sm font-medium text-secondary">Paid with</legend>
+            <div className="mt-1 grid grid-cols-2 gap-2">
+              {(['card', 'cash'] as const).map((option) => (
+                <button
+                  key={option}
+                  type="button"
+                  onClick={() => setMethodOverride(option)}
+                  aria-pressed={method === option}
+                  className={`min-h-11 rounded-lg border px-3 text-sm font-semibold ${method === option ? 'border-accent bg-accent-muted text-accent' : 'border-subtle bg-surface text-secondary hover:text-primary'}`}
+                >
+                  {option === 'card' ? 'Card' : 'Cash'}
+                </button>
+              ))}
+            </div>
+          </fieldset>
+        </div>
+
+        <button
+          type="button"
+          onClick={() => setShowDetails((current) => !current)}
+          className="mt-4 flex min-h-11 w-full items-center text-left text-sm font-semibold text-accent hover:underline"
+          aria-expanded={showDetails}
+        >
+          {showDetails ? 'Hide details' : `${collapsedDateLabel} · ${currency} · Add details`}
+        </button>
+        {showDetails ? (
+          <div className="mt-2 grid gap-3 sm:grid-cols-2">
+            <SelectField label="Currency" value={currency} onChange={(event) => setCurrencyOverride(event.target.value)} options={activeCurrencies.map((code) => ({ value: code, label: code }))} />
+            <Field label="Date" type="date" value={date} onChange={(event) => setDate(event.target.value)} required />
+            <div className="sm:col-span-2"><Field label="Note" value={note} onChange={(event) => setNote(event.target.value)} placeholder="Optional" /></div>
+          </div>
+        ) : null}
+
+        {error ? (
+          <div role="alert" aria-live="polite" className="mt-4 rounded-lg border border-danger bg-danger-muted px-3 py-2 text-sm font-medium text-danger">
+            <p>{error}</p>
+            {pendingOrdering ? (
+              <div className="mt-3 flex flex-wrap gap-2">
+                <Button type="button" variant="secondary" onClick={() => void resolveOrdering('before')} disabled={saving}>Before balance check</Button>
+                <Button type="button" variant="secondary" onClick={() => void resolveOrdering('after')} disabled={saving}>After balance check</Button>
+              </div>
+            ) : null}
+          </div>
+        ) : null}
+        <div className="mt-5 flex justify-end border-t border-subtle pt-4">
+          <Button type="submit" className="w-full sm:w-auto sm:min-w-36" loading={saving} disabled={saving}>Save {type}</Button>
+        </div>
+      </form>
     </section>
   );
 }
