@@ -29,7 +29,7 @@ async function expectSideBySide(left: ReturnType<Page['locator']>, right: Return
   expect(Math.abs(rightBox.y - leftBox.y)).toBeLessThan(24);
 }
 
-test('desktop dashboard, transactions, budgets, reports, balances, transfers, and recurring use responsive compositions', async ({ page }) => {
+test('desktop app routes use responsive compositions through settings', async ({ page }) => {
   await page.goto('/app');
   await completeFreshOnboarding(page);
 
@@ -133,5 +133,26 @@ test('desktop dashboard, transactions, budgets, reports, balances, transfers, an
   await expect(recurringDialog.getByRole('group', { name: 'Recurring transaction type' })).toBeVisible();
   await recurringDialog.getByRole('button', { name: 'Close' }).click();
   await expect(recurringDialog).toBeHidden();
+  await assertNoHorizontalOverflow(page);
+
+  await desktopNav.locator('summary').filter({ hasText: 'More' }).click();
+  moreNavigation = desktopNav.getByRole('group', { name: 'More navigation' });
+  await expect(moreNavigation).toBeVisible();
+  await moreNavigation.getByRole('link', { name: 'Settings', exact: true }).click();
+  await expect(page.getByRole('heading', { name: 'Settings', exact: true })).toBeVisible();
+
+  const settingsMainBox = await main.boundingBox();
+  expect(settingsMainBox?.width ?? 0).toBeGreaterThan(1000);
+  const settingsLayout = page.locator('[data-layout="settings-workspace"]');
+  const settingsNavigation = settingsLayout.locator('[data-settings-navigation]');
+  const settingsPanel = settingsLayout.locator('[data-settings-panel="general"]');
+  await expect(settingsNavigation).toBeVisible();
+  await expect(settingsPanel).toBeVisible();
+  await expectSideBySide(settingsNavigation, settingsPanel);
+  await expect(page.locator('[data-settings-section="general"]')).toBeVisible();
+
+  await settingsNavigation.getByRole('link', { name: /Data/ }).click();
+  await expect(page.locator('[data-settings-section="data"]')).toBeVisible();
+  await expect(page.getByRole('button', { name: 'Download backup', exact: true })).toBeVisible();
   await assertNoHorizontalOverflow(page);
 });
