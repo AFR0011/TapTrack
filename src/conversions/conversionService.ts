@@ -1,6 +1,6 @@
 import { db, type TapTrackDatabase } from '@/database';
 import { getBalanceId } from '@/defaultData';
-import { getAutomaticOccurredAt } from '@/dates';
+import { formatLocalDate, getAutomaticOccurredAt } from '@/dates';
 import { rebuildDerivedBalances } from '@/balances/ledgerService';
 import type { Conversion, Currency, Method } from '@/types';
 import { flushSyncQueueBestEffort, queueRecordForSync } from '@/sync/syncService';
@@ -45,6 +45,12 @@ export async function createConversion(
   ) {
     throw new InvalidConversionError(
       'Conversion amounts must be finite numbers greater than zero.'
+    );
+  }
+
+  if (draft.date > formatLocalDate(nowDate)) {
+    throw new InvalidConversionError(
+      'Future-dated transfers and exchanges are not supported.'
     );
   }
 

@@ -77,6 +77,20 @@ describe('createConversion', () => {
     });
   });
 
+  it('rejects future-dated transfers and exchanges before touching balances', async () => {
+    await setOpeningBalance('USD', 'card', 100);
+    const now = new Date(2026, 4, 18, 16, 0, 0);
+
+    await expect(
+      createConversion({ ...baseDraft, date: '2026-05-19' }, database, now)
+    ).rejects.toBeInstanceOf(InvalidConversionError);
+
+    expect(await database.conversions.count()).toBe(0);
+    expect(
+      (await database.syncOutbox.toArray()).filter((item) => item.tableName === 'conversions')
+    ).toEqual([]);
+  });
+
   it('records exact ordering for current-day conversions and leaves historical ones unordered', async () => {
     const now = new Date(2026, 4, 18, 16, 0, 0);
     await setOpeningBalance('USD', 'card', 100);

@@ -2,7 +2,7 @@
 
 import type { Table } from 'dexie';
 import { rebuildDerivedBalances } from '@/balances/ledgerService';
-import { db, ensureDatabaseSeeded, type TapTrackDatabase } from '@/database';
+import { db, type TapTrackDatabase } from '@/database';
 import {
   createDefaultCategories,
   createDefaultSettings,
@@ -12,10 +12,11 @@ import { createSupabaseBrowserClient } from '@/lib/supabase';
 import {
   inspectDeviceLedgerLinkToCurrentUser,
   linkDeviceLedgerToCurrentUser,
+  prepareDeviceLedgerBindingToCurrentUser,
   type LedgerLinkPlan,
 } from '@/sync/syncBinding';
 import { pullUpdates, pushLocalChanges, pushRecord } from '@/sync/syncService';
-import type { Category } from '@/types';
+import type { Category, DeviceMetadata } from '@/types';
 
 type CanonicalTableName =
   | 'transactions'
@@ -102,14 +103,25 @@ async function fetchValidatedCloudSnapshot(userId: string): Promise<RemoteSnapsh
 
 async function replaceLocalCanonicalSnapshot(
   snapshot: RemoteSnapshot,
+  binding: DeviceMetadata,
   database: TapTrackDatabase
 ): Promise<AdoptionRepairs> {
   const tables = CANONICAL_TABLES.map(({ local }) => getLocalTable(database, local));
+  const now = new Date().toISOString();
   let synthesizedSettings: Record<string, unknown> | null = null;
+
+  const cloudCategoryIds = new Set(
+    snapshot.categories
+      .map((category) => category.id)
+      .filter((id): id is string => typeof id === 'string' && id.length > 0)
+  );
+  const repairedCategories = createDefaultCategories(now).filter(
+    (category) => !cloudCategoryIds.has(category.id)
+  );
 
   await database.transaction(
     'rw',
-    [...tables, database.balances, database.syncOutbox],
+    [...tables, database.balances, database.syncOutbox, database.deviceMetadata],
     async () => {
       for (const table of tables) await table.clear();
       await database.balances.clear();
@@ -121,9 +133,9 @@ async function replaceLocalCanonicalSnapshot(
       }
 
       // Legacy cloud accounts could be missing the globally-colliding settings
-      // row. Keep an existing cloud ledger usable without pretending setup is new.
+      // row. Repair seed state inside the same transaction as adoption so a
+      // failure cannot leave a bound browser with only half of a cloud ledger.
       if (snapshot.settings.length === 0) {
-        const now = new Date().toISOString();
         const repaired = {
           ...createDefaultSettings(now),
           id: DEFAULT_SETTINGS_ID,
@@ -136,23 +148,22 @@ async function replaceLocalCanonicalSnapshot(
         await database.settings.put(repaired);
       }
 
-      await rebuildDerivedBalances(database);
+      if (repairedCategories.length > 0) {
+        await database.categories.bulkPut(repairedCategories);
+      }
+
+      await rebuildDerivedBalances(database, now);
+
+      const existingBinding = await database.deviceMetadata.get(binding.id);
+      if (
+        existingBinding &&
+        existingBinding.syncOwnerUserId !== binding.syncOwnerUserId
+      ) {
+        throw new Error('This device ledger was linked by another operation.');
+      }
+      await database.deviceMetadata.put(binding);
     }
   );
-
-  await ensureDatabaseSeeded(database);
-
-  const cloudCategoryIds = new Set(
-    snapshot.categories
-      .map((category) => category.id)
-      .filter((id): id is string => typeof id === 'string' && id.length > 0)
-  );
-  const missingDefaultIds = createDefaultCategories()
-    .map((category) => category.id)
-    .filter((id) => !cloudCategoryIds.has(id));
-  const repairedCategories = (
-    await Promise.all(missingDefaultIds.map((id) => database.categories.get(id)))
-  ).filter((category): category is Category => category !== undefined);
 
   return {
     settings: synthesizedSettings,
@@ -168,9 +179,10 @@ export async function inspectCloudAdoption(
 }
 
 /**
- * Use cloud data: validate the complete snapshot first, then run the caller's
- * local safety step before binding or clearing any canonical rows. If the
- * safety step fails, the device remains unbound and its local ledger is intact.
+ * Use cloud data: validate the complete snapshot and prepare the account binding
+ * without mutating IndexedDB. The canonical replacement, outbox clear, derived
+ * balance rebuild, seed repair, and device binding then commit as one Dexie
+ * transaction. Any failure leaves the original unbound local ledger intact.
  */
 export async function adoptCloudLedger(
   database: TapTrackDatabase = db,
@@ -178,9 +190,12 @@ export async function adoptCloudLedger(
 ): Promise<void> {
   const plan = await inspectDeviceLedgerLinkToCurrentUser(database);
   const snapshot = await fetchValidatedCloudSnapshot(plan.userId);
+  const binding = await prepareDeviceLedgerBindingToCurrentUser(database, 'use-cloud');
+  if (binding.syncOwnerUserId !== plan.userId) {
+    throw new Error('The signed-in account changed during cloud adoption. Nothing was replaced.');
+  }
   await beforeReplace?.();
-  await linkDeviceLedgerToCurrentUser(database, 'use-cloud');
-  const repairs = await replaceLocalCanonicalSnapshot(snapshot, database);
+  const repairs = await replaceLocalCanonicalSnapshot(snapshot, binding, database);
 
   // Repair only rows the legacy cloud snapshot was missing. Re-uploading the
   // whole adopted ledger would make this newly linked device the latest writer

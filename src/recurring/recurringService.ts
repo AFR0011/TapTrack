@@ -1,3 +1,8 @@
+import { AmbiguousLedgerOrderingError } from '@/balances/ledgerService';
+import {
+  resolveHistoricalOccurrenceAroundCheckpoint,
+  type HistoricalOrderingRelation,
+} from '@/balances/reconciliationService';
 import { db, ensureDatabaseSeeded, type TapTrackDatabase } from '@/database';
 import { addFrequency, formatLocalDate, parseLocalDate } from '@/dates';
 import { createTransaction } from '@/transactions/createTransaction';
@@ -10,10 +15,18 @@ import type { Frequency, RecurringTransaction, TransactionDraft } from '@/types'
 
 export type RecurringInput = Omit<RecurringTransaction, 'id' | 'createdAt' | 'updatedAt'>;
 
+export type RecurringOrderingConflict = {
+  recurringId: string;
+  title: string;
+  occurrenceDate: string;
+  checkpointId: string;
+};
+
 export type DueRecurringResult = {
   created: number;
   skipped: number;
   failed: number;
+  conflicts: RecurringOrderingConflict[];
 };
 
 export function getRecurringOccurrenceId(recurringId: string, date: string): string {
@@ -228,6 +241,58 @@ export function calculateNextRunDate(
   return formatLocalDate(nextDate);
 }
 
+async function advanceRecurringAfterOccurrence(
+  recurring: RecurringTransaction,
+  occurrenceDate: string,
+  database: TapTrackDatabase
+): Promise<void> {
+  const anchorDate = parseLocalDate(recurring.startDate);
+  const nextRunDate = formatLocalDate(
+    addFrequency(parseLocalDate(occurrenceDate), recurring.frequency, anchorDate)
+  );
+  const updates: Partial<RecurringTransaction> = { nextRunDate };
+  if (recurring.endDate && nextRunDate > recurring.endDate) updates.isActive = false;
+  await updateRecurringTransaction(recurring.id, updates, database);
+}
+
+export async function resolveRecurringOccurrenceOrdering(
+  conflict: RecurringOrderingConflict,
+  relation: HistoricalOrderingRelation,
+  database: TapTrackDatabase = db,
+  currentDate = new Date()
+): Promise<void> {
+  await ensureDatabaseSeeded(database);
+  const recurring = await database.recurringTransactions.get(conflict.recurringId);
+  if (!recurring) throw new Error('Recurring transaction not found.');
+  if (recurring.nextRunDate !== conflict.occurrenceDate) {
+    throw new Error('This recurring occurrence has already moved on. Refresh and try again.');
+  }
+
+  const checkpoint = await database.balanceCheckpoints.get(conflict.checkpointId);
+  if (!checkpoint || checkpoint.date !== conflict.occurrenceDate) {
+    throw new Error('The related balance check could not be found.');
+  }
+
+  const occurrenceId = getRecurringOccurrenceId(recurring.id, conflict.occurrenceDate);
+  const existing = await database.transactions.get(occurrenceId);
+  if (!existing) {
+    const transactionDraft: TransactionDraft = {
+      type: recurring.type,
+      amount: recurring.amount,
+      currency: recurring.currency,
+      title: recurring.title,
+      categoryId: recurring.categoryId,
+      method: recurring.method,
+      date: conflict.occurrenceDate,
+      recurringSourceId: recurring.id,
+      occurredAt: resolveHistoricalOccurrenceAroundCheckpoint(checkpoint, relation),
+    };
+    await createTransaction(transactionDraft, database, currentDate, occurrenceId);
+  }
+
+  await advanceRecurringAfterOccurrence(recurring, conflict.occurrenceDate, database);
+}
+
 export async function createDueRecurringTransactions(
   currentDate: Date = new Date(),
   database: TapTrackDatabase = db
@@ -236,13 +301,12 @@ export async function createDueRecurringTransactions(
 
   const activeRecurring = await getActiveRecurringTransactions(database);
   const today = formatLocalDate(currentDate);
-  const result: DueRecurringResult = { created: 0, skipped: 0, failed: 0 };
+  const result: DueRecurringResult = { created: 0, skipped: 0, failed: 0, conflicts: [] };
 
   for (const recurring of activeRecurring) {
     let nextRunDate = recurring.nextRunDate;
     let safety = 0;
     const endDate = recurring.endDate;
-    const anchorDate = parseLocalDate(recurring.startDate);
 
     if (endDate && nextRunDate > endDate) {
       await updateRecurringTransaction(recurring.id, { isActive: false }, database);
@@ -277,20 +341,25 @@ export async function createDueRecurringTransactions(
           // between the read and add. Treat that as the same logical occurrence.
           if (await database.transactions.get(occurrenceId)) {
             result.skipped += 1;
+          } else if (error instanceof AmbiguousLedgerOrderingError) {
+            result.conflicts.push({
+              recurringId: recurring.id,
+              title: recurring.title,
+              occurrenceDate: nextRunDate,
+              checkpointId: error.checkpointId,
+            });
+            break;
           } else {
-            void error;
             result.failed += 1;
             break;
           }
         }
       }
 
+      await advanceRecurringAfterOccurrence(recurring, nextRunDate, database);
       nextRunDate = formatLocalDate(
-        addFrequency(parseLocalDate(nextRunDate), recurring.frequency, anchorDate)
+        addFrequency(parseLocalDate(nextRunDate), recurring.frequency, parseLocalDate(recurring.startDate))
       );
-      const updates: Partial<RecurringTransaction> = { nextRunDate };
-      if (endDate && nextRunDate > endDate) updates.isActive = false;
-      await updateRecurringTransaction(recurring.id, updates, database);
       safety += 1;
     }
   }

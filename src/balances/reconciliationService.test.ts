@@ -1,6 +1,7 @@
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 import { TapTrackDatabase, ensureDatabaseSeeded } from '@/database';
 import { getBalanceId } from '@/defaultData';
+import { addActiveCurrency, removeActiveCurrency } from '@/currencies/currencyService';
 import { completeInitialSetup } from '@/setup/setupService';
 import {
   InvalidReconciliationError,
@@ -93,6 +94,39 @@ describe('monthly balance reconciliation', () => {
     expect(after.required).toBe(false);
     expect(after.completedBalanceIds).toHaveLength(6);
     expect((await database.balances.get(getBalanceId('TRY', 'card')))?.amount).toBe(970);
+  });
+
+  it('reconciles only unfinished active balances when a currency was added mid-month', async () => {
+    await addActiveCurrency('GBP', database, new Date(2026, 5, 2, 9, 0, 0));
+
+    const before = await getMonthlyReconciliationState('2026-06', database);
+    expect(before.required).toBe(true);
+    expect(before.balances).toHaveLength(8);
+    expect(new Set(before.completedBalanceIds)).toEqual(
+      new Set([getBalanceId('GBP', 'cash'), getBalanceId('GBP', 'card')])
+    );
+
+    const observed = Object.fromEntries(before.balances.map((balance) => [balance.id, balance.amount]));
+    const checkpoints = await reconcileCurrentMonth(
+      observed,
+      database,
+      new Date(2026, 5, 3, 10, 0, 0)
+    );
+
+    expect(checkpoints).toHaveLength(6);
+    expect(checkpoints.some((checkpoint) => checkpoint.currency === 'GBP')).toBe(false);
+    const after = await getMonthlyReconciliationState('2026-06', database);
+    expect(after.required).toBe(false);
+    expect(after.completedBalanceIds).toHaveLength(8);
+  });
+
+  it('does not require archived currency balances to be reconciled', async () => {
+    await removeActiveCurrency('EUR', database);
+    const state = await getMonthlyReconciliationState('2026-06', database);
+
+    expect(state.required).toBe(true);
+    expect(state.balances).toHaveLength(4);
+    expect(state.balances.some((balance) => balance.currency === 'EUR')).toBe(false);
   });
 
   it('records zero-difference confirmations and exposes reconciliation history separately', async () => {

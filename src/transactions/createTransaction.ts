@@ -1,9 +1,9 @@
-import { DEFAULT_SETTINGS_ID, createDefaultSettings, getBalanceId } from '@/defaultData';
 import { db, ensureDatabaseSeeded, type TapTrackDatabase } from '@/database';
-import { getAutomaticOccurredAt } from '@/dates';
+import { getBalanceId } from '@/defaultData';
+import { formatLocalDate, getAutomaticOccurredAt } from '@/dates';
 import { rebuildDerivedBalances } from '@/balances/ledgerService';
 import { getInsufficientBalanceMessage, getTransactionBalanceDelta } from '@/balances/balanceEffects';
-import type { Settings, Transaction, TransactionDraft } from '@/types';
+import type { Transaction, TransactionDraft } from '@/types';
 import {
   flushSyncQueueBestEffort,
   queueDeleteForSync,
@@ -23,12 +23,28 @@ export class InsufficientBalanceError extends Error {
   }
 }
 
+export class InvalidTransactionDateError extends Error {
+  readonly code = 'FUTURE_TRANSACTION_DATE';
+
+  constructor(readonly date: string) {
+    super('Future-dated transactions are not supported. Use Recurring for scheduled activity.');
+    this.name = 'InvalidTransactionDateError';
+  }
+}
+
+function assertTransactionDateNotFuture(input: TransactionDraft, nowDate: Date) {
+  if (input.date > formatLocalDate(nowDate)) {
+    throw new InvalidTransactionDateError(input.date);
+  }
+}
+
 export async function createTransaction(
   input: TransactionDraft,
   database: TapTrackDatabase = db,
   nowDate = new Date(),
   transactionId = crypto.randomUUID()
 ): Promise<Transaction> {
+  assertTransactionDateNotFuture(input, nowDate);
   await ensureDatabaseSeeded(database);
 
   const now = nowDate.toISOString();
@@ -47,7 +63,6 @@ export async function createTransaction(
       database.conversions,
       database.balanceCheckpoints,
       database.balances,
-      database.settings,
       database.syncOutbox,
     ],
     async () => {
@@ -66,23 +81,9 @@ export async function createTransaction(
         );
       }
 
-      const settings =
-        (await database.settings.get(DEFAULT_SETTINGS_ID)) ?? createDefaultSettings(now);
-      const updatedSettings: Settings = {
-        ...settings,
-        lastUsedMethod: input.method,
-        updatedAt: now,
-      };
-      await database.settings.put(updatedSettings);
-
       await queueRecordForSync(
         'transactions',
         transaction as unknown as Record<string, unknown>,
-        database
-      );
-      await queueRecordForSync(
-        'settings',
-        updatedSettings as unknown as Record<string, unknown>,
         database
       );
     }
@@ -100,6 +101,7 @@ export async function updateTransaction(
   await ensureDatabaseSeeded(database);
 
   const nowDate = new Date();
+  assertTransactionDateNotFuture(input, nowDate);
   const now = nowDate.toISOString();
   let updatedTransaction: Transaction | null = null;
 
@@ -110,7 +112,6 @@ export async function updateTransaction(
       database.conversions,
       database.balanceCheckpoints,
       database.balances,
-      database.settings,
       database.syncOutbox,
     ],
     async () => {
@@ -147,23 +148,9 @@ export async function updateTransaction(
       }
 
       updatedTransaction = nextTransaction;
-      const settings =
-        (await database.settings.get(DEFAULT_SETTINGS_ID)) ?? createDefaultSettings(now);
-      const updatedSettings: Settings = {
-        ...settings,
-        lastUsedMethod: input.method,
-        updatedAt: now,
-      };
-      await database.settings.put(updatedSettings);
-
       await queueRecordForSync(
         'transactions',
         nextTransaction as unknown as Record<string, unknown>,
-        database
-      );
-      await queueRecordForSync(
-        'settings',
-        updatedSettings as unknown as Record<string, unknown>,
         database
       );
     }
@@ -228,6 +215,7 @@ export async function createTransactions(
   await ensureDatabaseSeeded(database);
 
   const nowDate = new Date();
+  for (const input of inputs) assertTransactionDateNotFuture(input, nowDate);
   const now = nowDate.toISOString();
   const transactions: Transaction[] = inputs.map((input) => ({
     ...input,
@@ -244,7 +232,6 @@ export async function createTransactions(
       database.conversions,
       database.balanceCheckpoints,
       database.balances,
-      database.settings,
       database.syncOutbox,
     ],
     async () => {
@@ -262,16 +249,6 @@ export async function createTransactions(
         );
       }
 
-      const lastInput = inputs.at(-1)!;
-      const settings =
-        (await database.settings.get(DEFAULT_SETTINGS_ID)) ?? createDefaultSettings(now);
-      const updatedSettings: Settings = {
-        ...settings,
-        lastUsedMethod: lastInput.method,
-        updatedAt: now,
-      };
-      await database.settings.put(updatedSettings);
-
       for (const transaction of transactions) {
         await queueRecordForSync(
           'transactions',
@@ -279,11 +256,6 @@ export async function createTransactions(
           database
         );
       }
-      await queueRecordForSync(
-        'settings',
-        updatedSettings as unknown as Record<string, unknown>,
-        database
-      );
     }
   );
 

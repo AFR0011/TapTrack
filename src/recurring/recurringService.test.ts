@@ -1,11 +1,13 @@
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 import { TapTrackDatabase, ensureDatabaseSeeded } from '@/database';
+import { getBalanceId } from '@/defaultData';
 import {
   createDueRecurringTransactions,
   createRecurringTransaction,
   deleteRecurringTransaction,
   getInitialNextRunDate,
   getNextScheduledOccurrenceDate,
+  resolveRecurringOccurrenceOrdering,
   resumeRecurringTransaction,
   updateRecurringTransaction,
 } from './recurringService';
@@ -68,6 +70,55 @@ describe('recurringService', () => {
     expect(balance?.amount).toBe(20000);
     expect(queuedRule).toMatchObject({ operation: 'upsert', recordId: recurring.id });
     expect(queuedRule?.record).toMatchObject({ nextRunDate: '2026-06-05' });
+  });
+
+  it('surfaces same-day reconciliation ambiguity and advances only after the user resolves it', async () => {
+    const recurring = await createRecurringTransaction(baseRecurring, database);
+    const balanceId = getBalanceId('TRY', 'card');
+    const effectiveAt = '2026-05-05T10:00:00.000Z';
+    await database.balanceCheckpoints.put({
+      id: 'reconciliation-2026-05-TRY-card',
+      balanceId,
+      currency: 'TRY',
+      method: 'card',
+      kind: 'reconciliation',
+      observedAmount: 1000,
+      deltaAmount: 1000,
+      date: '2026-05-05',
+      effectiveAt,
+      month: '2026-05',
+      createdAt: effectiveAt,
+      updatedAt: effectiveAt,
+    });
+
+    const currentDate = new Date(2026, 4, 6, 12, 0, 0);
+    const result = await createDueRecurringTransactions(currentDate, database);
+
+    expect(result.created).toBe(0);
+    expect(result.failed).toBe(0);
+    expect(result.conflicts).toEqual([
+      {
+        recurringId: recurring.id,
+        title: 'salary',
+        occurrenceDate: '2026-05-05',
+        checkpointId: 'reconciliation-2026-05-TRY-card',
+      },
+    ]);
+    expect(await database.transactions.count()).toBe(0);
+    await expect(database.recurringTransactions.get(recurring.id)).resolves.toMatchObject({
+      nextRunDate: '2026-05-05',
+    });
+
+    await resolveRecurringOccurrenceOrdering(result.conflicts[0]!, 'after', database, currentDate);
+
+    const occurrence = await database.transactions.get(
+      `recurring-occurrence-${recurring.id}-2026-05-05`
+    );
+    expect(occurrence?.occurredAt).toBe('2026-05-05T10:00:00.001Z');
+    await expect(database.recurringTransactions.get(recurring.id)).resolves.toMatchObject({
+      nextRunDate: '2026-06-05',
+    });
+    await expect(database.balances.get(balanceId)).resolves.toMatchObject({ amount: 21000 });
   });
 
   it('atomically replaces rule sync intent on update and delete', async () => {

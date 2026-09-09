@@ -48,9 +48,20 @@ export async function loadHistoricalReportRates(
       }
       const need = needs[cursor++];
       const cached = rateCache.get(need.key);
-      if (cached) { rates[need.key] = cached; continue; }
-      const rate = await fetchHistoricalExchangeRate({ base: need.base, quote: need.quote, date: need.date, signal });
-      rateCache.set(need.key, rate);
+      if (cached) {
+        rates[need.key] = cached;
+        continue;
+      }
+      const rate = await fetchHistoricalExchangeRate({
+        base: need.base,
+        quote: need.quote,
+        date: need.date,
+        signal,
+      });
+      // Local/offline fallback observations must be revalidated next time an
+      // online request is possible. Only provider-validated historical values
+      // are safe to keep in the process-wide immutable-rate cache.
+      if (!rate.cached) rateCache.set(need.key, rate);
       rates[need.key] = rate;
     }
   }
