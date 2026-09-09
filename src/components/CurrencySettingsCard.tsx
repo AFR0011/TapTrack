@@ -75,8 +75,8 @@ export function CurrencySettingsCard() {
       toast.success(`${currencyToAdd} added.`);
       setCurrencyToAdd('');
       setAdding(false);
-    } catch (error) {
-      toast.error(error instanceof Error ? error.message : 'Currency could not be added. Try again.');
+    } catch {
+      toast.error('That currency could not be added. Try again.');
     } finally {
       setBusy(false);
     }
@@ -86,11 +86,9 @@ export function CurrencySettingsCard() {
     setBusy(true);
     try {
       await setDefaultCurrency(currency);
-      toast.success(`Default currency changed to ${currency}.`);
-    } catch (error) {
-      toast.error(
-        error instanceof Error ? error.message : 'Default currency could not be changed. Try again.'
-      );
+      toast.success(`Main currency changed to ${currency}.`);
+    } catch {
+      toast.error('The main currency could not be changed. Try again.');
     } finally {
       setBusy(false);
     }
@@ -103,8 +101,8 @@ export function CurrencySettingsCard() {
       await removeActiveCurrency(currencyToRemove);
       toast.success(`${currencyToRemove} removed from new entries. Your history was kept.`);
       setCurrencyToRemove(null);
-    } catch (error) {
-      toast.error(error instanceof Error ? error.message : 'Currency could not be removed. Try again.');
+    } catch {
+      toast.error('That currency could not be removed. Try again.');
     } finally {
       setBusy(false);
     }
@@ -123,7 +121,7 @@ export function CurrencySettingsCard() {
 
       <div className="mt-5 max-w-md rounded-xl border border-subtle bg-surface-muted p-4">
         <SelectField
-          label="Default currency"
+          label="Main currency"
           value={settings.defaultCurrency}
           onChange={(event) => void handleDefaultChange(event.target.value)}
           options={activeCurrencies.map((code) => ({ value: code, label: currencyLabel(code, catalog) }))}
@@ -155,7 +153,7 @@ export function CurrencySettingsCard() {
                 <div className="min-w-0">
                   <p className="truncate text-sm font-semibold text-primary">{currencyLabel(code, catalog)}</p>
                   <p className="mt-0.5 text-xs font-medium text-muted">
-                    {isDefault ? 'Default currency' : 'Available for new entries'}
+                    {isDefault ? 'Main currency' : 'Available for new entries'}
                   </p>
                 </div>
                 {isDefault ? null : (
