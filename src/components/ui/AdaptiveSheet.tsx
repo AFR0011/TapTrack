@@ -6,6 +6,7 @@ import {
   useRef,
   type ReactNode,
 } from 'react';
+import { createPortal } from 'react-dom';
 import { AnimatePresence, motion, useReducedMotion } from 'framer-motion';
 import { cn, focusVisibleRing } from '@/lib/cn';
 
@@ -32,7 +33,11 @@ export function AdaptiveSheet({
   const titleId = useId();
   const descriptionId = useId();
   const panelRef = useRef<HTMLDivElement | null>(null);
-  const closeRef = useRef<HTMLButtonElement | null>(null);
+  const onCloseRef = useRef(onClose);
+
+  useEffect(() => {
+    onCloseRef.current = onClose;
+  }, [onClose]);
 
   useEffect(() => {
     if (!open) return;
@@ -40,12 +45,20 @@ export function AdaptiveSheet({
     const previousActiveElement = document.activeElement as HTMLElement | null;
     const previousOverflow = document.body.style.overflow;
     document.body.style.overflow = 'hidden';
-    requestAnimationFrame(() => closeRef.current?.focus());
+
+    const frame = requestAnimationFrame(() => {
+      const panel = panelRef.current;
+      if (!panel) return;
+      const preferred = panel.querySelector<HTMLElement>(
+        '[data-sheet-autofocus], input:not([type="hidden"]):not(:disabled), textarea:not(:disabled), select:not(:disabled)'
+      );
+      (preferred ?? panel).focus({ preventScroll: true });
+    });
 
     const handleKeyDown = (event: KeyboardEvent) => {
       if (event.key === 'Escape') {
         event.preventDefault();
-        onClose();
+        onCloseRef.current();
         return;
       }
       if (event.key !== 'Tab') return;
@@ -68,36 +81,40 @@ export function AdaptiveSheet({
 
     document.addEventListener('keydown', handleKeyDown);
     return () => {
+      cancelAnimationFrame(frame);
       document.removeEventListener('keydown', handleKeyDown);
       document.body.style.overflow = previousOverflow;
-      previousActiveElement?.focus();
+      previousActiveElement?.focus({ preventScroll: true });
     };
-  }, [onClose, open]);
+  }, [open]);
 
   const widthClass =
     size === 'lg' ? 'sm:max-w-2xl' : size === 'sm' ? 'sm:max-w-sm' : 'sm:max-w-lg';
 
-  return (
+  if (typeof document === 'undefined') return null;
+
+  return createPortal(
     <AnimatePresence>
       {open ? (
         <motion.div
-          className="fixed inset-0 z-50 flex items-end justify-center bg-[var(--overlay)] sm:items-center sm:p-4"
+          className="fixed inset-0 z-[80] flex min-h-dvh items-end justify-center bg-[var(--overlay)] sm:items-center sm:p-4"
           initial={reduceMotion ? false : { opacity: 0 }}
           animate={{ opacity: 1 }}
           exit={{ opacity: 0 }}
           transition={{ duration: reduceMotion ? 0 : 0.16 }}
           onMouseDown={(event) => {
-            if (event.target === event.currentTarget) onClose();
+            if (event.target === event.currentTarget) onCloseRef.current();
           }}
         >
           <motion.div
             ref={panelRef}
+            tabIndex={-1}
             role="dialog"
             aria-modal="true"
             aria-labelledby={titleId}
             aria-describedby={description ? descriptionId : undefined}
             className={cn(
-              'flex max-h-[92dvh] w-full flex-col overflow-hidden rounded-t-[1.75rem] bg-surface shadow-[var(--shadow-overlay)] ring-1 ring-subtle sm:rounded-[1.5rem]',
+              'flex max-h-[92dvh] w-full flex-col overflow-hidden rounded-t-[1.75rem] bg-surface shadow-[var(--shadow-overlay)] ring-1 ring-subtle outline-none sm:rounded-[1.5rem]',
               widthClass
             )}
             initial={reduceMotion ? false : { opacity: 0, y: 36, scale: 0.985 }}
@@ -121,9 +138,8 @@ export function AdaptiveSheet({
                 ) : null}
               </div>
               <button
-                ref={closeRef}
                 type="button"
-                onClick={onClose}
+                onClick={() => onCloseRef.current()}
                 aria-label="Close"
                 className={cn(
                   'grid min-h-11 min-w-11 shrink-0 place-items-center rounded-xl text-muted transition-colors hover:bg-surface-muted hover:text-primary',
@@ -141,13 +157,14 @@ export function AdaptiveSheet({
             </div>
 
             {footer ? (
-              <div className="shrink-0 border-t border-subtle bg-surface px-4 py-3 sm:px-5 sm:py-4">
+              <div className="shrink-0 border-t border-subtle bg-surface px-4 py-3 [padding-bottom:max(0.75rem,env(safe-area-inset-bottom))] sm:px-5 sm:py-4">
                 {footer}
               </div>
             ) : null}
           </motion.div>
         </motion.div>
       ) : null}
-    </AnimatePresence>
+    </AnimatePresence>,
+    document.body
   );
 }

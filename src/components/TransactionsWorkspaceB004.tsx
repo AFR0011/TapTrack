@@ -479,14 +479,10 @@ export default function TransactionsWorkspaceB004() {
             ]}
             onChange={(value) => setDraftMethodFilter(value as 'all' | Method)}
           />
-          <SelectField
-            label="Category"
+          <CategoryFilterChoices
+            categories={categories ?? []}
             value={draftCategoryFilter}
-            onChange={(event) => setDraftCategoryFilter(event.target.value)}
-            options={[
-              { value: 'all', label: 'All categories' },
-              ...(categories ?? []).map((category) => ({ value: category.id, label: category.name })),
-            ]}
+            onChange={setDraftCategoryFilter}
           />
         </div>
       </AdaptiveSheet>
@@ -798,6 +794,60 @@ function FilterChoiceGroup({
             {option.label}
           </button>
         ))}
+      </div>
+    </fieldset>
+  );
+}
+
+function CategoryFilterChoices({
+  categories,
+  value,
+  onChange,
+}: {
+  categories: Category[];
+  value: string;
+  onChange: (value: string) => void;
+}) {
+  return (
+    <fieldset>
+      <legend className="mb-2 text-sm font-semibold text-secondary">Category</legend>
+      <div className="grid grid-cols-2 gap-2 sm:grid-cols-3">
+        <button
+          type="button"
+          aria-pressed={value === 'all'}
+          onClick={() => onChange('all')}
+          className={cn(
+            'flex min-h-12 items-center justify-center rounded-xl px-3 text-sm font-semibold ring-1 transition-colors',
+            value === 'all'
+              ? 'bg-accent-muted text-primary ring-accent/25'
+              : 'bg-surface text-secondary ring-subtle hover:bg-surface-muted',
+            focusVisibleRing
+          )}
+        >
+          All categories
+        </button>
+        {categories.map((category) => {
+          const active = value === category.id;
+          return (
+            <button
+              key={category.id}
+              type="button"
+              aria-pressed={active}
+              onClick={() => onChange(category.id)}
+              className={cn(
+                'flex min-h-12 min-w-0 items-center gap-2.5 rounded-xl px-3 text-left ring-1 transition-colors',
+                active
+                  ? 'bg-accent-muted text-primary ring-accent/25'
+                  : 'bg-surface text-secondary ring-subtle hover:bg-surface-muted',
+                focusVisibleRing
+              )}
+            >
+              <CategoryIcon icon={category.icon} color={category.color} className="h-8 w-8 rounded-xl" />
+              <span className="min-w-0 flex-1 truncate text-sm font-semibold">{category.name}</span>
+              {active ? <span className="shrink-0 text-sm font-bold text-accent" aria-hidden="true">✓</span> : null}
+            </button>
+          );
+        })}
       </div>
     </fieldset>
   );
