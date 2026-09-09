@@ -4,6 +4,7 @@ import Link from 'next/link';
 import { useCallback, useEffect, useRef, useState, type ReactNode } from 'react';
 import { useRouter } from 'next/navigation';
 import { useLiveQuery } from 'dexie-react-hooks';
+import { toast } from 'sonner';
 import { db } from '@/database';
 import { DEFAULT_SETTINGS_ID } from '@/defaultData';
 import { exportCSV, exportJSON, importJSON } from '@/exports/exportService';
@@ -23,7 +24,6 @@ import { QuickCaptureSettings } from './QuickCaptureSettings';
 import { RestoreScopeDialog } from './RestoreScopeDialog';
 import { ResetScopeDialog } from './ResetScopeDialog';
 import { CategoryManager } from './CategoryManager';
-import { toast } from 'sonner';
 import {
   getSyncStatus,
   syncNow,
@@ -52,31 +52,31 @@ const SETTINGS_SECTIONS: SettingsSectionConfig[] = [
   {
     id: 'general',
     label: 'General',
-    description: 'Currency, defaults, appearance, and Smart Categories.',
+    description: 'Everyday defaults, currencies, appearance, and AI.',
     icon: 'M4 6h16M7 6a2 2 0 104 0 2 2 0 10-4 0zM4 12h16m-7 0a2 2 0 104 0 2 2 0 10-4 0zM4 18h16M9 18a2 2 0 104 0 2 2 0 10-4 0z',
   },
   {
     id: 'categories',
     label: 'Categories',
-    description: 'Organize income and spending categories.',
+    description: 'Organize the labels used for income and spending.',
     icon: 'M4 4h6v6H4V4zm10 0h6v6h-6V4zM4 14h6v6H4v-6zm10 0h6v6h-6v-6z',
   },
   {
     id: 'capture',
     label: 'Quick Capture',
-    description: 'Set up iPhone shortcuts for faster logging.',
+    description: 'Connect iPhone Shortcuts for faster logging.',
     icon: 'M13 2L4.5 13H11l-1 9L19.5 11H13V2z',
   },
   {
     id: 'account',
     label: 'Account & Sync',
-    description: 'Account, device sync, and connection status.',
+    description: 'Identity, sync health, and this device connection.',
     icon: 'M12 12a4 4 0 100-8 4 4 0 000 8zm-7 9a7 7 0 0114 0M17 11.5a4.5 4.5 0 110 9h-1',
   },
   {
     id: 'data',
     label: 'Data',
-    description: 'Export, back up, restore, or reset TapTrack.',
+    description: 'Export, back up, restore, or reset your ledger.',
     icon: 'M5 4h14v16H5V4zm3 4h8M8 12h8M8 16h5',
   },
 ];
@@ -367,8 +367,11 @@ export default function SettingsWorkspace() {
   if (!settings) {
     return (
       <div className="space-y-5" aria-busy="true" aria-label="Loading settings">
-        <PageHeader title="Settings" />
-        <div className="grid gap-5 md:grid-cols-[240px_minmax(0,1fr)]">
+        <PageHeader
+          title="Settings"
+          description="Control TapTrack's defaults, connections, and data on this device."
+        />
+        <div className="grid gap-5 md:grid-cols-[260px_minmax(0,1fr)]">
           <SkeletonCard />
           <SkeletonCard />
         </div>
@@ -379,29 +382,42 @@ export default function SettingsWorkspace() {
   const aiEnabled = settings.aiCategorizationEnabled ?? false;
 
   return (
-    <div className="space-y-5">
-      <PageHeader title="Settings" />
+    <div className="min-w-0 space-y-5 sm:space-y-6" data-layout="settings-workspace">
+      <PageHeader
+        title="Settings"
+        description="Set everyday defaults, connect devices, and keep control of where your TapTrack data lives."
+      />
 
-      <div className="grid gap-5 md:grid-cols-[240px_minmax(0,1fr)] md:items-start">
+      <div className="grid min-w-0 gap-5 md:grid-cols-[260px_minmax(0,1fr)] md:items-start">
         <nav
           aria-label="Settings sections"
+          data-settings-navigation
           className={cn(
-            'rounded-2xl border border-subtle bg-surface p-2 md:sticky md:top-24',
+            'min-w-0 rounded-[1.5rem] bg-surface p-2 ring-1 ring-subtle/70 md:sticky md:top-24',
             activeSection ? 'hidden md:block' : 'block'
           )}
         >
+          <div className="hidden px-3 pb-2 pt-2 md:block">
+            <p className="text-xs font-semibold uppercase tracking-[0.14em] text-muted">Control center</p>
+            <p className="mt-1 text-xs font-medium leading-5 text-muted">
+              Changes are saved immediately unless an action asks for confirmation.
+            </p>
+          </div>
           <div className="grid gap-1">
             {SETTINGS_SECTIONS.map((section) => (
               <SettingsSectionLink
                 key={section.id}
                 section={section}
-                active={activeSection === section.id}
+                active={selectedSection === section.id}
               />
             ))}
           </div>
         </nav>
 
-        <div className={cn(activeSection ? 'block' : 'hidden md:block')}>
+        <div
+          className={cn('min-w-0', activeSection ? 'block' : 'hidden md:block')}
+          data-settings-panel={selectedSection}
+        >
           {activeSection ? (
             <Link
               href="/app/settings"
@@ -411,90 +427,127 @@ export default function SettingsWorkspace() {
               )}
             >
               <span aria-hidden="true">←</span>
-              Settings
+              All settings
             </Link>
           ) : null}
 
           {selectedSection === 'general' ? (
-            <div className="space-y-4">
-              <section className="rounded-2xl border border-subtle bg-surface p-5">
-                <h2 className="text-lg font-semibold text-primary">General</h2>
-                <div className="mt-5 max-w-md">
-                  <SelectField
-                    label="Default payment method"
-                    value={settings.lastUsedMethod ?? 'card'}
-                    onChange={(event) =>
-                      handleChangeDefaultMethod(event.target.value as Method)
-                    }
-                    options={SUPPORTED_METHODS.map((method) => ({
-                      value: method,
-                      label: method.charAt(0).toUpperCase() + method.slice(1),
-                    }))}
-                  />
-                </div>
+            <div className="space-y-4" data-settings-section="general">
+              <section className="rounded-[1.5rem] bg-surface p-5 ring-1 ring-subtle/70 sm:p-6">
+                <SectionHeading
+                  eyebrow="Everyday behavior"
+                  title="Defaults & appearance"
+                  description="Choose how TapTrack starts common actions on this device."
+                />
 
-                <div className="mt-5 divide-y divide-subtle rounded-xl border border-subtle bg-surface-muted px-4">
-                  <ToggleRow
-                    className="py-4"
-                    label="Dark mode"
-                    checked={darkModeEnabled}
-                    onChange={handleToggleDarkMode}
-                  />
-                  <div className="py-4">
-                    <ToggleRow
-                      label="Smart Categories"
-                      description={
-                        accountEmail
-                          ? 'Use AI to help organize transactions.'
-                          : 'Sign in to use Smart Categories.'
+                <div className="mt-5 grid gap-4 xl:grid-cols-2">
+                  <div className="rounded-2xl bg-surface-muted p-4 ring-1 ring-subtle/70">
+                    <SelectField
+                      label="Default payment method"
+                      value={settings.lastUsedMethod ?? 'card'}
+                      onChange={(event) =>
+                        void handleChangeDefaultMethod(event.target.value as Method)
                       }
-                      checked={aiEnabled}
-                      onChange={handleToggleAI}
-                      disabled={!accountChecked}
-                      variant="ai"
+                      options={SUPPORTED_METHODS.map((method) => ({
+                        value: method,
+                        label: method.charAt(0).toUpperCase() + method.slice(1),
+                      }))}
                     />
-                    {aiEnabled ? (
-                      <div className="mt-3 divide-y divide-subtle rounded-xl border border-ai-border bg-ai-muted/40 px-3 sm:ml-4">
-                        <ToggleRow
-                          className="py-3"
-                          label="Auto-categorize"
-                          description="Choose the best existing category while you type."
-                          checked={settings.aiAutoCategorizationEnabled ?? true}
-                          onChange={handleToggleAutoCategorization}
-                          variant="ai"
-                        />
-                        <ToggleRow
-                          className="py-3"
-                          label="Recommend new categories"
-                          description="Suggest a reusable category when none of yours fits well."
-                          checked={settings.aiRecommendNewCategoriesEnabled ?? true}
-                          onChange={handleToggleNewCategoryRecommendations}
-                          variant="ai"
-                        />
-                      </div>
-                    ) : null}
+                    <p className="mt-2 text-xs font-medium leading-5 text-muted">
+                      New transactions start here. You can still change the method while logging.
+                    </p>
+                  </div>
+
+                  <div className="rounded-2xl bg-surface-muted px-4 ring-1 ring-subtle/70">
+                    <ToggleRow
+                      className="py-4"
+                      label="Dark mode"
+                      description="Use TapTrack's dark appearance on this device."
+                      checked={darkModeEnabled}
+                      onChange={handleToggleDarkMode}
+                    />
                   </div>
                 </div>
               </section>
 
               <CurrencySettingsCard />
+
+              <section className="rounded-[1.5rem] bg-surface p-5 ring-1 ring-ai-border/70 sm:p-6">
+                <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
+                  <SectionHeading
+                    eyebrow="Optional assistance"
+                    title="Smart Categories"
+                    description={
+                      accountEmail
+                        ? 'Let AI help organize transactions while keeping you in control of the final category.'
+                        : 'Sign in before enabling AI-assisted categorization.'
+                    }
+                  />
+                  <span className="w-fit rounded-full border border-ai-border bg-ai-muted/50 px-2.5 py-1 text-xs font-semibold text-secondary">
+                    {aiEnabled ? 'On' : 'Off'}
+                  </span>
+                </div>
+
+                <div className="mt-5 divide-y divide-subtle rounded-2xl bg-ai-muted/30 px-4 ring-1 ring-ai-border/70">
+                  <ToggleRow
+                    className="py-4"
+                    label="Smart Categories"
+                    description={
+                      accountEmail
+                        ? 'Use AI suggestions when classifying transactions.'
+                        : 'Requires a signed-in account.'
+                    }
+                    checked={aiEnabled}
+                    onChange={handleToggleAI}
+                    disabled={!accountChecked}
+                    variant="ai"
+                  />
+                  {aiEnabled ? (
+                    <>
+                      <ToggleRow
+                        className="py-4"
+                        label="Auto-categorize"
+                        description="Choose the best existing category while you type."
+                        checked={settings.aiAutoCategorizationEnabled ?? true}
+                        onChange={handleToggleAutoCategorization}
+                        variant="ai"
+                      />
+                      <ToggleRow
+                        className="py-4"
+                        label="Recommend new categories"
+                        description="Suggest a reusable category when none of yours fits well."
+                        checked={settings.aiRecommendNewCategoriesEnabled ?? true}
+                        onChange={handleToggleNewCategoryRecommendations}
+                        variant="ai"
+                      />
+                    </>
+                  ) : null}
+                </div>
+              </section>
             </div>
           ) : null}
 
-          {selectedSection === 'categories' ? <CategoryManager /> : null}
+          {selectedSection === 'categories' ? (
+            <div data-settings-section="categories">
+              <CategoryManager />
+            </div>
+          ) : null}
 
           {selectedSection === 'capture' ? (
-            <QuickCaptureSettings signedIn={Boolean(accountEmail)} />
+            <div data-settings-section="capture">
+              <QuickCaptureSettings signedIn={Boolean(accountEmail)} />
+            </div>
           ) : null}
 
           {selectedSection === 'account' ? (
-            <div className="space-y-4">
-              <section className="rounded-2xl border border-subtle bg-surface p-5">
+            <div className="space-y-4" data-settings-section="account">
+              <section className="rounded-[1.5rem] bg-surface p-5 ring-1 ring-subtle/70 sm:p-6">
                 <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
-                  <div>
-                    <h2 className="text-lg font-semibold text-primary">Account</h2>
-                    <p className="mt-1 text-sm text-muted">
-                      {!accountChecked ? 'Checking…' : accountEmail ? accountEmail : 'Not signed in'}
+                  <div className="min-w-0">
+                    <p className="text-xs font-semibold uppercase tracking-[0.14em] text-muted">Identity</p>
+                    <h2 className="mt-1 text-lg font-semibold tracking-tight text-primary">Account</h2>
+                    <p className="mt-1 truncate text-sm font-medium text-muted">
+                      {!accountChecked ? 'Checking account…' : accountEmail ? accountEmail : 'Not signed in'}
                     </p>
                   </div>
                   {accountEmail ? (
@@ -520,12 +573,19 @@ export default function SettingsWorkspace() {
                 </div>
               </section>
 
-              <section className="rounded-2xl border border-subtle bg-surface p-5">
-                <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
-                  <div>
-                    <h2 className="text-lg font-semibold text-primary">Sync</h2>
-                    <p className="mt-1 text-sm font-medium text-secondary">
+              <section className="rounded-[1.5rem] bg-surface p-5 ring-1 ring-subtle/70 sm:p-6">
+                <div className="flex flex-col gap-4 sm:flex-row sm:items-start sm:justify-between">
+                  <div className="min-w-0">
+                    <div className="flex flex-wrap items-center gap-2">
+                      <p className="text-xs font-semibold uppercase tracking-[0.14em] text-muted">Device connection</p>
+                      <SyncStateBadge status={syncStatus} />
+                    </div>
+                    <h2 className="mt-2 text-lg font-semibold tracking-tight text-primary">Sync</h2>
+                    <p className="mt-1 max-w-2xl text-sm font-medium text-secondary">
                       {buildSyncSummary(syncStatus)}
+                    </p>
+                    <p className="mt-2 max-w-2xl text-xs font-medium leading-5 text-muted">
+                      TapTrack keeps this device usable on its own. Sync is an optional way to copy ledger changes between devices signed into the same account.
                     </p>
                   </div>
                   <Button
@@ -533,21 +593,39 @@ export default function SettingsWorkspace() {
                     onClick={handleSyncNow}
                     loading={syncing}
                     disabled={syncing || !syncStatus?.syncAllowed}
+                    className="shrink-0"
                   >
                     Sync now
                   </Button>
                 </div>
-                <details className="group mt-4 rounded-xl border border-subtle bg-surface-muted">
+
+                {syncStatus?.bindingState === 'account-mismatch' ? (
+                  <p role="alert" className="mt-4 rounded-xl border border-danger bg-danger-muted p-3 text-sm font-medium text-danger">
+                    This device is connected to a different account. Sign in with that account before syncing, or disconnect this device below.
+                  </p>
+                ) : null}
+
+                {syncStatus?.bindingState === 'unlinked' ? (
+                  <div className="mt-4 rounded-2xl bg-accent-muted/40 p-4 ring-1 ring-accent/25">
+                    <p className="text-sm font-semibold text-primary">This device is not connected yet</p>
+                    <p className="mt-1 text-xs font-medium leading-5 text-muted">
+                      Connecting never silently chooses between two ledgers. If both this device and your account contain data, TapTrack will ask what you want to keep.
+                    </p>
+                    <CloudLedgerLink onLinked={refreshSyncStatus} />
+                  </div>
+                ) : null}
+
+                <details className="group mt-4 rounded-2xl bg-surface-muted ring-1 ring-subtle/70">
                   <summary
                     className={cn(
-                      'flex min-h-11 cursor-pointer list-none items-center rounded-xl px-3 py-2 text-sm font-medium text-secondary select-none [&::-webkit-details-marker]:hidden',
+                      'flex min-h-12 cursor-pointer list-none items-center rounded-2xl px-4 py-3 text-sm font-semibold text-secondary select-none [&::-webkit-details-marker]:hidden',
                       focusVisibleRing
                     )}
                   >
                     <span>Sync details</span>
                     <span aria-hidden="true" className="ml-auto text-muted transition-transform group-open:rotate-180">⌄</span>
                   </summary>
-                  <dl className="divide-y divide-subtle border-t border-subtle px-3 text-sm">
+                  <dl className="divide-y divide-subtle border-t border-subtle px-4 text-sm">
                     <SyncDetailRow
                       label="Account"
                       value={syncStatus?.authenticated ? 'Signed in' : 'Not signed in'}
@@ -572,30 +650,26 @@ export default function SettingsWorkspace() {
                     ) : null}
                   </dl>
                 </details>
-                {syncStatus?.bindingState === 'unlinked' ? (
-                  <CloudLedgerLink onLinked={refreshSyncStatus} />
-                ) : null}
+
                 <CloudDeviceDisconnect onDisconnected={refreshSyncStatus} />
-                {syncStatus?.bindingState === 'account-mismatch' ? (
-                  <p role="alert" className="mt-4 rounded-lg border border-danger bg-danger-muted p-3 text-sm text-danger">
-                    This device is connected to a different account. Sign in with that account before syncing.
-                  </p>
-                ) : null}
               </section>
             </div>
           ) : null}
 
           {selectedSection === 'data' ? (
-            <div className="space-y-4">
-              <section className="rounded-2xl border border-subtle bg-surface p-5">
-                <h2 className="text-lg font-semibold text-primary">Your data</h2>
-                <p className="mt-1 text-sm text-muted">
-                  Export transactions or keep a restorable backup of TapTrack.
-                </p>
-                <div className="mt-5 grid gap-3 sm:grid-cols-2">
+            <div className="space-y-4" data-settings-section="data">
+              <section className="rounded-[1.5rem] bg-surface p-5 ring-1 ring-subtle/70 sm:p-6">
+                <SectionHeading
+                  eyebrow="Portability"
+                  title="Your data"
+                  description="Take a readable export or a complete restorable copy whenever you want."
+                />
+
+                <div className="mt-5 grid gap-3 lg:grid-cols-3">
                   <DataAction
+                    eyebrow="Readable"
                     title="Export transactions"
-                    description="Download your transaction history as CSV."
+                    description="Download transaction history as CSV for spreadsheets or analysis."
                     action={
                       <Button type="button" variant="secondary" onClick={handleExportCSV}>
                         Export CSV
@@ -603,8 +677,9 @@ export default function SettingsWorkspace() {
                     }
                   />
                   <DataAction
-                    title="Backup"
-                    description="Download a complete restorable copy of your TapTrack data."
+                    eyebrow="Complete copy"
+                    title="Backup TapTrack"
+                    description="Download a restorable JSON backup of your ledger and settings."
                     action={
                       <Button type="button" variant="secondary" onClick={handleExportJSON}>
                         Download backup
@@ -612,19 +687,21 @@ export default function SettingsWorkspace() {
                     }
                   />
                   <DataAction
-                    title="Restore"
-                    description="Replace TapTrack data from a backup file."
+                    eyebrow="Replacement"
+                    title="Restore backup"
+                    description="Replace TapTrack data from a backup. A safety backup is created before anything is replaced."
                     action={
                       <Button
                         type="button"
                         variant="secondary"
                         onClick={() => importInputRef.current?.click()}
                       >
-                        Restore backup
+                        Choose backup
                       </Button>
                     }
                   />
                 </div>
+
                 <input
                   ref={importInputRef}
                   type="file"
@@ -634,10 +711,11 @@ export default function SettingsWorkspace() {
                 />
               </section>
 
-              <section className="rounded-2xl border border-danger/30 bg-danger-muted p-5">
-                <h2 className="text-base font-semibold text-danger">Reset TapTrack</h2>
-                <p className="mt-1 max-w-2xl text-sm text-muted">
-                  A safety backup is downloaded first. If sync is on, you can reset only this device or the synced account.
+              <section className="rounded-[1.5rem] border border-danger/30 bg-danger-muted p-5 sm:p-6">
+                <p className="text-xs font-semibold uppercase tracking-[0.14em] text-danger">Danger zone</p>
+                <h2 className="mt-1 text-lg font-semibold tracking-tight text-danger">Reset TapTrack data</h2>
+                <p className="mt-1 max-w-2xl text-sm font-medium leading-6 text-muted">
+                  Reset clears ledger data after downloading a safety backup. When sync is connected, TapTrack asks whether you mean only this device or the synced account everywhere.
                 </p>
                 <Button
                   type="button"
@@ -719,6 +797,24 @@ export default function SettingsWorkspace() {
   );
 }
 
+function SectionHeading({
+  eyebrow,
+  title,
+  description,
+}: {
+  eyebrow: string;
+  title: string;
+  description: string;
+}) {
+  return (
+    <div className="min-w-0">
+      <p className="text-xs font-semibold uppercase tracking-[0.14em] text-muted">{eyebrow}</p>
+      <h2 className="mt-1 text-lg font-semibold tracking-tight text-primary">{title}</h2>
+      <p className="mt-1 max-w-2xl text-sm font-medium leading-6 text-muted">{description}</p>
+    </div>
+  );
+}
+
 function SettingsSectionLink({
   section,
   active,
@@ -731,7 +827,7 @@ function SettingsSectionLink({
       href={`#${section.id}`}
       aria-current={active ? 'page' : undefined}
       className={cn(
-        'group flex min-h-16 items-center gap-3 rounded-xl px-3 py-2.5 transition-colors',
+        'group flex min-h-16 items-center gap-3 rounded-2xl px-3 py-2.5 transition-colors',
         focusVisibleRing,
         active
           ? 'bg-action-primary text-white'
@@ -740,7 +836,7 @@ function SettingsSectionLink({
     >
       <span
         className={cn(
-          'grid h-9 w-9 shrink-0 place-items-center rounded-lg',
+          'grid h-9 w-9 shrink-0 place-items-center rounded-xl',
           active
             ? 'bg-white/15 text-white'
             : 'bg-surface-muted text-muted group-hover:text-primary'
@@ -771,22 +867,60 @@ function SettingsSectionLink({
 }
 
 function DataAction({
+  eyebrow,
   title,
   description,
   action,
 }: {
+  eyebrow: string;
   title: string;
   description: string;
   action: ReactNode;
 }) {
   return (
-    <div className="flex min-h-36 flex-col rounded-xl border border-subtle bg-surface-muted p-4">
+    <div className="flex min-h-44 min-w-0 flex-col rounded-2xl bg-surface-muted p-4 ring-1 ring-subtle/70">
       <div className="min-w-0 flex-1">
-        <h3 className="text-sm font-semibold text-primary">{title}</h3>
-        <p className="mt-1 text-sm leading-5 text-muted">{description}</p>
+        <p className="text-[0.7rem] font-semibold uppercase tracking-[0.12em] text-muted">{eyebrow}</p>
+        <h3 className="mt-1 text-sm font-semibold text-primary">{title}</h3>
+        <p className="mt-1 text-sm font-medium leading-5 text-muted">{description}</p>
       </div>
       <div className="mt-4">{action}</div>
     </div>
+  );
+}
+
+function SyncStateBadge({ status }: { status: SyncStatusSnapshot | null }) {
+  const danger = status?.bindingState === 'account-mismatch';
+  const linked = status?.bindingState === 'linked';
+  const label = !status
+    ? 'Checking'
+    : danger
+      ? 'Account mismatch'
+      : linked
+        ? status.online
+          ? 'Connected'
+          : 'Connected · offline'
+        : status.bindingState === 'unlinked'
+          ? 'Not connected'
+          : status.bindingState === 'signed-out'
+            ? 'Signed out'
+            : status.bindingState === 'provider-unconfigured'
+              ? 'Unavailable'
+              : 'Temporarily unavailable';
+
+  return (
+    <span
+      className={cn(
+        'rounded-full border px-2.5 py-1 text-xs font-semibold',
+        danger
+          ? 'border-danger/40 bg-danger-muted text-danger'
+          : linked
+            ? 'border-accent/30 bg-accent-muted text-accent'
+            : 'border-subtle bg-surface-muted text-muted'
+      )}
+    >
+      {label}
+    </span>
   );
 }
 
@@ -794,10 +928,10 @@ function buildSyncSummary(status: SyncStatusSnapshot | null): string {
   if (!status) return 'Checking sync…';
   const stateLabel = {
     'provider-unconfigured': 'Sync is not available on this setup',
-    'signed-out': 'Sign in to sync',
-    unlinked: 'Ready to connect',
+    'signed-out': 'Sign in to use sync',
+    unlinked: 'Ready to connect this device',
     linked: formatRelativeSyncTime(status.lastSyncAt),
-    'account-mismatch': 'Different account required',
+    'account-mismatch': 'A different account owns this device connection',
     'provider-unavailable': 'Sync is temporarily unavailable',
   }[status.bindingState];
   const pendingPart =
@@ -806,7 +940,7 @@ function buildSyncSummary(status: SyncStatusSnapshot | null): string {
 }
 
 function formatRelativeSyncTime(value: string | null | undefined): string {
-  if (!value) return 'Not synced yet';
+  if (!value) return 'Connected · not synced yet';
   const diffMs = Date.now() - new Date(value).getTime();
   const diffMin = Math.floor(diffMs / 60_000);
   if (diffMin < 1) return 'Synced just now';
@@ -819,7 +953,7 @@ function formatRelativeSyncTime(value: string | null | undefined): string {
 
 function SyncDetailRow({ label, value }: { label: string; value: string }) {
   return (
-    <div className="flex items-start justify-between gap-3 py-2">
+    <div className="flex items-start justify-between gap-3 py-2.5">
       <dt className="font-medium text-muted">{label}</dt>
       <dd className="text-right font-semibold text-primary">{value}</dd>
     </div>
