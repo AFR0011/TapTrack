@@ -11,13 +11,13 @@
   --text-secondary: #475569;
   --text-muted: #64748b;
   --border: #e2e8f0;
-  --accent: #2563eb;
+  --accent: #1d4ed8;
   --accent-muted: #dbeafe;
-  --danger: #dc2626;
+  --danger: #b91c1c;
   --danger-muted: #fef2f2;
-  --success: #059669;
+  --success: #047857;
   --success-muted: #ecfdf5;
-  --warning: #d97706;
+  --warning: #b45309;
   --warning-muted: #fffbeb;
 
   /* Filled actions use dedicated colors so white labels remain WCAG AA. */
@@ -55,7 +55,7 @@
   --text-secondary: #b6c2d4;
   --text-muted: #8a98ad;
   --border: #283349;
-  --accent: #3b82f6;
+  --accent: #60a5fa;
   --accent-muted: #1e3a5f;
   --danger: #f87171;
   --danger-muted: #3f1515;
@@ -101,7 +101,7 @@ body {
 }
 
 ::selection {
-  background: var(--accent);
+  background: var(--action-primary);
   color: white;
 }
 
