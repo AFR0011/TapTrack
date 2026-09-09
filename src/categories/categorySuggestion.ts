@@ -96,14 +96,16 @@ export async function fetchAICategorySuggestion(
       if (
         name.length >= 2 &&
         name.length <= 40 &&
+        typeof icon === 'string' &&
         isCategoryIconId(icon) &&
+        typeof color === 'string' &&
         isCategoryColor(color) &&
         type === transactionType
       ) {
         return {
           kind: 'new',
           categoryId: null,
-          newCategory: { name, icon, color, type },
+          newCategory: { name, icon, color, type: transactionType },
           confidence: normalizeConfidence(body.confidence),
           status: 'suggested',
         };
