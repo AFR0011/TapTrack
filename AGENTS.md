@@ -29,7 +29,7 @@
 - Cloud sync, Telegram, AI categorization, and exchange rates exist but are not presumed release-safe. Follow `RISK_REGISTER.md`; gate or disable unsafe integration paths until their dedicated batches pass.
 - Cloud sync: Use Supabase for remote storage. Push updates fire-and-forget; pull updates on app open. See `src/sync/syncService.ts`.
 - Telegram: Webhook routes at `app/api/telegram/webhook` and `app/api/telegram/register`. Requires `TELEGRAM_BOT_TOKEN`, `TELEGRAM_WEBHOOK_SECRET`, `RAVEL_OWNER_USER_ID` env vars.
-- AI categorization: Local Ollama via `app/api/categorize`. Requires `OLLAMA_BASE_URL` and `OLLAMA_MODEL`.
+- AI categorization: Hosted Groq via `app/api/categorize`. Requires server-only `GROQ_API_KEY`; `GROQ_MODEL` selects the configured model.
 - Exchange rates: Fetch live rates from `open.er-api.com` via `app/api/exchange-rates`.
 - Prefer small diffs that advance the current build phase in `BLUEPRINT.md`.
 - Shared domain types belong in `src/types.ts`.

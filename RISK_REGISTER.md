@@ -1,7 +1,7 @@
 # Risk Register
 
 Workflow schema: `agentic-workflow/v2`
-Project: TapTrack
+Project: Ravel
 Repository profile: software
 Last reconciled: 2026-09-11
 Promotion PR: #16
@@ -27,7 +27,7 @@ Promotion PR: #16
 | TT-R15 | High | Mitigated | Empty-cloud claim + initial seed now execute atomically through `claim_empty_taptrack_ledger` under the per-account ledger-version lock and canonical table locks. The server route validates an authenticated backup and uses service-role RPC; authenticated clients cannot execute the RPC directly. A concurrent loser receives conflict and remains locally unbound. Migration is live on the production Supabase project. | Retain route/adoption race tests and service-role-only privilege checks. |
 | TT-R16 | High | Mitigated | Reconciliation completeness is evaluated per active balance; archived currencies do not block completion. | Retain active/archived/mid-month reconciliation tests. |
 | TT-R17 | Low | Open project setting | Supabase leaked-password protection remains disabled according to the security advisor. | Enable manually in Supabase Auth if available/desired for the deployed plan. |
-| TT-R18 | Medium | Open governance residual | GitHub `main` currently has no ruleset. The connected GitHub App lacks repository-administration permission. | Require PR-only changes, TapTrack CI, no force pushes, and no branch deletion on `main` through repository settings. |
+| TT-R18 | Medium | Open governance residual | GitHub `main` currently has no ruleset. The connected GitHub App lacks repository-administration permission. | Require PR-only changes, Ravel CI, no force pushes, and no branch deletion on `main` through repository settings. |
 | TT-R19 | Medium | Mitigated | Ordinary transaction entry does not rewrite synchronized Settings solely to remember cash/card usage. | Keep payment method an explicit preference. |
 | TT-R20 | Medium | Mitigated | PDF output wraps/paginates report content. | Retain multi-page export regression coverage. |
 | TT-R21 | High | Mitigated | Transfers/exchanges now support edit/delete with atomic balance rebuild, negative-balance rollback, historical-rate semantics, and sync intent. | Retain correction/delete, archived-currency, historical-ordering, and real-browser balance-movement regressions. |

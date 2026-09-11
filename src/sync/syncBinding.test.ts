@@ -83,7 +83,7 @@ describe('device ledger sync binding', () => {
   let database: RavelDatabase;
 
   beforeEach(() => {
-    database = new RavelDatabase(`taptrack-binding-${crypto.randomUUID()}`);
+    database = new RavelDatabase(`ravel-binding-${crypto.randomUUID()}`);
   });
 
   afterEach(async () => {

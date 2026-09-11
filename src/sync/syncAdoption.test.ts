@@ -58,7 +58,7 @@ describe('cloud ledger adoption', () => {
   let database: RavelDatabase;
 
   beforeEach(async () => {
-    database = new RavelDatabase(`taptrack-adoption-${crypto.randomUUID()}`);
+    database = new RavelDatabase(`ravel-adoption-${crypto.randomUUID()}`);
     await ensureDatabaseSeeded(database);
     vi.mocked(inspectDeviceLedgerLinkToCurrentUser).mockResolvedValue({
       state: 'merge-choice',

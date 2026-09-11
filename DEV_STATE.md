@@ -1,7 +1,7 @@
 # Development State
 
 Workflow schema: `agentic-workflow/v2`
-Project: TapTrack
+Project: Ravel
 Repository profile: software
 
 - Phase: PRE_MAIN_PROMOTION

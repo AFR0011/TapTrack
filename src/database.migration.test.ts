@@ -21,7 +21,7 @@ describe('database migrations', () => {
   });
 
   it('preserves finance data, creates no binding implicitly, and snapshots completed balances once', async () => {
-    const name = `taptrack-migration-${crypto.randomUUID()}`;
+    const name = `ravel-migration-${crypto.randomUUID()}`;
     names.push(name);
     const legacy = new Dexie(name);
     legacy.version(1).stores(legacyStores);
@@ -74,7 +74,7 @@ describe('database migrations', () => {
   });
 
   it('does not invent opening checkpoints before setup is complete', async () => {
-    const name = `taptrack-migration-unfinished-${crypto.randomUUID()}`;
+    const name = `ravel-migration-unfinished-${crypto.randomUUID()}`;
     names.push(name);
     const legacy = new Dexie(name);
     legacy.version(1).stores(legacyStores);
@@ -109,7 +109,7 @@ describe('database migrations', () => {
   });
 
   it('repairs missing default category ids without overwriting existing category changes', async () => {
-    const name = `taptrack-seed-repair-${crypto.randomUUID()}`;
+    const name = `ravel-seed-repair-${crypto.randomUUID()}`;
     names.push(name);
     const database = new RavelDatabase(name);
     await ensureDatabaseSeeded(database);

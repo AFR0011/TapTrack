@@ -22,7 +22,7 @@ describe('disconnectDeviceLedger', () => {
   let database: RavelDatabase;
 
   beforeEach(() => {
-    database = new RavelDatabase(`taptrack-disconnect-${crypto.randomUUID()}`);
+    database = new RavelDatabase(`ravel-disconnect-${crypto.randomUUID()}`);
   });
 
   afterEach(async () => {
