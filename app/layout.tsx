@@ -39,10 +39,6 @@ export const metadata: Metadata = {
     title: `${BRAND.name} — Your personal ledger`,
     description: BRAND.description,
   },
-  robots: {
-    index: true,
-    follow: true,
-  },
   manifest: '/manifest.webmanifest',
   icons: {
     icon: '/icons/ravel-icon.svg',
