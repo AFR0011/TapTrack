@@ -102,28 +102,49 @@ export async function removeActiveCurrency(
   const currency = normalizeCurrencyCode(currencyInput);
   if (!currency) throw new Error('Choose a valid currency.');
 
-  const settings = await database.settings.get(DEFAULT_SETTINGS_ID);
-  if (!settings) throw new Error('Settings are not available.');
-  if (currency === settings.defaultCurrency) {
-    throw new Error('Choose a different default currency before removing this one.');
-  }
-
   const balances = await database.balances.toArray();
-  const activeCurrencies = deriveActiveCurrencies(settings, balances);
-  const nextActiveCurrencies = activeCurrencies.filter((code) => code !== currency);
-  if (nextActiveCurrencies.length === activeCurrencies.length) return settings;
+  let result: Settings | null = null;
 
-  const next: Settings = {
-    ...settings,
-    activeCurrencies: nextActiveCurrencies,
-    updatedAt: new Date().toISOString(),
-  };
-  await database.transaction('rw', [database.settings, database.syncOutbox], async () => {
-    await database.settings.put(next);
-    await queueRecordForSync('settings', next as unknown as Record<string, unknown>, database);
-  });
+  await database.transaction(
+    'rw',
+    [database.settings, database.recurringTransactions, database.syncOutbox],
+    async () => {
+      const settings = await database.settings.get(DEFAULT_SETTINGS_ID);
+      if (!settings) throw new Error('Settings are not available.');
+      if (currency === settings.defaultCurrency) {
+        throw new Error('Choose a different default currency before removing this one.');
+      }
+
+      const activeCurrencies = deriveActiveCurrencies(settings, balances);
+      const nextActiveCurrencies = activeCurrencies.filter((code) => code !== currency);
+      if (nextActiveCurrencies.length === activeCurrencies.length) {
+        result = settings;
+        return;
+      }
+
+      const activeRecurringCount = await database.recurringTransactions
+        .filter((item) => item.isActive && item.currency === currency)
+        .count();
+      if (activeRecurringCount > 0) {
+        throw new Error(
+          `Pause or move active recurring rules in ${currency} before removing this currency.`
+        );
+      }
+
+      const next: Settings = {
+        ...settings,
+        activeCurrencies: nextActiveCurrencies,
+        updatedAt: new Date().toISOString(),
+      };
+      await database.settings.put(next);
+      await queueRecordForSync('settings', next as unknown as Record<string, unknown>, database);
+      result = next;
+    }
+  );
+
+  if (!result) throw new Error('Currency was not removed.');
   void flushSyncQueueBestEffort(database);
-  return next;
+  return result;
 }
 
 export async function setDefaultCurrency(
