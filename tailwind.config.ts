@@ -36,6 +36,7 @@ const config: Config = {
           espresso: 'var(--brand-espresso)',
           olive: 'var(--brand-olive)',
           copper: 'var(--brand-copper)',
+          'copper-bright': 'var(--brand-copper-bright)',
           plum: 'var(--brand-plum)',
         },
         action: {
