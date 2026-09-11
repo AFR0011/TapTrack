@@ -1,12 +1,12 @@
 {
-  "name": "TapTrack",
-  "short_name": "TapTrack",
-  "description": "Local-first personal finance tracking for daily income and expenses.",
+  "name": "Ravel",
+  "short_name": "Ravel",
+  "description": "One personal ledger for money across currencies, cards, cash and places. Fast to capture, works offline, and stays under your control.",
   "start_url": "/app",
   "scope": "/",
   "display": "standalone",
-  "background_color": "#f8fafc",
-  "theme_color": "#2563eb",
+  "background_color": "#f8f5ee",
+  "theme_color": "#495140",
   "icons": [
     {
       "src": "/icons/taptrack-icon.svg",
@@ -37,7 +37,7 @@
     {
       "name": "Command entry",
       "short_name": "Command",
-      "description": "Open TapTrack's keyboard-first transaction entry.",
+      "description": "Open Ravel's keyboard-first transaction entry.",
       "url": "/app/add?mode=command"
     }
   ]
