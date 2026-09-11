@@ -1,14 +1,14 @@
-name: Ravel final cleanup
+name: Ravel CI
 
 on:
   push:
+  pull_request:
 
 permissions:
-  contents: write
+  contents: read
 
 jobs:
-  migrate:
-    if: github.ref == 'refs/heads/brand/ravel-public-cleanup'
+  verify:
     runs-on: ubuntu-latest
     steps:
       - name: Check out repository
@@ -23,17 +23,55 @@ jobs:
       - name: Install locked dependencies
         run: npm ci
 
-      - name: Apply final Ravel cleanup
-        run: node scripts/finalize-ravel-cleanup.mjs
+      - name: Publication guard
+        run: node scripts/publication-guard.mjs
 
-      - name: Commit cleanup if needed
+      - name: Audit all dependencies
+        run: npm audit --audit-level=high
+
+      - name: Audit production dependencies
+        run: npm audit --omit=dev --audit-level=high
+
+      - name: Lint
+        run: npm run lint
+
+      - name: Typecheck
+        run: npm run typecheck
+
+      - name: Test
+        run: npm run test
+
+      - name: Install Chromium for offline mobile verification
+        run: npx playwright install --with-deps chromium
+
+      - name: Build
+        run: npm run build
+
+      - name: Route smoke against production build
         run: |
-          if git diff --quiet && git diff --cached --quiet; then
-            echo "Final Ravel cleanup already applied."
-            exit 0
-          fi
-          git config user.name "github-actions[bot]"
-          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
-          git add -A
-          git commit -m "Finish Ravel naming cleanup"
-          git push origin HEAD:brand/ravel-public-cleanup
+          npm run start > /tmp/ravel-next.log 2>&1 &
+          server_pid=$!
+          trap 'kill $server_pid || true' EXIT
+          for attempt in {1..30}; do
+            if curl --fail --silent http://127.0.0.1:3000/login > /dev/null; then
+              break
+            fi
+            if [ "$attempt" -eq 30 ]; then
+              cat /tmp/ravel-next.log
+              exit 1
+            fi
+            sleep 1
+          done
+          npm run smoke:routes
+
+      - name: Offline mobile browser verification
+        run: npm run test:e2e
+
+      - name: Upload Playwright diagnostics
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: playwright-diagnostics
+          path: test-results/
+          if-no-files-found: ignore
+          retention-days: 7
