@@ -3,6 +3,8 @@
 import { useEffect, useMemo, useState } from 'react';
 import { useRouter } from 'next/navigation';
 import { toast } from 'sonner';
+import { BRAND } from '@/brand';
+import { RavelMark } from '@/components/brand/RavelMark';
 import { Button } from '@/components/ui/Button';
 import { Card } from '@/components/ui/Card';
 import { Field } from '@/components/ui/Field';
@@ -109,7 +111,7 @@ export default function OnboardingFlow() {
       if (plan.state === 'cloud-only' || (plan.state === 'already-linked' && plan.remoteHasData)) {
         await adoptCloudLedger();
         markOnboardingComplete();
-        toast.success('Your synced TapTrack data is ready.');
+        toast.success(`Your synced ${BRAND.name} data is ready.`);
         router.replace('/app');
         router.refresh();
         return;
@@ -119,9 +121,9 @@ export default function OnboardingFlow() {
         return;
       }
       setStep('balances');
-      toast.info('No saved TapTrack data was found for this account. Let’s finish setup.');
+      toast.info(`No saved ${BRAND.name} data was found for this account. Let’s finish setup.`);
     } catch (err) {
-      setError(err instanceof Error ? err.message : 'TapTrack could not check your account. Try again.');
+      setError(err instanceof Error ? err.message : `${BRAND.name} could not check your account. Try again.`);
     } finally {
       setBusy(false);
     }
@@ -134,11 +136,11 @@ export default function OnboardingFlow() {
       if (choice === 'cloud') await adoptCloudLedger();
       else await mergeLocalLedgerIntoCloud();
       markOnboardingComplete();
-      toast.success(choice === 'cloud' ? 'Synced account data loaded.' : 'Your TapTrack data was merged.');
+      toast.success(choice === 'cloud' ? 'Synced account data loaded.' : `Your ${BRAND.name} data was merged.`);
       router.replace('/app');
       router.refresh();
     } catch (err) {
-      setError(err instanceof Error ? err.message : 'TapTrack could not finish connecting this device. Try again.');
+      setError(err instanceof Error ? err.message : `${BRAND.name} could not finish connecting this device. Try again.`);
     } finally {
       setBusy(false);
     }
@@ -174,11 +176,11 @@ export default function OnboardingFlow() {
       }
 
       markOnboardingComplete();
-      toast.success('TapTrack is ready.');
+      toast.success(`${BRAND.name} is ready.`);
       router.replace('/app');
       router.refresh();
     } catch (err) {
-      setError(err instanceof Error ? err.message : 'TapTrack could not finish setup. Check the details and try again.');
+      setError(err instanceof Error ? err.message : `${BRAND.name} could not finish setup. Check the details and try again.`);
     } finally {
       setBusy(false);
     }
@@ -189,8 +191,8 @@ export default function OnboardingFlow() {
       <div className="mx-auto flex min-h-dvh w-full max-w-3xl flex-col px-5 py-6 sm:px-8 sm:py-10">
         <div className="flex items-center justify-between">
           <div className="flex items-center gap-2.5">
-            <div className="flex h-9 w-9 items-center justify-center rounded-xl bg-action-primary text-sm font-black text-white shadow-sm">T</div>
-            <span className="text-base font-bold tracking-tight text-primary">TapTrack</span>
+            <RavelMark className="h-9 w-9" />
+            <span className="font-display text-lg font-semibold tracking-tight text-primary">{BRAND.name}</span>
           </div>
           {stepNumber > 0 ? (
             <div className="flex items-center gap-1.5" aria-label={`Setup step ${stepNumber} of 3`}>
@@ -244,7 +246,7 @@ export default function OnboardingFlow() {
       <ConfirmDialog
         open={confirmUseAccountData}
         title="Replace the data on this device?"
-        message="TapTrack will replace the current data on this device with the data already saved to your synced account. The two sets of data will not be merged."
+        message={`${BRAND.name} will replace the current data on this device with the data already saved to your synced account. The two sets of data will not be merged.`}
         confirmLabel="Use synced account"
         confirmVariant="danger"
         onConfirm={() => {
@@ -261,16 +263,16 @@ function WelcomeStep({ accountEmail, accountChecked, busy, onStart, onExisting }
   return (
     <div className="mx-auto max-w-xl text-center">
       <div className="mx-auto mb-7 grid h-24 w-24 place-items-center rounded-[2rem] bg-accent-muted ring-1 ring-accent/20">
-        <svg className="h-12 w-12 text-accent" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.7" aria-hidden="true"><path d="M4 18V9m5 9V5m5 13v-7m5 7V3" strokeLinecap="round" /></svg>
+        <RavelMark className="h-14 w-14" />
       </div>
-      <p className="text-sm font-semibold text-accent">Welcome to TapTrack</p>
-      <h1 className="mt-2 text-4xl font-semibold tracking-tight text-primary sm:text-5xl">Track money without slowing down.</h1>
+      <p className="text-sm font-semibold text-accent">Welcome to {BRAND.name}</p>
+      <h1 className="font-display mt-2 text-4xl font-semibold tracking-tight text-primary sm:text-5xl">Track money without slowing down.</h1>
       <div className="mx-auto mt-7 grid max-w-md grid-cols-3 gap-3 text-xs font-semibold text-secondary sm:text-sm">
         {['Log in seconds', 'Works offline', 'Sync when you want'].map((label) => <div key={label} className="rounded-xl bg-surface-muted px-2 py-3">{label}</div>)}
       </div>
       <div className="mx-auto mt-9 grid max-w-sm gap-2.5">
         <Button type="button" fullWidth size="lg" onClick={onStart} disabled={busy}>Get started</Button>
-        <Button type="button" fullWidth size="lg" variant="ghost" onClick={onExisting} loading={busy} disabled={!accountChecked || busy}>{accountEmail ? 'Continue with my account' : 'I already use TapTrack'}</Button>
+        <Button type="button" fullWidth size="lg" variant="ghost" onClick={onExisting} loading={busy} disabled={!accountChecked || busy}>{accountEmail ? 'Continue with my account' : `I already use ${BRAND.name}`}</Button>
       </div>
     </div>
   );
@@ -348,12 +350,12 @@ function ReadyStep({ currencies, defaultCurrency, defaultMethod, budget, busy, o
   return (
     <div className="mx-auto max-w-xl text-center">
       <p className="text-sm font-semibold text-accent">Ready</p>
-      <h1 className="mt-2 text-4xl font-semibold tracking-tight text-primary">You’re ready.</h1>
+      <h1 className="font-display mt-2 text-4xl font-semibold tracking-tight text-primary">You’re ready.</h1>
       <div className="mx-auto mt-7 max-w-sm rounded-2xl border border-subtle bg-surface p-5 text-left shadow-sm">
         <div className="flex items-center justify-between"><div><p className="text-sm font-semibold text-primary">Coffee</p><p className="mt-1 text-xs font-medium text-muted">Food · {defaultMethod}</p></div><p className="text-lg font-bold text-primary">250 {defaultCurrency}</p></div>
       </div>
       <div className="mt-5 text-sm text-muted"><p>Main: <strong className="text-secondary">{defaultCurrency}</strong></p><p className="mt-1">Currencies: {currencies}</p>{budget ? <p className="mt-1">Monthly budget: {budget} {defaultCurrency}</p> : null}</div>
-      <div className="mx-auto mt-8 grid max-w-sm gap-2.5"><Button type="button" size="lg" fullWidth onClick={onFinish} loading={busy} disabled={busy}>Open TapTrack</Button><Button type="button" size="lg" fullWidth variant="ghost" onClick={onBack} disabled={busy}>Back</Button></div>
+      <div className="mx-auto mt-8 grid max-w-sm gap-2.5"><Button type="button" size="lg" fullWidth onClick={onFinish} loading={busy} disabled={busy}>Open {BRAND.name}</Button><Button type="button" size="lg" fullWidth variant="ghost" onClick={onBack} disabled={busy}>Back</Button></div>
     </div>
   );
 }
@@ -362,8 +364,8 @@ function ConflictStep({ busy, onUseAccount, onMerge, onBack }: { busy: boolean; 
   return (
     <div className="mx-auto max-w-xl">
       <p className="text-sm font-semibold text-accent">Choose what to keep</p>
-      <h1 className="mt-2 text-3xl font-semibold tracking-tight text-primary sm:text-4xl">This device and your synced account both have TapTrack data.</h1>
-      <p className="mt-3 text-sm leading-6 text-muted">Keeping both is the safest choice. Replacing this device will discard its current TapTrack data instead of merging it.</p>
+      <h1 className="mt-2 text-3xl font-semibold tracking-tight text-primary sm:text-4xl">This device and your synced account both have {BRAND.name} data.</h1>
+      <p className="mt-3 text-sm leading-6 text-muted">Keeping both is the safest choice. Replacing this device will discard its current {BRAND.name} data instead of merging it.</p>
       <div className="mt-7 grid gap-3 sm:grid-cols-2">
         <Card padding="sm" className="ring-1 ring-accent/20">
           <span className="inline-flex rounded-full bg-accent-muted px-2 py-1 text-xs font-semibold text-accent">Recommended</span>
@@ -373,7 +375,7 @@ function ConflictStep({ busy, onUseAccount, onMerge, onBack }: { busy: boolean; 
         </Card>
         <Card padding="sm">
           <h2 className="mt-3 font-semibold text-primary">Use synced account only</h2>
-          <p className="mt-2 text-sm text-muted">Replace the TapTrack data on this device with the data already saved to your account.</p>
+          <p className="mt-2 text-sm text-muted">Replace the {BRAND.name} data on this device with the data already saved to your account.</p>
           <Button type="button" fullWidth variant="secondary" className="mt-5" onClick={onUseAccount} disabled={busy}>Use synced account</Button>
         </Card>
       </div>
