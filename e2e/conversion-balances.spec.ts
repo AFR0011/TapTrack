@@ -69,7 +69,7 @@ test('exchange moves money between currency balances in the real browser workflo
   const destination = page.locator('[data-move-destination]');
   await source.getByLabel('Currency').selectOption('USD');
   await source.getByLabel('Method').selectOption('card');
-  await destination.getByLabel('Currency').selectOption('TRY');
+  await expect(destination.getByLabel('Currency')).toHaveValue('TRY');
   await destination.getByLabel('Method').selectOption('cash');
   await source.getByLabel('Amount to move').fill('10');
 
