@@ -7,6 +7,7 @@
   --brand-espresso: #2e241e;
   --brand-olive: #6b7059;
   --brand-copper: #b8734b;
+  --brand-copper-bright: #c88962;
   --brand-plum: #4b3b56;
 
   --bg: #f8f5ee;
@@ -15,7 +16,7 @@
   --surface-raised: #e5ddd2;
   --text-primary: #2e241e;
   --text-secondary: #62574f;
-  --text-muted: #81766d;
+  --text-muted: #766b62;
   --border: #ddd3c7;
   --accent: #8a4f31;
   --accent-muted: #f3e2d6;
@@ -55,6 +56,7 @@
   --brand-espresso: #1b1714;
   --brand-olive: #8f987d;
   --brand-copper: #d5966d;
+  --brand-copper-bright: #d5966d;
   --brand-plum: #9f89aa;
 
   --bg: #171411;
