@@ -11,7 +11,8 @@ const checks = [
         response.status === 200 &&
         contentType.includes('text/html') &&
         body.includes('Ravel') &&
-        body.includes('Your money doesn’t live in one place. Your ledger can.')
+        body.includes('Your money doesn’t live in one place. Your ledger can.') &&
+        body.includes('Illustrative interface')
       );
     },
   },
@@ -65,7 +66,9 @@ const checks = [
       return (
         response.status === 200 &&
         contentType.includes('application/manifest+json') &&
-        body?.name === 'Ravel'
+        body?.name === 'Ravel' &&
+        body?.icons?.some((icon) => icon?.src === '/icons/ravel-icon.svg') &&
+        body?.icons?.some((icon) => icon?.src === '/icons/ravel-maskable.svg')
       );
     },
   },
