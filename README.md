@@ -4,7 +4,7 @@
 
 Ravel is a local-first personal finance ledger for people whose money is split across cash, cards, currencies, devices, and places. It is designed around fast capture, accurate ledger semantics, offline use, and user-controlled data rather than mandatory bank integrations or cloud dependence.
 
-> **Product status:** Ravel is the current public product name. The repository is still named `TapTrack` for continuity with the project’s development history.
+> **Product status:** Ravel is the current public product and repository name. Historical TapTrack identifiers remain only where compatibility requires them; see [`docs/RAVEL_COMPATIBILITY.md`](docs/RAVEL_COMPATIBILITY.md).
 
 [Open the live app](https://taptrack-fawn.vercel.app) · [Read the architecture notes](docs/ARCHITECTURE.md) · [Security notes](SECURITY.md)
 
@@ -151,8 +151,8 @@ Requirements:
 - npm
 
 ```bash
-git clone https://github.com/AFR0011/TapTrack.git
-cd TapTrack
+git clone https://github.com/AFR0011/Ravel.git
+cd Ravel
 npm ci
 npm run dev
 ```
