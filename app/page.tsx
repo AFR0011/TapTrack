@@ -163,7 +163,7 @@ export default function HomePage() {
 
       <section className="mx-auto grid max-w-7xl gap-8 px-5 py-16 sm:px-8 sm:py-24 lg:grid-cols-2">
         <div className="rounded-[2rem] bg-brand-espresso p-7 text-brand-bone sm:p-10">
-          <p className="text-xs font-semibold uppercase tracking-[0.22em] text-brand-copper">Ledger, not guesswork</p>
+          <p className="text-xs font-semibold uppercase tracking-[0.22em] text-brand-copper-bright">Ledger, not guesswork</p>
           <h2 className="font-display mt-4 text-4xl leading-tight">Moving money isn’t spending money.</h2>
           <p className="mt-5 max-w-xl leading-7 text-brand-bone/72">
             Ravel keeps transfers, currency exchanges, reconciliations and everyday transactions distinct so the record reflects what actually happened.
@@ -190,7 +190,7 @@ export default function HomePage() {
           </div>
           <Link
             href="/app"
-            className="inline-flex min-h-12 w-fit items-center rounded-full bg-brand-copper px-6 text-sm font-semibold text-white transition-opacity hover:opacity-90"
+            className="inline-flex min-h-12 w-fit items-center rounded-full bg-brand-copper-bright px-6 text-sm font-semibold text-brand-espresso transition-opacity hover:opacity-90"
           >
             Open Ravel
           </Link>
