@@ -1,0 +1,8 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64" role="img" aria-label="Ravel">
+  <rect width="64" height="64" fill="#f8f5ee"/>
+  <rect x="8" y="8" width="48" height="48" rx="14" fill="#2e241e"/>
+  <path d="M19 45c0-13 5-22 17-29v12c-6 4-10 9-12 17h-5Z" fill="#f8f5ee"/>
+  <path d="M26 45c1-11 6-19 18-25v10c-6 4-10 8-12 15h-6Z" fill="#6b7059"/>
+  <path d="M34 45c2-9 7-16 17-20v9c-5 3-8 6-10 11h-7Z" fill="#b8734b"/>
+  <path d="M42 45c2-6 5-10 10-13v8c-2 1-4 3-5 5h-5Z" fill="#4b3b56"/>
+</svg>
