@@ -35,16 +35,16 @@ export function RavelProductPreview() {
 
       <div className="grid gap-3 p-2 pt-4 sm:p-3 sm:pt-4 lg:grid-cols-[0.95fr_1.05fr]">
         <section className="rounded-[1.5rem] bg-brand-espresso p-5 text-brand-bone">
-          <p className="text-[10px] font-semibold uppercase tracking-[0.2em] text-brand-bone/70">Balances</p>
+          <p className="text-[10px] font-semibold uppercase tracking-[0.2em] text-brand-bone/75">Balances</p>
           <h3 className="font-display mt-2 text-3xl leading-none">Where you stand</h3>
           <div className="mt-5 space-y-2.5">
             {balances.map((balance) => (
-              <div key={balance.code} className="flex items-center justify-between gap-3 rounded-xl bg-white/7 px-3 py-3 ring-1 ring-white/10">
+              <div key={balance.code} className="flex items-center justify-between gap-3 rounded-xl bg-white/[0.07] px-3 py-3 ring-1 ring-white/10">
                 <div className="flex min-w-0 items-center gap-2.5">
                   <span className={`h-2.5 w-2.5 shrink-0 rounded-full ${balance.tone}`} aria-hidden="true" />
                   <div className="min-w-0">
                     <p className="text-sm font-semibold">{balance.code}</p>
-                    <p className="mt-0.5 truncate text-[11px] text-brand-bone/65">{balance.detail}</p>
+                    <p className="mt-0.5 truncate text-[11px] text-brand-bone/75">{balance.detail}</p>
                   </div>
                 </div>
                 <p className="font-display text-lg tabular-nums">{balance.amount}</p>
