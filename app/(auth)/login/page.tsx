@@ -10,6 +10,8 @@ import { createSupabaseBrowserClient, isSupabaseConfigured } from '@/lib/supabas
 
 type Mode = 'signin' | 'register' | 'forgot' | 'reset';
 
+const MIN_PASSWORD_LENGTH = 8;
+
 export default function LoginPage() {
   const router = useRouter();
   const [mode, setMode] = useState<Mode>('signin');
@@ -73,8 +75,8 @@ export default function LoginPage() {
       }
 
       if (mode === 'reset') {
-        if (password.length < 6) {
-          setError('Use at least 6 characters for your new password.');
+        if (password.length < MIN_PASSWORD_LENGTH) {
+          setError(`Use at least ${MIN_PASSWORD_LENGTH} characters for your new password.`);
           return;
         }
         const { error: updateError } = await supabase.auth.updateUser({ password });
@@ -88,6 +90,10 @@ export default function LoginPage() {
       }
 
       if (mode === 'register') {
+        if (password.length < MIN_PASSWORD_LENGTH) {
+          setError(`Use at least ${MIN_PASSWORD_LENGTH} characters for your password.`);
+          return;
+        }
         const { data, error: signUpError } = await supabase.auth.signUp({
           email: email.trim(),
           password,
@@ -238,9 +244,9 @@ export default function LoginPage() {
                           setPassword(event.target.value);
                           setError('');
                         }}
-                        placeholder={mode === 'register' || mode === 'reset' ? 'At least 6 characters' : '••••••••'}
+                        placeholder={mode === 'register' || mode === 'reset' ? 'At least 8 characters' : '••••••••'}
                         required
-                        minLength={6}
+                        minLength={MIN_PASSWORD_LENGTH}
                         autoComplete={mode === 'signin' ? 'current-password' : 'new-password'}
                         disabled={loading}
                         className="pr-20"
@@ -290,7 +296,8 @@ export default function LoginPage() {
                   disabled={
                     loading ||
                     (mode !== 'reset' && !email.trim()) ||
-                    (mode !== 'forgot' && password.length < 6)
+                    ((mode === 'register' || mode === 'reset') && password.length < MIN_PASSWORD_LENGTH) ||
+                    (mode === 'signin' && !password)
                   }
                 >
                   {mode === 'register'
@@ -378,7 +385,7 @@ function formatAuthError(
     return 'An account already exists for this email. Sign in instead.';
   }
   if (normalized.includes('password') && normalized.includes('least')) {
-    return 'Use a stronger password with at least 6 characters.';
+    return 'Use a stronger password with at least 8 characters.';
   }
   if (normalized.includes('rate limit') || normalized.includes('too many')) {
     return 'Too many attempts were made recently. Try again a little later.';
