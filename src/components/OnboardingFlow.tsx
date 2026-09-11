@@ -9,6 +9,7 @@ import { Field } from '@/components/ui/Field';
 import { SelectField } from '@/components/ui/SelectField';
 import { ConfirmDialog } from '@/components/ConfirmDialog';
 import { fetchCurrencyCatalog, type CurrencyOption } from '@/currencies/currencyCatalog';
+import { parseNonNegativeAmountInput } from '@/format';
 import { getSignedInEmail } from '@/lib/auth';
 import { markOnboardingComplete } from '@/onboarding/onboardingState';
 import { completeInitialSetup } from '@/setup/setupService';
@@ -151,14 +152,14 @@ export default function OnboardingFlow() {
         selectedCurrencies.map((currency) => [
           currency,
           {
-            card: parseAmount(balances[currency]?.card ?? ''),
-            cash: parseAmount(balances[currency]?.cash ?? ''),
+            card: parseSetupAmount(balances[currency]?.card ?? '', `${currency} card balance`),
+            cash: parseSetupAmount(balances[currency]?.cash ?? '', `${currency} cash balance`),
           },
         ])
       );
       await completeInitialSetup({
         balances: selectedBalances,
-        monthlyBudget: parseAmount(monthlyBudget),
+        monthlyBudget: parseSetupAmount(monthlyBudget, 'Monthly spending target'),
         defaultMethod,
         defaultCurrency,
       });
@@ -371,7 +372,7 @@ function ConflictStep({ busy, onUseAccount, onMerge, onBack }: { busy: boolean; 
           <Button type="button" fullWidth className="mt-5" onClick={onMerge} loading={busy} disabled={busy}>Keep both and merge</Button>
         </Card>
         <Card padding="sm">
-          <h2 className="font-semibold text-primary">Use synced account only</h2>
+          <h2 className="mt-3 font-semibold text-primary">Use synced account only</h2>
           <p className="mt-2 text-sm text-muted">Replace the TapTrack data on this device with the data already saved to your account.</p>
           <Button type="button" fullWidth variant="secondary" className="mt-5" onClick={onUseAccount} disabled={busy}>Use synced account</Button>
         </Card>
@@ -385,7 +386,11 @@ function StepActions({ onBack, onContinue }: { onBack: () => void; onContinue: (
   return <div className="mt-7 flex items-center justify-between gap-3"><Button type="button" variant="ghost" onClick={onBack}>Back</Button><Button type="button" onClick={onContinue}>Continue</Button></div>;
 }
 
-function parseAmount(value: string): number {
-  const parsed = Number.parseFloat(value.replace(',', '.'));
-  return Number.isFinite(parsed) && parsed > 0 ? parsed : 0;
+function parseSetupAmount(value: string, label: string): number {
+  if (!value.trim()) return 0;
+  const parsed = parseNonNegativeAmountInput(value);
+  if (parsed === null) {
+    throw new Error(`${label} must be a valid amount of zero or more.`);
+  }
+  return parsed;
 }
