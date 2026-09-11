@@ -11,7 +11,12 @@ import { Skeleton, SkeletonListRows } from '@/components/ui/Skeleton';
 import { useActiveCurrencies } from '@/currencies/useActiveCurrencies';
 import { db } from '@/database';
 import { getCurrentMonth } from '@/dates';
-import { clampPercent, formatMoney, parseAmountInput } from '@/format';
+import {
+  clampPercent,
+  formatMoney,
+  parseAmountInput,
+  parseNonNegativeAmountInput,
+} from '@/format';
 import {
   deleteCategoryBudget,
   upsertCategoryBudget,
@@ -142,8 +147,8 @@ export default function BudgetsWorkspace() {
   };
 
   const saveMonthlyBudget = async () => {
-    const amount = parseAmountInput(budgetDraft);
-    if (!Number.isFinite(amount) || amount < 0) {
+    const amount = parseNonNegativeAmountInput(budgetDraft);
+    if (amount === null) {
       setMonthlyError('Enter a valid monthly budget.');
       return;
     }
