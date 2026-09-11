@@ -101,8 +101,12 @@ export function CurrencySettingsCard() {
       await removeActiveCurrency(currencyToRemove);
       toast.success(`${currencyToRemove} removed from new entries. Your history was kept.`);
       setCurrencyToRemove(null);
-    } catch {
-      toast.error('That currency could not be removed. Try again.');
+    } catch (error) {
+      toast.error(
+        error instanceof Error
+          ? error.message
+          : 'That currency could not be removed. Try again.'
+      );
     } finally {
       setBusy(false);
     }
@@ -219,8 +223,8 @@ export function CurrencySettingsCard() {
         title={`Remove ${currencyToRemove ?? ''} from new entries?`}
         message={
           removalBalance !== 0
-            ? `Your ${currencyToRemove} balance and all existing transactions will stay intact. You can add the currency again later.`
-            : `Existing ${currencyToRemove} history will stay intact. You can add the currency again later.`
+            ? `Your ${currencyToRemove} balance and all existing transactions will stay intact. Active recurring rules in this currency must be paused or moved first. You can add the currency again later.`
+            : `Existing ${currencyToRemove} history will stay intact. Active recurring rules in this currency must be paused or moved first. You can add the currency again later.`
         }
         confirmLabel="Remove currency"
         confirmVariant="danger"
