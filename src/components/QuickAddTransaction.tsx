@@ -9,6 +9,7 @@ import {
   type HistoricalOrderingRelation,
 } from '@/balances/reconciliationService';
 import { createCustomCategory } from '@/categories/categoryService';
+import { reconcileSavedTransactionCategoryWithAI } from '@/categories/lateCategorization';
 import { useAICategorySuggestion } from '@/categories/useAICategorySuggestion';
 import { CategoryIcon } from '@/categories/categoryVisuals';
 import { Button } from '@/components/ui/Button';
@@ -33,7 +34,11 @@ export type QuickAddPrefill = {
   date?: string;
 };
 
-type PendingOrdering = { draft: TransactionDraft; checkpointId: string };
+type PendingOrdering = {
+  draft: TransactionDraft;
+  checkpointId: string;
+  lateAutoCategorize: boolean;
+};
 type FieldErrors = { amount?: string; title?: string };
 
 export function QuickAddTransaction({
@@ -139,17 +144,24 @@ export function QuickAddTransaction({
     setPendingOrdering(null);
   };
 
-  const persistDraft = async (draft: TransactionDraft) => {
+  const persistDraft = async (draft: TransactionDraft, lateAutoCategorize = false) => {
     setSaving(true);
     setError('');
     try {
-      await createTransaction(draft);
+      const created = await createTransaction(draft);
+      if (lateAutoCategorize) {
+        void reconcileSavedTransactionCategoryWithAI(created, categories ?? [], db).catch(() => undefined);
+      }
       toast.success('Transaction saved.');
       resetAfterSave();
       onSaved?.();
     } catch (err) {
       if (err instanceof AmbiguousLedgerOrderingError) {
-        setPendingOrdering({ draft, checkpointId: err.checkpointId });
+        setPendingOrdering({
+          draft,
+          checkpointId: err.checkpointId,
+          lateAutoCategorize,
+        });
         setError(
           'This transaction is on the same date as a balance check. Choose whether it happened before or after that balance was recorded.'
         );
@@ -193,17 +205,28 @@ export function QuickAddTransaction({
       return;
     }
 
+    const lateAutoCategorize = Boolean(
+      aiMaster &&
+      aiAutoCategorize &&
+      !categoryManuallyChosen &&
+      dismissedSuggestionKey !== suggestionKey &&
+      !aiCategoryValid
+    );
+
     setFieldErrors({});
-    await persistDraft({
-      type,
-      amount: parsedAmount,
-      currency,
-      title: trimmedTitle,
-      categoryId: selectedCategoryId,
-      method,
-      date,
-      note: note.trim() || undefined,
-    });
+    await persistDraft(
+      {
+        type,
+        amount: parsedAmount,
+        currency,
+        title: trimmedTitle,
+        categoryId: selectedCategoryId,
+        method,
+        date,
+        note: note.trim() || undefined,
+      },
+      lateAutoCategorize
+    );
   };
 
   const createSuggestedCategory = async () => {
@@ -229,10 +252,13 @@ export function QuickAddTransaction({
       setPendingOrdering(null);
       return;
     }
-    await persistDraft({
-      ...pendingOrdering.draft,
-      occurredAt: resolveHistoricalOccurrenceAroundCheckpoint(checkpoint, relation),
-    });
+    await persistDraft(
+      {
+        ...pendingOrdering.draft,
+        occurredAt: resolveHistoricalOccurrenceAroundCheckpoint(checkpoint, relation),
+      },
+      pendingOrdering.lateAutoCategorize
+    );
   };
 
   if (!categories || !settings || currenciesLoading) {
