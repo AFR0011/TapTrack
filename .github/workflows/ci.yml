@@ -1,13 +1,13 @@
-name: Ravel migration audit
+name: Ravel final cleanup
 
 on:
   push:
 
 permissions:
-  contents: read
+  contents: write
 
 jobs:
-  audit:
+  migrate:
     if: github.ref == 'refs/heads/brand/ravel-public-cleanup'
     runs-on: ubuntu-latest
     steps:
@@ -23,7 +23,17 @@ jobs:
       - name: Install locked dependencies
         run: npm ci
 
-      - name: Print remaining historical name references
+      - name: Apply final Ravel cleanup
+        run: node scripts/finalize-ravel-cleanup.mjs
+
+      - name: Commit cleanup if needed
         run: |
-          node scripts/name-migration-audit.mjs
-          exit 1
+          if git diff --quiet && git diff --cached --quiet; then
+            echo "Final Ravel cleanup already applied."
+            exit 0
+          fi
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add -A
+          git commit -m "Finish Ravel naming cleanup"
+          git push origin HEAD:brand/ravel-public-cleanup
