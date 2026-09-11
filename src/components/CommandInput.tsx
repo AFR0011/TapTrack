@@ -6,6 +6,7 @@ import { useLiveQuery } from 'dexie-react-hooks';
 import { toast } from 'sonner';
 import { resolveHistoricalOccurrenceAroundCheckpoint, type HistoricalOrderingRelation } from '@/balances/reconciliationService';
 import { fetchAICategorySuggestion } from '@/categories/categorySuggestion';
+import { reconcileSavedTransactionCategoryWithAI } from '@/categories/lateCategorization';
 import { CategoryIcon } from '@/categories/categoryVisuals';
 import { Button } from '@/components/ui/Button';
 import { Skeleton } from '@/components/ui/Skeleton';
@@ -130,7 +131,18 @@ export default function CommandInput() {
           ? { ...draft, occurredAt: resolveHistoricalOccurrenceAroundCheckpoint(requirement.checkpoint, relation) }
           : draft;
       });
-      await createTransactions(finalDrafts);
+      const created = await createTransactions(finalDrafts);
+      const autoCategorize = Boolean(
+        settings?.aiCategorizationEnabled &&
+        settings.aiAutoCategorizationEnabled !== false &&
+        accountSignedIn
+      );
+      if (autoCategorize && categories) {
+        created.forEach((transaction, index) => {
+          if (aiOverrides[index]) return;
+          void reconcileSavedTransactionCategoryWithAI(transaction, categories, db).catch(() => undefined);
+        });
+      }
       toast.success(`Saved ${finalDrafts.length} transaction${finalDrafts.length === 1 ? '' : 's'}.`);
       clearPreviewState();
       setInput('');

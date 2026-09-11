@@ -6,9 +6,11 @@ import {
 } from '@/ai/categoryPrompt';
 
 const DEFAULT_MODEL = 'openai/gpt-oss-20b';
+const GROQ_TIMEOUT_MS = 2500;
 
 interface GroqChatCompletion {
   choices?: Array<{
+    finish_reason?: string | null;
     message?: {
       content?: string | null;
     };
@@ -37,6 +39,7 @@ export async function categorizeWithAI(
     categories: relevantCategories,
   };
   const prompt = buildCategoryPrompt(normalizedRequest);
+  const startedAt = Date.now();
 
   try {
     const response = await fetch('https://api.groq.com/openai/v1/chat/completions', {
@@ -48,27 +51,100 @@ export async function categorizeWithAI(
       body: JSON.stringify({
         model: process.env.GROQ_MODEL ?? DEFAULT_MODEL,
         temperature: 0,
-        max_completion_tokens: 220,
+        reasoning_effort: 'low',
+        reasoning_format: 'hidden',
+        max_completion_tokens: 512,
+        response_format: {
+          type: 'json_schema',
+          json_schema: {
+            name: 'taptrack_category_evaluation',
+            strict: true,
+            schema: {
+              type: 'object',
+              properties: {
+                existing: {
+                  anyOf: [
+                    {
+                      type: 'object',
+                      properties: {
+                        categoryId: { type: 'string' },
+                        fit: { type: 'number', minimum: 0, maximum: 1 },
+                      },
+                      required: ['categoryId', 'fit'],
+                      additionalProperties: false,
+                    },
+                    { type: 'null' },
+                  ],
+                },
+                newCategory: {
+                  anyOf: [
+                    {
+                      type: 'object',
+                      properties: {
+                        name: { type: 'string' },
+                        icon: { type: 'string' },
+                        color: { type: 'string' },
+                        fit: { type: 'number', minimum: 0, maximum: 1 },
+                      },
+                      required: ['name', 'icon', 'color', 'fit'],
+                      additionalProperties: false,
+                    },
+                    { type: 'null' },
+                  ],
+                },
+              },
+              required: ['existing', 'newCategory'],
+              additionalProperties: false,
+            },
+          },
+        },
         messages: [
           {
             role: 'system',
-            content: 'Return only valid JSON matching the exact object shape in the user prompt. Never add prose or markdown.',
+            content:
+              'Classify the transaction using the supplied categories. Follow the response schema exactly.',
           },
           { role: 'user', content: prompt },
         ],
       }),
-      signal: AbortSignal.timeout(8000),
+      signal: AbortSignal.timeout(GROQ_TIMEOUT_MS),
     });
 
-    if (!response.ok) return { existing: null, newCategory: null, unavailable: true };
+    if (!response.ok) {
+      console.warn('AI categorization upstream request failed', {
+        status: response.status,
+        durationMs: Date.now() - startedAt,
+      });
+      return { existing: null, newCategory: null, unavailable: true };
+    }
 
     const data = (await response.json()) as GroqChatCompletion;
     const raw = data.choices?.[0]?.message?.content ?? '';
+    if (!raw) {
+      console.warn('AI categorization returned no content', {
+        finishReason: data.choices?.[0]?.finish_reason ?? null,
+        durationMs: Date.now() - startedAt,
+      });
+      return { existing: null, newCategory: null, unavailable: true };
+    }
+
+    const evaluation = parseCategoryResponse(raw, normalizedRequest);
+    console.info('AI categorization completed', {
+      durationMs: Date.now() - startedAt,
+      finishReason: data.choices?.[0]?.finish_reason ?? null,
+      existingCategory: Boolean(evaluation.existing),
+      newCategory: Boolean(evaluation.newCategory),
+    });
+
     return {
-      ...parseCategoryResponse(raw, normalizedRequest),
+      ...evaluation,
       unavailable: false,
     };
-  } catch {
+  } catch (error) {
+    console.warn('AI categorization request did not complete', {
+      reason: error instanceof Error ? error.name : 'unknown',
+      durationMs: Date.now() - startedAt,
+    });
     return { existing: null, newCategory: null, unavailable: true };
   }
 }
