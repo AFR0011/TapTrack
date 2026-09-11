@@ -2,7 +2,7 @@ import { db, ensureDatabaseSeeded, type TapTrackDatabase } from '@/database';
 import { getBalanceId } from '@/defaultData';
 import { formatLocalDate, getAutomaticOccurredAt } from '@/dates';
 import { rebuildDerivedBalances } from '@/balances/ledgerService';
-import type { Conversion, Currency, Method } from '@/types';
+import type { Balance, Conversion, Currency, Method } from '@/types';
 import {
   flushSyncQueueBestEffort,
   queueDeleteForSync,
@@ -65,14 +65,12 @@ function validateDraft(draft: ConversionDraft, nowDate: Date) {
   }
 }
 
-function getPreviousBalanceMap(
-  balances: Awaited<ReturnType<TapTrackDatabase['balances']['toArray']>>
-) {
+function getPreviousBalanceMap(balances: Balance[]) {
   return new Map(balances.map((balance) => [balance.id, balance.amount] as const));
 }
 
 function assertNoNegativeBalances(
-  balances: Awaited<ReturnType<typeof rebuildDerivedBalances>>,
+  balances: Balance[],
   previousBalances: Map<string, number>
 ) {
   const negative = balances.find((balance) => balance.amount < 0);
