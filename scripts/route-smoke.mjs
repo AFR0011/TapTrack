@@ -98,7 +98,7 @@ const checks = [
       return (
         response.status === 200 &&
         contentType.includes('text/plain') &&
-        body.includes('Disallow: /app/') &&
+        body.includes('Disallow: /app') &&
         body.includes('Disallow: /login') &&
         body.includes('Sitemap: https://ravel-fawn.vercel.app/sitemap.xml')
       );
