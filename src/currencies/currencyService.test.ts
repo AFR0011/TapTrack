@@ -1,5 +1,6 @@
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 import { TapTrackDatabase, ensureDatabaseSeeded } from '@/database';
+import { DEFAULT_SETTINGS_ID } from '@/defaultData';
 import {
   createRecurringTransaction,
   resumeRecurringTransaction,
@@ -40,7 +41,7 @@ describe('currency archival integrity', () => {
       'Pause or move active recurring rules in USD before removing this currency.'
     );
 
-    const settings = await database.settings.get('settings');
+    const settings = await database.settings.get(DEFAULT_SETTINGS_ID);
     expect(settings?.activeCurrencies).toContain('USD');
   });
 
