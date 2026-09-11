@@ -5,6 +5,8 @@ import './globals.css';
 import './responsive-layouts.css';
 import { ThemeInitializer } from './providers/ThemeInitializer';
 
+const PUBLIC_ORIGIN = 'https://ravel-fawn.vercel.app';
+
 const inter = Inter({
   subsets: ['latin'],
   variable: '--font-inter',
@@ -18,9 +20,29 @@ const newsreader = Newsreader({
 });
 
 export const metadata: Metadata = {
+  metadataBase: new URL(PUBLIC_ORIGIN),
   title: `${BRAND.name} — Your personal ledger`,
   description: BRAND.description,
   applicationName: BRAND.name,
+  alternates: {
+    canonical: '/',
+  },
+  openGraph: {
+    type: 'website',
+    url: '/',
+    siteName: BRAND.name,
+    title: `${BRAND.name} — Your personal ledger`,
+    description: BRAND.description,
+  },
+  twitter: {
+    card: 'summary',
+    title: `${BRAND.name} — Your personal ledger`,
+    description: BRAND.description,
+  },
+  robots: {
+    index: true,
+    follow: true,
+  },
   manifest: '/manifest.webmanifest',
   icons: {
     icon: '/icons/ravel-icon.svg',
