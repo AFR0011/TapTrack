@@ -1,75 +1,51 @@
 # Ravel QA Report
 
 Last updated: 2026-09-11
-Promotion PR: #16
 
-## Scope
+## Accepted production baseline
 
-This report covers the final V1 hardening pass performed after the end-to-end product audit. The objective was to close integrity/release blockers without introducing new product scope before the branding/marketing phase.
+Ravel V1 is released. The last fully verified production baseline before this audit-closure branch is `dd4546cbeec5f9cab1817f67c04ab24dfd017152`.
 
-## Hardening coverage
-
-### Transfers and exchanges
-
-- full edit/delete lifecycle;
-- atomic canonical mutation + derived balance rebuild + sync intent;
-- overdraft rollback;
-- historical FX refresh when rate-affecting fields change;
-- preserved rate for metadata-only edits;
-- explicit same-day reconciliation ordering;
-- corrections remain possible for historical moves involving archived currencies.
-
-The browser regression uses real application onboarding and verifies an exchange changes actual balances: TRY cash `1000` + USD card `100`, USD `10` -> TRY `400`, ending at USD card `90` and TRY cash `1400`.
-
-### Cross-entity integrity
-
-- category delete/type-change repairs dependent transactions and recurring rules;
-- incompatible category budgets are deleted atomically;
-- currency archival is blocked while an active recurring rule uses the currency;
-- paused rules in archived currencies cannot resume until the currency is active again;
-- archived nonzero holdings remain part of Dashboard Available.
-
-### Validation and calendar behavior
-
-- strict onboarding and monthly-budget amount parsing;
-- future-dated manual transactions/conversions rejected in services and constrained in UI;
-- Reports custom ranges default using local calendar date rather than UTC truncation;
-- reusable select controls generate unique IDs;
-- account registration/reset client minimum raised to 8 characters;
-- currency formatting follows currency-specific fraction digits rather than forcing two decimals.
-
-### Sync race hardening
-
-TT-R15 is mitigated through the server-authorized `claim_empty_taptrack_ledger` PostgreSQL function. The function locks the account ledger version, locks canonical finance tables, rechecks emptiness, and seeds the full initial ledger in one transaction. The route returns a conflict to a concurrent losing first-device claim, and the browser remains unbound.
-
-The migration is live on production Supabase. Privilege verification confirms `authenticated` cannot execute the function and `service_role` can.
-
-## Verified baseline
-
-GitHub Actions run `34605264268` on candidate `de7458adc27fef4d0ce37bae2a12dbaaa55121dc` passed:
+GitHub Actions run `34630711573` passed the complete Ravel CI gate:
 
 - publication guard;
-- full dependency audit: 0 high vulnerabilities;
-- production dependency audit: 0 high vulnerabilities;
+- full dependency audit: 0 reported vulnerabilities;
+- production dependency audit: 0 reported vulnerabilities;
 - ESLint;
 - TypeScript;
-- Vitest: 260 tests;
+- Vitest: 49 files / 268 tests;
 - production build;
 - route smoke: 9/9;
-- responsive/offline Playwright, including the real exchange balance workflow.
+- Playwright: 10 passed / 3 intentionally skipped across 320px, 390px, and desktop coverage.
 
-Later password/currency-formatting and documentation commits require the same full exact-head gate before merge. The release is not accepted solely from this earlier baseline.
+The corresponding Vercel production deployment `dpl_FWn9vqGpuNyqkbXb6194KvQV93vK` reached READY. Production runtime-error inspection after the Ravel provider rename found no runtime error clusters in the checked 24-hour window.
 
-## Residual release controls
+## High-value correctness coverage
 
-The following are explicit residuals rather than hidden failures:
+- Transfers and exchanges support correction/delete with atomic canonical mutation, derived-balance rebuild, overdraft rollback, historical-rate semantics, archived-currency handling, and explicit reconciliation ordering.
+- Category delete/type changes repair dependent transactions and recurring rules and remove incompatible category budgets atomically with sync intents.
+- Currency archival blocks active recurring rules; paused rules cannot resume into an archived currency; archived nonzero holdings remain represented correctly.
+- Manual future-dated transactions/conversions are rejected and UI-constrained.
+- Reports use local calendar dates and explicit historical FX behavior.
+- Account-wide restore/reset is generation-aware and stale clients adopt replacement state rather than replaying old work.
+- Empty-cloud claim plus initial seed is atomic through the server-authorized `claim_empty_taptrack_ledger` RPC; concurrent losers remain unbound.
+- Smart Categories are non-blocking, manual choices win, and late AI updates are guarded against overwriting subsequent edits.
+- The browser regression performs real exchange balance movement and offline local-ledger workflows.
+- Ravel PWA metadata, current icons, service-worker shell, public landing page, security headers, and fail-closed unconfigured Telegram endpoints are protected by route smoke.
 
-- Supabase leaked-password protection is disabled and requires a manual Auth setting change if supported on the plan.
-- GitHub `main` has no ruleset/branch protection and requires repository-admin configuration.
+## Rebrand QA
+
+The public landing page, login flow, PWA metadata, service-worker fallback, generated artifacts, package identity, current configuration examples, and current GitHub/Vercel provider metadata use Ravel. The old `taptrack-fawn.vercel.app` alias remains as a compatibility redirect toward the Ravel deployment.
+
+Historical TapTrack identifiers remain only where persisted or deployed compatibility requires them. See `docs/RAVEL_COMPATIBILITY.md`.
+
+## Residual controls
+
+- GitHub `main` has no repository ruleset; issue #14 remains open until PR-only + required Ravel CI protection is enabled.
+- Supabase leaked-password protection is currently disabled.
+- Supabase project display metadata still uses the historical TapTrack name.
 - Native installed Safari/iOS PWA behavior has not been verified on a real device.
 - Exhaustive Git all-object/reflog secret scanning has not been performed locally.
-- JavaScript `number` remains money storage; integer minor-unit/decimal storage is deferred to a future migration.
+- JavaScript `number` remains money storage.
 
-## Release gate
-
-PR #16 may be promoted only after its documentation-frozen head passes the complete CI gate. After merge, the exact `main` merge SHA must also be green and the corresponding Vercel production deployment must be READY with a production smoke check.
+These residuals do not invalidate the current V1 ledger release, but they must remain explicit rather than being silently converted into marketing claims.
