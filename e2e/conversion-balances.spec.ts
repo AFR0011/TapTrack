@@ -78,7 +78,7 @@ test('exchange moves money between currency balances in the real browser workflo
   await expect(page.getByText('Exchange recorded.', { exact: true })).toBeVisible();
 
   await page.goto('/app/balances');
-  await expect(page.getByRole('heading', { name: 'Balances' })).toBeVisible();
+  await expect(page.getByRole('heading', { name: 'Balances', exact: true })).toBeVisible();
 
   const usd = page.locator('[data-balance-currency="USD"]');
   const tryBalance = page.locator('[data-balance-currency="TRY"]');
