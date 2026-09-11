@@ -4,9 +4,9 @@
 
 Ravel is a local-first personal finance ledger for people whose money is split across cash, cards, currencies, devices, and places. It is designed around fast capture, accurate ledger semantics, offline use, and user-controlled data rather than mandatory bank integrations or cloud dependence.
 
-> **Product status:** Ravel is the current public product and repository name. Historical TapTrack identifiers remain only where compatibility requires them; see [`docs/RAVEL_COMPATIBILITY.md`](docs/RAVEL_COMPATIBILITY.md).
+> **Product status:** Ravel is the current public product and repository name. Historical TapTrack identifiers remain only where compatibility or project history requires them; see [`docs/RAVEL_COMPATIBILITY.md`](docs/RAVEL_COMPATIBILITY.md).
 
-[Open the live app](https://ravel-ali-farrokhnejads-projects.vercel.app) · [Read the architecture notes](docs/ARCHITECTURE.md) · [Security notes](SECURITY.md)
+[Open the live app](https://ravel-fawn.vercel.app) · [Read the architecture notes](docs/ARCHITECTURE.md) · [Security notes](SECURITY.md)
 
 ## Why Ravel exists
 
@@ -37,7 +37,7 @@ IndexedDB is the ordinary working store. Core capture and ledger use do not requ
 
 ### Fast capture
 
-Ravel supports Quick Add, keyboard-first command entry, recurring transactions, PWA shortcuts, and optional iPhone Shortcut capture. Common transactions should take seconds rather than become a small administrative ceremony.
+Ravel supports Quick Add, keyboard-first command entry, recurring transactions, PWA shortcuts, and optional external capture. Common transactions should take seconds rather than become a small administrative ceremony.
 
 ### Automation assists; the user decides
 
@@ -60,9 +60,9 @@ Moving money is not spending money. Reconciliation corrections are not income. C
 - Custom categories
 - Optional Groq-powered Smart Categories
 - Offline-capable PWA behavior
-- JSON backup / restore and CSV export
-- Optional account sync through Supabase
-- iPhone Shortcut / capture-token workflow
+- JSON backup / restore and CSV/PDF export
+- Optional account sync through Supabase Auth
+- External capture-token / iPhone Shortcut workflow
 - Telegram capture integration
 - Responsive desktop and mobile layouts
 - Light and dark themes
@@ -100,11 +100,15 @@ For the detailed boundary map, see [`docs/ARCHITECTURE.md`](docs/ARCHITECTURE.md
 
 ### Offline mutation safety
 
-User-facing finance mutations are designed to work from the local ledger first. The service worker and browser-verification suite protect the offline path rather than treating offline support as a decorative PWA badge.
+User-facing finance mutations work from the local ledger first. The service worker and browser-verification suite protect the offline path rather than treating offline support as a decorative PWA badge.
 
 ### Sync adoption is explicit
 
 When a device and a synced account both contain data, Ravel does not silently choose a winner. The user can merge both ledgers or explicitly replace local data with the synced account copy. Destructive replacement paths create safety backups first.
+
+### First-device cloud claim is atomic
+
+An empty cloud ledger is claimed and initially seeded through one server-authorized database transaction. A concurrent losing first-device claim remains unbound rather than silently overwriting another device.
 
 ### Multi-currency reporting avoids false precision
 
@@ -112,7 +116,7 @@ Ravel does not simply add TRY, USD, EUR, or other currencies into one meaningles
 
 ### AI categorization is non-blocking
 
-Live suggestions are opportunistic. Saving a transaction never waits for the model. If a suggestion arrives after save, it may update only the just-created transaction and only while the transaction remains unchanged. Manual category choices win.
+Live suggestions are opportunistic. Saving a transaction never waits for the model. A late suggestion may update only the just-created unchanged provisional transaction. Manual category choices win.
 
 ### Transfers and exchanges are first-class ledger events
 
@@ -132,6 +136,8 @@ Ravel uses an editorial-ledger visual system rather than conventional blue-finte
 
 The layered Ravel mark represents fragmented financial parts resolving into one record.
 
+Ravel is also designed as the standalone-capable **Money** module inside the broader LifeOS system.
+
 ## Tech stack
 
 - **Framework:** Next.js / React / TypeScript
@@ -147,7 +153,7 @@ The layered Ravel mark represents fragmented financial parts resolving into one 
 
 Requirements:
 
-- Node.js 20+
+- Node.js 22.x
 - npm
 
 ```bash
@@ -170,13 +176,13 @@ Important groups include:
 - Telegram integration secrets
 - optional iPhone Shortcut template URLs
 
-New configuration uses the `RAVEL_` prefix. Existing deployments using historical `TAPTRACK_` environment names remain supported as fallbacks. Persisted storage/database and deployed Supabase RPC identifiers may also retain historical names internally so the rebrand never strands existing data.
+New configuration uses the `RAVEL_` prefix. Existing deployments using historical `TAPTRACK_` environment names remain supported as fallbacks where required. Persisted storage/database and deployed Supabase RPC identifiers may also retain historical names internally so the rebrand never strands existing data.
 
 ## Verification
 
-The main branch is protected by a CI ladder covering:
+Ravel CI covers:
 
-- publication guard
+- publication and branding guard
 - dependency audits
 - lint
 - TypeScript type checking
@@ -185,7 +191,7 @@ The main branch is protected by a CI ladder covering:
 - route smoke tests
 - Chromium mobile/offline verification
 
-At the Ravel branding checkpoint merged on **11 September 2026**, the exact main build passed **267 tests** plus the browser/offline verification suite.
+At the production branding/provider checkpoint on **11 September 2026**, exact `main` revision `dd4546cbeec5f9cab1817f67c04ab24dfd017152` passed **49 test files / 268 tests**, **9/9 route smoke checks**, and Playwright with **10 passed / 3 intentionally skipped**. The corresponding Vercel production deployment reached READY.
 
 ## Data and privacy model
 
@@ -199,15 +205,16 @@ The product is designed so these integrations are explicit additions rather than
 
 ## Project documentation
 
-The repository intentionally keeps deeper engineering records separate from this product-facing README:
-
-- [`BLUEPRINT.md`](BLUEPRINT.md) — product and architecture blueprint
-- [`SECURITY.md`](SECURITY.md) — security model and review notes
-- [`RISK_REGISTER.md`](RISK_REGISTER.md) — known risks and mitigations
-- [`docs/ARCHITECTURE.md`](docs/ARCHITECTURE.md) — architecture summary
+- [`docs/PROJECT_STATE.md`](docs/PROJECT_STATE.md) — current release state and residuals
+- [`SECURITY.md`](SECURITY.md) — current security/trust boundaries
+- [`RISK_REGISTER.md`](RISK_REGISTER.md) — known risks and controls
+- [`docs/ARCHITECTURE.md`](docs/ARCHITECTURE.md) — current architecture summary
+- [`docs/REPO_MAP.md`](docs/REPO_MAP.md) — current repository map
 - [`docs/AI_CATEGORIZATION_BEHAVIOR.md`](docs/AI_CATEGORIZATION_BEHAVIOR.md) — Smart Categories behavior
 - [`docs/TEST_STRATEGY.md`](docs/TEST_STRATEGY.md) — testing strategy
-- [`docs/PRODUCTION_CHECKLIST.md`](docs/PRODUCTION_CHECKLIST.md) — deployment checks
+- [`docs/PRODUCTION_CHECKLIST.md`](docs/PRODUCTION_CHECKLIST.md) — deployment/release checks
+- [`docs/RAVEL_COMPATIBILITY.md`](docs/RAVEL_COMPATIBILITY.md) — historical identifiers retained for compatibility
+- [`BLUEPRINT.md`](BLUEPRINT.md) — historical TapTrack-era initial product blueprint retained for provenance, not current product truth
 
 ## License
 
