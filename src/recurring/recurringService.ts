@@ -3,6 +3,7 @@ import {
   resolveHistoricalOccurrenceAroundCheckpoint,
   type HistoricalOrderingRelation,
 } from '@/balances/reconciliationService';
+import { getActiveCurrencies } from '@/currencies/currencyService';
 import { db, ensureDatabaseSeeded, type TapTrackDatabase } from '@/database';
 import { addFrequency, formatLocalDate, parseLocalDate } from '@/dates';
 import { createTransaction } from '@/transactions/createTransaction';
@@ -11,7 +12,7 @@ import {
   queueDeleteForSync,
   queueRecordForSync,
 } from '@/sync/syncService';
-import type { Frequency, RecurringTransaction, TransactionDraft } from '@/types';
+import type { Currency, Frequency, RecurringTransaction, TransactionDraft } from '@/types';
 
 export type RecurringInput = Omit<RecurringTransaction, 'id' | 'createdAt' | 'updatedAt'>;
 
@@ -33,11 +34,22 @@ export function getRecurringOccurrenceId(recurringId: string, date: string): str
   return `recurring-occurrence-${recurringId}-${date}`;
 }
 
+async function assertActiveRecurringCurrency(
+  currency: Currency,
+  database: TapTrackDatabase
+): Promise<void> {
+  const activeCurrencies = await getActiveCurrencies(database);
+  if (!activeCurrencies.includes(currency)) {
+    throw new Error(`Add ${currency} back to active currencies before using this recurring rule.`);
+  }
+}
+
 export async function createRecurringTransaction(
   recurring: RecurringInput,
   database: TapTrackDatabase = db
 ): Promise<RecurringTransaction> {
   await ensureDatabaseSeeded(database);
+  if (recurring.isActive) await assertActiveRecurringCurrency(recurring.currency, database);
 
   const now = new Date().toISOString();
   const newRecurring: RecurringTransaction = {
@@ -70,6 +82,11 @@ export async function updateRecurringTransaction(
   database: TapTrackDatabase = db
 ): Promise<RecurringTransaction> {
   await ensureDatabaseSeeded(database);
+
+  const current = await database.recurringTransactions.get(id);
+  if (!current) throw new Error('Recurring transaction not found');
+  const candidate = { ...current, ...updates };
+  if (candidate.isActive) await assertActiveRecurringCurrency(candidate.currency, database);
 
   const now = new Date().toISOString();
   let updated: RecurringTransaction | null = null;
@@ -300,10 +317,16 @@ export async function createDueRecurringTransactions(
   await ensureDatabaseSeeded(database);
 
   const activeRecurring = await getActiveRecurringTransactions(database);
+  const activeCurrencies = new Set(await getActiveCurrencies(database));
   const today = formatLocalDate(currentDate);
   const result: DueRecurringResult = { created: 0, skipped: 0, failed: 0, conflicts: [] };
 
   for (const recurring of activeRecurring) {
+    if (!activeCurrencies.has(recurring.currency)) {
+      await updateRecurringTransaction(recurring.id, { isActive: false }, database);
+      continue;
+    }
+
     let nextRunDate = recurring.nextRunDate;
     let safety = 0;
     const endDate = recurring.endDate;
