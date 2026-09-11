@@ -296,8 +296,7 @@ export async function deleteCategory(
       }
 
       const recurringTransactions = await database.recurringTransactions
-        .where('categoryId')
-        .equals(categoryId)
+        .filter((recurring) => recurring.categoryId === categoryId)
         .toArray();
       for (const recurring of recurringTransactions) {
         const replacementCategoryId = await getFallbackCategoryId(
@@ -399,8 +398,7 @@ export async function updateCategory(
       }
 
       const recurringTransactions = await database.recurringTransactions
-        .where('categoryId')
-        .equals(input.id)
+        .filter((recurring) => recurring.categoryId === input.id)
         .toArray();
       for (const recurring of recurringTransactions) {
         if (recurring.type === input.type) continue;
