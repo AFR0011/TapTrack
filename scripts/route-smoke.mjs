@@ -13,7 +13,8 @@ const checks = [
         body.includes('Ravel') &&
         body.includes('Your money doesn’t live in one place. Your ledger can.') &&
         body.includes('Illustrative interface') &&
-        body.includes('https://ravel-fawn.vercel.app/')
+        body.includes('rel="canonical"') &&
+        body.includes('https://ravel-fawn.vercel.app')
       );
     },
   },
