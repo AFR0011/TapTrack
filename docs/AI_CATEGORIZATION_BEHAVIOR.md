@@ -1,17 +1,17 @@
 # AI Categorization Behavior
 
-TapTrack treats AI categorization as optional assistance, never as a prerequisite for recording money.
+Ravel treats AI categorization as optional assistance, never as a prerequisite for recording money.
 
 ## V1 contract
 
 - Transaction save is never blocked on an AI response.
-- While the user is typing, TapTrack may request a category suggestion after a short debounce.
+- While the user is typing, Ravel may request a category suggestion after a short debounce.
 - If a strong existing-category suggestion arrives before save, that category is used immediately.
-- If the user saves first, TapTrack saves using the local/default category and may make one post-save AI categorization attempt when auto-categorization is enabled.
+- If the user saves first, Ravel saves using the local/default category and may make one post-save AI categorization attempt when auto-categorization is enabled.
 - A late AI result may update only the transaction that was just saved, and only when that transaction has not changed since creation and its provisional category is still unchanged.
 - Manual category choices always win. Late AI must not overwrite them.
 - New-category recommendations remain suggestions requiring user action; they are not created automatically after save.
-- TapTrack does not periodically recategorize historical transactions.
+- Ravel does not periodically recategorize historical transactions.
 
 ## Hosted inference
 

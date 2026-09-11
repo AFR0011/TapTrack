@@ -116,8 +116,8 @@ async function completeFreshOnboarding(page: Page) {
 
   await expect(page.getByRole('heading', { name: 'You’re ready.' })).toBeVisible();
   await assertNoHorizontalOverflow(page);
-  await expectMobileTargetSize(page.getByRole('button', { name: 'Open TapTrack' }));
-  await page.getByRole('button', { name: 'Open TapTrack' }).click();
+  await expectMobileTargetSize(page.getByRole('button', { name: 'Open Ravel' }));
+  await page.getByRole('button', { name: 'Open Ravel' }).click();
 }
 
 async function getRouteDiagnostics(page: Page) {
@@ -188,7 +188,7 @@ test('fresh app shell opens core routes offline before they have ever been visit
   await waitForOfflineShell(page);
 
   const cacheStatus = await page.evaluate(async (expectedPaths) => {
-    const keys = (await caches.keys()).filter((key) => key.startsWith('taptrack-shell-'));
+    const keys = (await caches.keys()).filter((key) => key.startsWith('ravel-shell-'));
     const key = keys[0] ?? null;
     if (!key) return { keys, missing: expectedPaths };
     const cache = await caches.open(key);
@@ -282,17 +282,17 @@ test('device-local ledger works across warmed offline mobile routes', async ({ p
 
   const cacheInventory = await page.evaluate(async () => {
     const keys = await caches.keys();
-    const tapTrackKeys = keys.filter((key) => key.startsWith('taptrack-shell-'));
+    const ravelKeys = keys.filter((key) => key.startsWith('ravel-shell-'));
     const urls = (
       await Promise.all(
-        tapTrackKeys.map(async (key) =>
+        ravelKeys.map(async (key) =>
           (await caches.open(key)).keys().then((requests) => requests.map((request) => request.url))
         )
       )
     ).flat();
-    return { keys, tapTrackKeys, urls };
+    return { keys, ravelKeys, urls };
   });
-  expect(cacheInventory.tapTrackKeys).toHaveLength(1);
+  expect(cacheInventory.ravelKeys).toHaveLength(1);
   expect(cacheInventory.urls.some((url) => url.includes('/api/') || url.includes('/auth/'))).toBe(false);
   expect(cacheInventory.urls.every((url) => new URL(url).origin === appOrigin)).toBe(true);
 

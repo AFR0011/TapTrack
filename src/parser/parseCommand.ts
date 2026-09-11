@@ -57,7 +57,7 @@ export function parseCommand(command: string, options: ParseCommandOptions): Par
   if (tokenCurrency && activeCurrencies.size > 0 && !activeCurrencies.has(tokenCurrency)) {
     return {
       ok: false,
-      message: `${tokenCurrency} is not active in this TapTrack ledger. Add it in Settings first.`,
+      message: `${tokenCurrency} is not active in this Ravel ledger. Add it in Settings first.`,
     };
   }
 

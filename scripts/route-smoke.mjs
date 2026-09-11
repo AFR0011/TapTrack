@@ -1,4 +1,4 @@
-const baseUrl = process.env.TAPTRACK_SMOKE_BASE_URL ?? 'http://127.0.0.1:3000';
+const baseUrl = process.env.RAVEL_SMOKE_BASE_URL ?? process.env.TAPTRACK_SMOKE_BASE_URL ?? 'http://127.0.0.1:3000';
 
 const checks = [
   {
@@ -11,7 +11,8 @@ const checks = [
         response.status === 200 &&
         contentType.includes('text/html') &&
         body.includes('Ravel') &&
-        body.includes('Your money doesn’t live in one place. Your ledger can.')
+        body.includes('Your money doesn’t live in one place. Your ledger can.') &&
+        body.includes('Illustrative interface')
       );
     },
   },
@@ -65,15 +66,27 @@ const checks = [
       return (
         response.status === 200 &&
         contentType.includes('application/manifest+json') &&
-        body?.name === 'Ravel'
+        body?.name === 'Ravel' &&
+        body?.icons?.some((icon) => icon?.src === '/icons/ravel-icon.svg') &&
+        body?.icons?.some((icon) => icon?.src === '/icons/ravel-maskable.svg')
       );
     },
   },
   {
-    name: 'service worker is public JavaScript',
+    name: 'Ravel service worker precaches current app assets',
     path: '/sw.js',
-    expect: (response) =>
-      response.status === 200 && response.headers.get('content-type')?.includes('javascript'),
+    expect: async (response) => {
+      const contentType = response.headers.get('content-type') ?? '';
+      const body = await response.clone().text();
+      return (
+        response.status === 200 &&
+        contentType.includes('javascript') &&
+        body.includes('/icons/ravel-icon.svg') &&
+        body.includes('/icons/ravel-maskable.svg') &&
+        !body.includes('/icons/taptrack-icon.svg') &&
+        !body.includes('/icons/taptrack-maskable.svg')
+      );
+    },
   },
   {
     name: 'telegram webhook fails closed when integration is unconfigured',

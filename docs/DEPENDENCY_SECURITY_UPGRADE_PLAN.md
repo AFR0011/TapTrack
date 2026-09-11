@@ -4,7 +4,7 @@ Last updated: 2026-08-08
 
 ## Status
 
-The previously deferred framework/dependency security batch is complete on the TapTrack upgrade/publication branches.
+The previously deferred framework/dependency security batch is complete on the Ravel upgrade/publication branches.
 
 The application has been migrated from Next.js 14 / React 18 to:
 
@@ -56,7 +56,7 @@ The publication branch additionally gates the **full** dependency tree with `npm
 
 ## ESLint 10 compatibility note
 
-`eslint-config-next@16.2.12` currently pulls React/import/a11y plugins whose peer ranges and rule APIs target ESLint 9. Rather than disabling lint rules or reverting to the older dependency graph, TapTrack wraps the imported Next configs with the official `@eslint/compat` `fixupConfigRules()` compatibility layer.
+`eslint-config-next@16.2.12` currently pulls React/import/a11y plugins whose peer ranges and rule APIs target ESLint 9. Rather than disabling lint rules or reverting to the older dependency graph, Ravel wraps the imported Next configs with the official `@eslint/compat` `fixupConfigRules()` compatibility layer.
 
 This is intentionally temporary infrastructure. Remove the wrapper when the upstream plugin stack natively supports ESLint 10 and the full verification/audit ladder remains green without it.
 

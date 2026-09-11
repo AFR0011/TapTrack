@@ -79,7 +79,7 @@ export default function MonthlyReconciliationPrompt() {
     <ConfirmDialog
       open
       title="Monthly balance check"
-      message="Compare TapTrack with the balances you actually have. Leave matching values unchanged and correct anything that is off. Differences are saved as reconciliation adjustments, not income or spending."
+      message="Compare Ravel with the balances you actually have. Leave matching values unchanged and correct anything that is off. Differences are saved as reconciliation adjustments, not income or spending."
       confirmLabel="Reconcile"
       cancelLabel="Not now"
       confirmLoading={saving}
@@ -93,7 +93,7 @@ export default function MonthlyReconciliationPrompt() {
           <label key={balance.id} className="grid gap-1.5">
             <span className="flex items-baseline justify-between gap-3 text-sm font-medium text-secondary">
               <span>{balance.currency} {balance.method}</span>
-              <span className="text-xs text-muted">TapTrack: {formatMoney(balance.amount, balance.currency)}</span>
+              <span className="text-xs text-muted">Ravel: {formatMoney(balance.amount, balance.currency)}</span>
             </span>
             <input
               value={inputs[balance.id] ?? ''}

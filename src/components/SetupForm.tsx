@@ -1,6 +1,7 @@
 'use client';
 
 import { type FormEvent, useState } from 'react';
+import { BRAND } from '@/brand';
 import { SUPPORTED_METHODS, type Currency, type Method } from '@/types';
 import { Button } from '@/components/ui/Button';
 import { Card } from '@/components/ui/Card';
@@ -71,7 +72,7 @@ export default function SetupForm() {
     <div className="min-h-screen bg-background px-4 py-8 text-primary">
       <form onSubmit={handleSubmit} className="mx-auto max-w-2xl space-y-5">
         <header>
-          <h1 className="text-3xl font-semibold tracking-normal md:text-4xl">Welcome to TapTrack</h1>
+          <h1 className="font-display text-3xl font-semibold tracking-normal md:text-4xl">Welcome to {BRAND.name}</h1>
           <p className="mt-3 text-sm leading-6 text-muted">
             Add your TRY balances and a monthly budget to start logging expenses. Foreign currency is optional.
           </p>

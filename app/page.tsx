@@ -1,6 +1,7 @@
 import Link from 'next/link';
 import { BRAND } from '@/brand';
 import { RavelMark } from '@/components/brand/RavelMark';
+import { RavelProductPreview } from '@/components/brand/RavelProductPreview';
 
 const pillars = [
   {
@@ -23,12 +24,6 @@ const pillars = [
     title: 'Automation helps. You decide.',
     body: 'Smart Categories can suggest and organize, while your own choices remain authoritative.',
   },
-] as const;
-
-const sampleCurrencies = [
-  { code: 'TRY', amount: '₺42,680', note: 'Cash + card' },
-  { code: 'USD', amount: '$1,420', note: 'Card + cash' },
-  { code: 'EUR', amount: '€860', note: 'Cash' },
 ] as const;
 
 export default function HomePage() {
@@ -62,17 +57,17 @@ export default function HomePage() {
         </div>
       </header>
 
-      <section className="mx-auto grid max-w-7xl gap-12 px-5 py-16 sm:px-8 sm:py-24 lg:grid-cols-[1.05fr_0.95fr] lg:items-center lg:gap-16">
+      <section className="mx-auto grid max-w-7xl gap-12 px-5 py-16 sm:px-8 sm:py-24 lg:grid-cols-[0.9fr_1.1fr] lg:items-center lg:gap-14">
         <div>
           <p className="mb-5 text-xs font-semibold uppercase tracking-[0.28em] text-accent">
-            A quieter personal ledger
+            Personal finance for fragmented money
           </p>
           <h1 className="font-display max-w-4xl text-5xl font-medium leading-[0.98] tracking-[-0.035em] sm:text-6xl lg:text-7xl">
             {BRAND.hero}
           </h1>
           <p className="mt-7 max-w-2xl text-lg leading-8 text-secondary sm:text-xl">
-            One personal ledger for cash, cards, currencies, transfers and everyday spending. Fast to capture,
-            useful offline, and designed to keep the record under your control.
+            Ravel keeps cash, cards, currencies, transfers, and everyday spending in one dependable ledger.
+            It is fast to capture, useful offline, and built for people whose financial life refuses to fit inside one bank app.
           </p>
           <div className="mt-9 flex flex-wrap items-center gap-3">
             <Link
@@ -96,47 +91,11 @@ export default function HomePage() {
           </div>
         </div>
 
-        <div className="relative mx-auto w-full max-w-xl">
-          <div className="absolute -left-10 top-12 hidden h-40 w-40 rounded-full bg-brand-copper/10 blur-3xl sm:block" />
-          <div className="absolute -right-8 bottom-8 hidden h-48 w-48 rounded-full bg-brand-plum/10 blur-3xl sm:block" />
-          <div className="relative overflow-hidden rounded-[2rem] border border-subtle bg-surface p-4 shadow-[var(--shadow-overlay)] sm:p-6">
-            <div className="mb-7 flex items-center justify-between">
-              <div>
-                <p className="text-xs font-semibold uppercase tracking-[0.2em] text-muted">Balances</p>
-                <p className="font-display mt-1 text-2xl">Where you stand</p>
-              </div>
-              <RavelMark className="h-9 w-9" title="Ravel ledger" />
-            </div>
-
-            <div className="rounded-3xl bg-brand-espresso p-6 text-brand-bone">
-              <p className="text-xs font-semibold uppercase tracking-[0.18em] text-brand-bone/65">Your ledger</p>
-              <p className="font-display mt-3 text-4xl tracking-tight">Three currencies. One record.</p>
-              <p className="mt-3 max-w-sm text-sm leading-6 text-brand-bone/70">
-                See each currency clearly without pretending unlike money is directly interchangeable.
-              </p>
-            </div>
-
-            <div className="mt-4 grid gap-3">
-              {sampleCurrencies.map((currency, index) => (
-                <div
-                  key={currency.code}
-                  className="flex items-center justify-between gap-4 rounded-2xl border border-subtle bg-background/70 px-4 py-4"
-                >
-                  <div className="flex items-center gap-3">
-                    <span
-                      className={`h-2.5 w-2.5 rounded-full ${
-                        index === 0 ? 'bg-brand-olive' : index === 1 ? 'bg-brand-copper' : 'bg-brand-plum'
-                      }`}
-                    />
-                    <div>
-                      <p className="font-semibold">{currency.code}</p>
-                      <p className="mt-0.5 text-xs text-muted">{currency.note}</p>
-                    </div>
-                  </div>
-                  <p className="font-display text-xl tabular-nums">{currency.amount}</p>
-                </div>
-              ))}
-            </div>
+        <div className="relative mx-auto w-full max-w-3xl">
+          <div className="absolute -left-8 top-12 hidden h-44 w-44 rounded-full bg-brand-copper/10 blur-3xl sm:block" />
+          <div className="absolute -right-8 bottom-8 hidden h-52 w-52 rounded-full bg-brand-plum/10 blur-3xl sm:block" />
+          <div className="relative">
+            <RavelProductPreview />
           </div>
         </div>
       </section>
@@ -148,6 +107,10 @@ export default function HomePage() {
             <h2 className="font-display mt-4 text-4xl leading-tight tracking-tight sm:text-5xl">
               Record in seconds. Keep the whole picture.
             </h2>
+            <p className="mt-5 max-w-2xl text-base leading-7 text-secondary">
+              Ravel is for the awkward middle ground conventional finance apps handle badly: several currencies,
+              cash beside cards, money moving between places, and connectivity that cannot be assumed.
+            </p>
           </div>
           <div className="mt-10 grid gap-px overflow-hidden rounded-3xl border border-subtle bg-subtle md:grid-cols-2">
             {pillars.map((pillar) => (
@@ -166,7 +129,7 @@ export default function HomePage() {
           <p className="text-xs font-semibold uppercase tracking-[0.22em] text-brand-copper-bright">Ledger, not guesswork</p>
           <h2 className="font-display mt-4 text-4xl leading-tight">Moving money isn’t spending money.</h2>
           <p className="mt-5 max-w-xl leading-7 text-brand-bone/72">
-            Ravel keeps transfers, currency exchanges, reconciliations and everyday transactions distinct so the record reflects what actually happened.
+            Ravel keeps transfers, currency exchanges, reconciliations, income, and everyday spending distinct so the record reflects what actually happened.
           </p>
         </div>
         <div className="rounded-[2rem] border border-subtle bg-surface p-7 sm:p-10">

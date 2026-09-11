@@ -1,6 +1,6 @@
 'use client';
 
-import { db, type TapTrackDatabase } from '@/database';
+import { db, type RavelDatabase } from '@/database';
 import {
   applyPreparedBackupRestore,
   prepareBackupRestoreJSON,
@@ -19,7 +19,7 @@ type AccountRestoreResponse = {
 export async function restoreOnlyThisDevice(
   jsonData: string,
   beforeReplace: RestoreSafetyBackupHandler,
-  database: TapTrackDatabase = db
+  database: RavelDatabase = db
 ): Promise<RestoreBackupResult> {
   const prepared = await prepareBackupRestoreJSON(jsonData, database);
   await beforeReplace(prepared.safetyBackup);
@@ -29,7 +29,7 @@ export async function restoreOnlyThisDevice(
 export async function restoreSyncedAccount(
   jsonData: string,
   beforeReplace: RestoreSafetyBackupHandler,
-  database: TapTrackDatabase = db
+  database: RavelDatabase = db
 ): Promise<RestoreBackupResult> {
   const access = await getSyncAccess(database);
   if (access.state !== 'linked' || !access.userId || !access.binding) {

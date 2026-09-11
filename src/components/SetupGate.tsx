@@ -12,7 +12,7 @@ export default function SetupGate({ children }: { children: ReactNode }) {
   if (settings === undefined) {
     return (
       <div className="min-h-dvh bg-background" role="status" aria-live="polite">
-        <span className="sr-only">Preparing TapTrack...</span>
+        <span className="sr-only">Preparing Ravel...</span>
       </div>
     );
   }

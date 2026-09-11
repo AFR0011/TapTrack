@@ -1,5 +1,5 @@
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
-import { TapTrackDatabase } from '@/database';
+import { RavelDatabase } from '@/database';
 import { DEVICE_LEDGER_BINDING_ID } from '@/sync/syncBinding';
 import { disconnectDeviceLedger } from '@/sync/disconnectDevice';
 
@@ -19,10 +19,10 @@ function makeTransaction() {
 }
 
 describe('disconnectDeviceLedger', () => {
-  let database: TapTrackDatabase;
+  let database: RavelDatabase;
 
   beforeEach(() => {
-    database = new TapTrackDatabase(`taptrack-disconnect-${crypto.randomUUID()}`);
+    database = new RavelDatabase(`ravel-disconnect-${crypto.randomUUID()}`);
   });
 
   afterEach(async () => {

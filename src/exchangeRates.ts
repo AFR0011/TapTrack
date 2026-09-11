@@ -1,7 +1,8 @@
 import type { Currency } from '@/types';
 
 export const EXCHANGE_RATE_SOURCE = 'Frankfurter' as const;
-const EXCHANGE_RATE_CACHE_KEY = 'taptrack.exchange-rates.v1';
+const EXCHANGE_RATE_CACHE_KEY = 'ravel.exchange-rates.v1';
+const LEGACY_EXCHANGE_RATE_CACHE_KEY = 'taptrack.exchange-rates.v1';
 const MAX_CACHED_RATES = 120;
 
 export type HistoricalExchangeRateResponse = {
@@ -12,9 +13,9 @@ export type HistoricalExchangeRateResponse = {
   rate: number;
   source: typeof EXCHANGE_RATE_SOURCE;
   status: 'historical' | 'prior-available';
-  /** True when this response came from TapTrack's local rate cache. */
+  /** True when this response came from Ravel's local rate cache. */
   cached?: boolean;
-  /** When TapTrack last fetched this rate successfully from the provider. */
+  /** When Ravel last fetched this rate successfully from the provider. */
   fetchedAt?: string;
 };
 
@@ -178,7 +179,11 @@ function readCachedExchangeRates(): CachedExchangeRate[] {
   if (!storage) return [];
 
   try {
-    const raw = storage.getItem(EXCHANGE_RATE_CACHE_KEY);
+    let raw = storage.getItem(EXCHANGE_RATE_CACHE_KEY);
+    if (!raw) {
+      raw = storage.getItem(LEGACY_EXCHANGE_RATE_CACHE_KEY);
+      if (raw) storage.setItem(EXCHANGE_RATE_CACHE_KEY, raw);
+    }
     if (!raw) return [];
     const parsed = JSON.parse(raw) as unknown;
     if (!Array.isArray(parsed)) return [];

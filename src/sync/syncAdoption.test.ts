@@ -1,5 +1,5 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
-import { TapTrackDatabase, ensureDatabaseSeeded } from '@/database';
+import { RavelDatabase, ensureDatabaseSeeded } from '@/database';
 import { DEVICE_LEDGER_BINDING_ID } from '@/sync/syncBinding';
 
 vi.mock('@/lib/supabase', () => ({ createSupabaseBrowserClient: vi.fn() }));
@@ -55,10 +55,10 @@ function createCloudClient(options: CloudClientOptions = {}) {
 }
 
 describe('cloud ledger adoption', () => {
-  let database: TapTrackDatabase;
+  let database: RavelDatabase;
 
   beforeEach(async () => {
-    database = new TapTrackDatabase(`taptrack-adoption-${crypto.randomUUID()}`);
+    database = new RavelDatabase(`ravel-adoption-${crypto.randomUUID()}`);
     await ensureDatabaseSeeded(database);
     vi.mocked(inspectDeviceLedgerLinkToCurrentUser).mockResolvedValue({
       state: 'merge-choice',

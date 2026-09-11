@@ -642,7 +642,7 @@ export default function ConversionsWorkspaceB004() {
 
           {editingConversion ? (
             <div className="mt-5 rounded-xl bg-surface-muted/70 p-4 text-sm font-medium text-secondary ring-1 ring-subtle/70">
-              TapTrack will remove the original move, apply this corrected version, and rebuild all affected balances in one local transaction. If the correction would make any balance negative, nothing is changed.
+              Ravel will remove the original move, apply this corrected version, and rebuild all affected balances in one local transaction. If the correction would make any balance negative, nothing is changed.
             </div>
           ) : (
             <div className="mt-5 space-y-3">
@@ -781,7 +781,7 @@ export default function ConversionsWorkspaceB004() {
       <ConfirmDialog
         open={Boolean(deleteTarget)}
         title={deleteTarget?.fromCurrency !== deleteTarget?.toCurrency ? 'Delete exchange?' : 'Delete transfer?'}
-        message="This removes the original move and recalculates the ledger. If later activity depends on money introduced by this move, TapTrack will block the deletion rather than create a negative balance."
+        message="This removes the original move and recalculates the ledger. If later activity depends on money introduced by this move, Ravel will block the deletion rather than create a negative balance."
         confirmLabel="Delete move"
         confirmVariant="danger"
         confirmLoading={deleting}

@@ -1,7 +1,7 @@
 'use client';
 
 import type { SupabaseClient } from '@supabase/supabase-js';
-import { db, type TapTrackDatabase } from '@/database';
+import { db, type RavelDatabase } from '@/database';
 import { createSupabaseBrowserClient } from '@/lib/supabase';
 import { ensureCloudLedgerVersion } from '@/sync/ledgerVersion';
 import type { DeviceMetadata } from '@/types';
@@ -49,7 +49,7 @@ export type LedgerLinkPlan = {
 
 export type LedgerLinkMode = 'empty-only' | 'use-cloud' | 'merge-local';
 
-export async function getSyncAccess(database: TapTrackDatabase = db): Promise<SyncAccess> {
+export async function getSyncAccess(database: RavelDatabase = db): Promise<SyncAccess> {
   const client = createSupabaseBrowserClient();
   let binding: DeviceMetadata | null;
   try {
@@ -80,7 +80,7 @@ export async function getSyncAccess(database: TapTrackDatabase = db): Promise<Sy
 }
 
 export async function requireLinkedSyncAccess(
-  database: TapTrackDatabase = db
+  database: RavelDatabase = db
 ): Promise<{ client: SupabaseClient; userId: string; binding: DeviceMetadata } | null> {
   try {
     const access = await getSyncAccess(database);
@@ -96,7 +96,7 @@ export async function requireLinkedSyncAccess(
  * Seeded categories, zero balances, and untouched default settings do not count.
  */
 export async function hasMeaningfulLocalLedgerData(
-  database: TapTrackDatabase = db
+  database: RavelDatabase = db
 ): Promise<boolean> {
   const [
     transactionCount,
@@ -175,7 +175,7 @@ async function remoteLedgerHasData(client: SupabaseClient, userId: string): Prom
  * directly; a device with real local data requires an explicit merge choice.
  */
 export async function inspectDeviceLedgerLinkToCurrentUser(
-  database: TapTrackDatabase = db
+  database: RavelDatabase = db
 ): Promise<LedgerLinkPlan> {
   const client = createSupabaseBrowserClient();
   if (!client) throw new Error('Cloud sync is not configured.');
@@ -222,7 +222,7 @@ export async function inspectDeviceLedgerLinkToCurrentUser(
  * can be committed in the same Dexie transaction as the canonical replacement.
  */
 export async function prepareDeviceLedgerBindingToCurrentUser(
-  database: TapTrackDatabase = db,
+  database: RavelDatabase = db,
   mode: LedgerLinkMode = 'empty-only'
 ): Promise<DeviceMetadata> {
   const client = createSupabaseBrowserClient();
@@ -264,7 +264,7 @@ export async function prepareDeviceLedgerBindingToCurrentUser(
  * an existing cloud ledger because the caller has chosen how to reconcile it.
  */
 export async function linkDeviceLedgerToCurrentUser(
-  database: TapTrackDatabase = db,
+  database: RavelDatabase = db,
   mode: LedgerLinkMode = 'empty-only'
 ): Promise<DeviceMetadata> {
   const binding = await prepareDeviceLedgerBindingToCurrentUser(database, mode);

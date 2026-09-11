@@ -1,6 +1,6 @@
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 import { DEFAULT_SETTINGS_ID, getBalanceId } from '@/defaultData';
-import { TapTrackDatabase, ensureDatabaseSeeded } from '@/database';
+import { RavelDatabase, ensureDatabaseSeeded } from '@/database';
 import type { Currency, Method, TransactionDraft } from '@/types';
 import {
   InsufficientBalanceError,
@@ -10,10 +10,10 @@ import {
   updateTransaction,
 } from './createTransaction';
 
-let database: TapTrackDatabase;
+let database: RavelDatabase;
 
 beforeEach(async () => {
-  database = new TapTrackDatabase(`TapTrackTest-${crypto.randomUUID()}`);
+  database = new RavelDatabase(`RavelTest-${crypto.randomUUID()}`);
   await ensureDatabaseSeeded(database);
 });
 

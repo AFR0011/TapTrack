@@ -1,4 +1,4 @@
-import { db, ensureDatabaseSeeded, type TapTrackDatabase } from '@/database';
+import { db, ensureDatabaseSeeded, type RavelDatabase } from '@/database';
 import { getBalanceId } from '@/defaultData';
 import { formatLocalDate, getAutomaticOccurredAt } from '@/dates';
 import { rebuildDerivedBalances } from '@/balances/ledgerService';
@@ -86,7 +86,7 @@ function assertNoNegativeBalances(
 /** Creates a conversion record, rebuilds balances, and queues sync intent atomically. */
 export async function createConversion(
   draft: ConversionDraft,
-  database: TapTrackDatabase = db,
+  database: RavelDatabase = db,
   nowDate = new Date()
 ): Promise<Conversion> {
   validateDraft(draft, nowDate);
@@ -147,7 +147,7 @@ export async function createConversion(
 export async function updateConversion(
   id: string,
   draft: ConversionDraft,
-  database: TapTrackDatabase = db,
+  database: RavelDatabase = db,
   nowDate = new Date()
 ): Promise<Conversion> {
   validateDraft(draft, nowDate);
@@ -213,7 +213,7 @@ export async function updateConversion(
 /** Deletes a transfer/exchange only when the remaining ledger can still produce valid balances. */
 export async function deleteConversion(
   id: string,
-  database: TapTrackDatabase = db
+  database: RavelDatabase = db
 ): Promise<void> {
   await ensureDatabaseSeeded(database);
   const now = new Date().toISOString();

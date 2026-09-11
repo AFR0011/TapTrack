@@ -1,6 +1,7 @@
 'use client';
 
 import { useEffect, useId, useRef, useState } from 'react';
+import { BRAND } from '@/brand';
 import {
   adoptCloudLedger,
   inspectCloudAdoption,
@@ -41,7 +42,7 @@ export function CloudLedgerLink({ onLinked }: CloudLedgerLinkProps) {
       setPlan(nextPlan);
       setOpen(true);
     } catch (error) {
-      toast.error(error instanceof Error ? error.message : 'TapTrack could not check sync right now. Try again.');
+      toast.error(error instanceof Error ? error.message : `${BRAND.name} could not check sync right now. Try again.`);
     } finally {
       setBusy(false);
     }
@@ -50,7 +51,7 @@ export function CloudLedgerLink({ onLinked }: CloudLedgerLinkProps) {
   const persistPreAdoptionSafetyBackup = async () => {
     const backup = await exportJSON();
     const timestamp = new Date().toISOString().replace(/[:.]/g, '-');
-    downloadText(`taptrack-pre-sync-replace-${timestamp}.json`, backup, 'application/json');
+    downloadText(`ravel-pre-sync-replace-${timestamp}.json`, backup, 'application/json');
   };
 
   const run = async (action: 'empty' | 'account' | 'merge') => {
@@ -152,10 +153,10 @@ export function CloudLedgerLink({ onLinked }: CloudLedgerLinkProps) {
             </h3>
             <p id={descriptionId} className="mt-2 text-sm font-medium leading-6 text-secondary">
               {plan.state === 'remote-empty'
-                ? 'Your synced account does not have TapTrack data yet. The data on this device will become the starting copy.'
+                ? `Your synced account does not have ${BRAND.name} data yet. The data on this device will become the starting copy.`
                 : plan.state === 'cloud-only'
-                  ? 'There is no TapTrack data on this device to preserve. TapTrack can load the data already saved to your account.'
-                  : 'This device and your synced account both contain TapTrack data. Keeping both is the safest choice.'}
+                  ? `There is no ${BRAND.name} data on this device to preserve. ${BRAND.name} can load the data already saved to your account.`
+                  : `This device and your synced account both contain ${BRAND.name} data. Keeping both is the safest choice.`}
             </p>
 
             {plan.state === 'merge-choice' ? (
@@ -179,7 +180,7 @@ export function CloudLedgerLink({ onLinked }: CloudLedgerLinkProps) {
                 <div className="rounded-2xl border border-subtle bg-surface-muted p-4">
                   <p className="text-sm font-semibold text-primary">Use synced account only</p>
                   <p className="mt-1 text-xs font-medium leading-5 text-muted">
-                    Replace the TapTrack data on this device with the copy already saved to your account. A safety backup of this device will be downloaded first.
+                    Replace the {BRAND.name} data on this device with the copy already saved to your account. A safety backup of this device will be downloaded first.
                   </p>
                   <Button
                     type="button"
@@ -221,7 +222,7 @@ export function CloudLedgerLink({ onLinked }: CloudLedgerLinkProps) {
       <ConfirmDialog
         open={confirmReplace}
         title="Replace the data on this device?"
-        message="TapTrack will first download a safety backup, then replace the current data on this device with the data in your synced account. The two ledgers will not be combined."
+        message={`${BRAND.name} will first download a safety backup, then replace the current data on this device with the data in your synced account. The two ledgers will not be combined.`}
         confirmLabel="Use synced account"
         confirmVariant="danger"
         onConfirm={() => void run('account')}

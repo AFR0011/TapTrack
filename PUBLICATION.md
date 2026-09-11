@@ -1,6 +1,6 @@
 # Publication Readiness
 
-TapTrack is a public engineering portfolio repository for a mobile-first, local-first personal finance application built with Next.js, React, TypeScript, Dexie/IndexedDB, and Supabase Auth, with optional remote canonical sync and server-side integrations.
+Ravel is a public engineering portfolio repository for a mobile-first, local-first personal finance application built with Next.js, React, TypeScript, Dexie/IndexedDB, and Supabase Auth, with optional remote canonical sync and server-side integrations.
 
 ## Release status
 
@@ -48,7 +48,7 @@ The subsequent `optimize_rls_and_indexes` migration removed RLS initplan warning
 
 ## Public claims currently supportable
 
-TapTrack can accurately claim that:
+Ravel can accurately claim that:
 
 - finance capture is local-first and can operate offline after the application shell is warmed;
 - balances are derived from canonical checkpoints, transactions, and conversions rather than synchronized as independent truth;
@@ -67,7 +67,7 @@ Do not claim that:
 
 - native installed Safari/iOS behavior has been comprehensively verified;
 - empty-cloud claim + initial seed is one transactional server operation;
-- IndexedDB is encrypted by TapTrack;
+- IndexedDB is encrypted by Ravel;
 - money uses exact integer-minor-unit or decimal arithmetic;
 - the repository's entire unreachable/reflog/object history has been exhaustively secret-scanned unless a full local mirror scan is completed.
 
@@ -90,4 +90,4 @@ Never publish screenshots containing real Supabase server credentials, Groq cred
 
 ## License
 
-TapTrack source code is released under the MIT License. See `LICENSE`.
+Ravel source code is released under the MIT License. See `LICENSE`.

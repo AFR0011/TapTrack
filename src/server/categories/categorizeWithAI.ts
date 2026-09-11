@@ -57,7 +57,7 @@ export async function categorizeWithAI(
         response_format: {
           type: 'json_schema',
           json_schema: {
-            name: 'taptrack_category_evaluation',
+            name: 'ravel_category_evaluation',
             strict: true,
             schema: {
               type: 'object',

@@ -78,14 +78,14 @@ export function ResetScopeDialog({
           What should be reset?
         </h3>
         <p id={descriptionId} className="mt-2 text-sm font-medium text-secondary">
-          A safety backup will be downloaded first. Choose whether to clear TapTrack only on this device or across your synced account.
+          A safety backup will be downloaded first. Choose whether to clear Ravel only on this device or across your synced account.
         </p>
 
         <div className="mt-5 grid gap-3">
           <div className="rounded-lg border border-danger/40 bg-danger-muted p-4">
             <p className="text-sm font-semibold text-danger">Reset synced account</p>
             <p className="mt-1 text-xs font-medium text-secondary">
-              Clear the TapTrack data in your synced account. Other connected devices will receive the empty account when they next sync.
+              Clear the Ravel data in your synced account. Other connected devices will receive the empty account when they next sync.
             </p>
             <Button
               type="button"
@@ -101,7 +101,7 @@ export function ResetScopeDialog({
           <div className="rounded-lg border border-subtle bg-surface-muted p-4">
             <p className="text-sm font-semibold text-primary">Reset only this device</p>
             <p className="mt-1 text-xs font-medium text-muted">
-              Disconnect this device from sync and clear TapTrack only here. Your synced account and other devices remain unchanged.
+              Disconnect this device from sync and clear Ravel only here. Your synced account and other devices remain unchanged.
             </p>
             <Button
               type="button"

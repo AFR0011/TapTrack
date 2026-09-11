@@ -2,7 +2,7 @@
 
 import type { Table } from 'dexie';
 import { rebuildDerivedBalances } from '@/balances/ledgerService';
-import { db, type TapTrackDatabase } from '@/database';
+import { db, type RavelDatabase } from '@/database';
 import {
   createDefaultCategories,
   createDefaultSettings,
@@ -69,7 +69,7 @@ function createEmptySnapshot(): RemoteSnapshot {
 }
 
 function getLocalTable(
-  database: TapTrackDatabase,
+  database: RavelDatabase,
   tableName: CanonicalTableName
 ): Table<Record<string, unknown>, string> {
   return database[tableName] as unknown as Table<Record<string, unknown>, string>;
@@ -113,7 +113,7 @@ async function fetchValidatedCloudSnapshot(userId: string): Promise<RemoteSnapsh
 async function replaceLocalCanonicalSnapshot(
   snapshot: RemoteSnapshot,
   binding: DeviceMetadata,
-  database: TapTrackDatabase
+  database: RavelDatabase
 ): Promise<AdoptionRepairs> {
   const tables = CANONICAL_TABLES.map(({ local }) => getLocalTable(database, local));
   const now = new Date().toISOString();
@@ -181,7 +181,7 @@ async function replaceLocalCanonicalSnapshot(
 }
 
 async function claimEmptyCloudLedger(
-  database: TapTrackDatabase,
+  database: RavelDatabase,
   preparedBinding: DeviceMetadata
 ): Promise<DeviceMetadata> {
   const backup = await createBackup(database);
@@ -224,7 +224,7 @@ async function claimEmptyCloudLedger(
 
 async function commitPreparedBinding(
   binding: DeviceMetadata,
-  database: TapTrackDatabase
+  database: RavelDatabase
 ): Promise<void> {
   await database.transaction('rw', database.deviceMetadata, async () => {
     const existing = await database.deviceMetadata.get(binding.id);
@@ -240,7 +240,7 @@ async function commitPreparedBinding(
 
 /** Returns the exact preflight state the UI should present to the user. */
 export async function inspectCloudAdoption(
-  database: TapTrackDatabase = db
+  database: RavelDatabase = db
 ): Promise<LedgerLinkPlan> {
   return inspectDeviceLedgerLinkToCurrentUser(database);
 }
@@ -252,7 +252,7 @@ export async function inspectCloudAdoption(
  * transaction. Any failure leaves the original unbound local ledger intact.
  */
 export async function adoptCloudLedger(
-  database: TapTrackDatabase = db,
+  database: RavelDatabase = db,
   beforeReplace?: () => void | Promise<void>
 ): Promise<void> {
   const plan = await inspectDeviceLedgerLinkToCurrentUser(database);
@@ -277,7 +277,7 @@ export async function adoptCloudLedger(
 
 /** Merge this device: later successful local upserts win same-record conflicts. */
 export async function mergeLocalLedgerIntoCloud(
-  database: TapTrackDatabase = db
+  database: RavelDatabase = db
 ): Promise<void> {
   await linkDeviceLedgerToCurrentUser(database, 'merge-local');
   await pushLocalChanges(database);
@@ -291,7 +291,7 @@ export async function mergeLocalLedgerIntoCloud(
  * binding, so the initial snapshot cannot silently erase concurrent local work.
  */
 export async function linkEmptyCloudLedger(
-  database: TapTrackDatabase = db
+  database: RavelDatabase = db
 ): Promise<void> {
   const preparedBinding = await prepareDeviceLedgerBindingToCurrentUser(database, 'empty-only');
   const binding = await claimEmptyCloudLedger(database, preparedBinding);

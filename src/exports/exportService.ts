@@ -4,9 +4,9 @@ import {
   restoreBackupJSON,
   type RestoreBackupOptions,
   type RestoreBackupResult,
-  type TapTrackBackupV2,
+  type RavelBackupV2,
 } from '@/exports/backupService';
-import { db, ensureDatabaseSeeded, type TapTrackDatabase } from '@/database';
+import { db, ensureDatabaseSeeded, type RavelDatabase } from '@/database';
 import { formatDisplayMonth } from '@/dates';
 import {
   getTransactionAmountInCurrency,
@@ -20,7 +20,7 @@ import {
 } from '@/reports/reportService';
 import type { Currency, Transaction } from '@/types';
 
-export type TapTrackBackup = TapTrackBackupV2;
+export type RavelBackup = RavelBackupV2;
 
 type ReportPeriodOptions =
   | { mode: 'month'; month: string }
@@ -52,7 +52,7 @@ const CSV_COLUMNS: Array<keyof Transaction> = [
   'updatedAt',
 ];
 
-export async function exportCSV(database: TapTrackDatabase = db): Promise<string> {
+export async function exportCSV(database: RavelDatabase = db): Promise<string> {
   await ensureDatabaseSeeded(database);
   const transactions = await database.transactions.toArray();
   return Papa.unparse({
@@ -61,13 +61,13 @@ export async function exportCSV(database: TapTrackDatabase = db): Promise<string
   });
 }
 
-export async function exportJSON(database: TapTrackDatabase = db): Promise<string> {
+export async function exportJSON(database: RavelDatabase = db): Promise<string> {
   return exportBackupJSON(database);
 }
 
 export async function importJSON(
   jsonData: string,
-  database: TapTrackDatabase = db,
+  database: RavelDatabase = db,
   options: RestoreBackupOptions = {}
 ): Promise<RestoreBackupResult> {
   return restoreBackupJSON(jsonData, database, options);
@@ -75,7 +75,7 @@ export async function importJSON(
 
 export async function exportPDF(
   options: string | ReportExportOptions,
-  database: TapTrackDatabase = db
+  database: RavelDatabase = db
 ): Promise<Blob> {
   await ensureDatabaseSeeded(database);
 
@@ -114,7 +114,7 @@ export async function exportPDF(
     const fxLines = getFxBasisLines(convertAll, reportCurrency, rates);
 
     return createSimplePdf([
-      `TapTrack Yearly Report - ${normalizedOptions.year}`,
+      `Ravel Yearly Report - ${normalizedOptions.year}`,
       '================================================================================',
       `Generated: ${new Date().toISOString()}`,
       '',
@@ -169,7 +169,7 @@ export async function exportPDF(
   const fxLines = getFxBasisLines(convertAll, reportCurrency, rates);
 
   const lines = [
-    `TapTrack ${reportLabel}`,
+    `Ravel ${reportLabel}`,
     '================================================================================',
     `Generated: ${new Date().toISOString()}`,
     '',
@@ -445,7 +445,7 @@ function wrapPdfLine(value: string, maxChars: number): string[] {
 
 /**
  * Helvetica/WinAnsi cannot faithfully render every Unicode code point. Map the
- * common Turkish characters TapTrack is likely to contain and strip remaining
+ * common Turkish characters Ravel is likely to contain and strip remaining
  * combining marks rather than writing malformed PDF strings or silently losing
  * whole rows. The JSON/CSV exports remain the lossless Unicode representations.
  */

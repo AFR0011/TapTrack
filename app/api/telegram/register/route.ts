@@ -11,9 +11,9 @@ import { type NextRequest, NextResponse } from 'next/server';
 export async function GET(request: NextRequest): Promise<NextResponse> {
   const webhookSecret = process.env.TELEGRAM_WEBHOOK_SECRET;
   const token = process.env.TELEGRAM_BOT_TOKEN;
-  const ownerChatId = process.env.TAPTRACK_OWNER_TELEGRAM_CHAT_ID;
-  const ownerId = process.env.TAPTRACK_OWNER_USER_ID;
-  const timeZone = process.env.TAPTRACK_TIME_ZONE;
+  const ownerChatId = process.env.RAVEL_OWNER_TELEGRAM_CHAT_ID ?? process.env.TAPTRACK_OWNER_TELEGRAM_CHAT_ID;
+  const ownerId = process.env.RAVEL_OWNER_USER_ID ?? process.env.TAPTRACK_OWNER_USER_ID;
+  const timeZone = process.env.RAVEL_TIME_ZONE ?? process.env.TAPTRACK_TIME_ZONE;
   const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL;
   const serviceRoleKey = process.env.SUPABASE_SERVICE_ROLE_KEY;
 

@@ -1,9 +1,9 @@
 import { afterEach, describe, expect, it, vi } from 'vitest';
-import { TapTrackDatabase } from '@/database';
+import { RavelDatabase } from '@/database';
 import type { Category, Transaction } from '@/types';
 import { reconcileSavedTransactionCategoryWithAI } from './lateCategorization';
 
-const databases: TapTrackDatabase[] = [];
+const databases: RavelDatabase[] = [];
 const now = '2026-09-11T14:00:00.000Z';
 const categories: Category[] = [
   {
@@ -46,7 +46,7 @@ function transaction(overrides: Partial<Transaction> = {}): Transaction {
 }
 
 async function makeDatabase() {
-  const database = new TapTrackDatabase(`TapTrack-late-ai-${crypto.randomUUID()}`);
+  const database = new RavelDatabase(`Ravel-late-ai-${crypto.randomUUID()}`);
   databases.push(database);
   await database.categories.bulkPut(categories);
   return database;

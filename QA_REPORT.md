@@ -1,4 +1,4 @@
-# TapTrack QA Report
+# Ravel QA Report
 
 Last updated: 2026-09-11
 Promotion PR: #16

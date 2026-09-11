@@ -1,5 +1,6 @@
-const CACHE_PREFIX = 'taptrack-shell-';
-const CACHE_NAME = `${CACHE_PREFIX}2026-09-09-v12`;
+const CACHE_PREFIX = 'ravel-shell-';
+const LEGACY_CACHE_PREFIX = 'taptrack-shell-';
+const CACHE_NAME = `${CACHE_PREFIX}2026-09-11-v14`;
 const NAVIGATION_TIMEOUT_MS = 3500;
 const APP_ROUTES = [
   '/app',
@@ -14,8 +15,8 @@ const APP_ROUTES = [
 ];
 const STATIC_SHELL_ASSETS = [
   '/manifest.webmanifest',
-  '/icons/taptrack-icon.svg',
-  '/icons/taptrack-maskable.svg',
+  '/icons/ravel-icon.svg',
+  '/icons/ravel-maskable.svg',
 ];
 
 self.addEventListener('install', (event) => {
@@ -33,7 +34,10 @@ self.addEventListener('activate', (event) => {
       const keys = await caches.keys();
       await Promise.all(
         keys
-          .filter((key) => key.startsWith(CACHE_PREFIX) && key !== CACHE_NAME)
+          .filter((key) =>
+            (key.startsWith(CACHE_PREFIX) || key.startsWith(LEGACY_CACHE_PREFIX)) &&
+            key !== CACHE_NAME
+          )
           .map((key) => caches.delete(key))
       );
       await self.clients.claim();
@@ -172,7 +176,7 @@ function fetchWithTimeout(request, timeoutMs) {
 
 function offlineFallbackResponse() {
   return new Response(
-    `<!doctype html><html><head><meta name="viewport" content="width=device-width,initial-scale=1"><title>TapTrack offline</title></head><body style="font-family:system-ui,sans-serif;margin:0;padding:32px;background:#f8fafc;color:#0f172a"><main style="max-width:560px;margin:auto"><h1>TapTrack is offline</h1><p>The local app shell was not available for this page yet. Reconnect once so TapTrack can finish preparing offline access.</p></main></body></html>`,
+    `<!doctype html><html><head><meta name="viewport" content="width=device-width,initial-scale=1"><title>Ravel offline</title></head><body style="font-family:system-ui,sans-serif;margin:0;padding:32px;background:#f8f5ee;color:#2e241e"><main style="max-width:560px;margin:auto"><h1>Ravel is offline</h1><p>The local app shell was not available for this page yet. Reconnect once so Ravel can finish preparing offline access.</p></main></body></html>`,
     { status: 503, headers: { 'content-type': 'text/html; charset=utf-8', 'cache-control': 'no-store' } }
   );
 }

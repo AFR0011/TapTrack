@@ -1,5 +1,5 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
-import { TapTrackDatabase, ensureDatabaseSeeded } from '@/database';
+import { RavelDatabase, ensureDatabaseSeeded } from '@/database';
 import { getBalanceId } from '@/defaultData';
 
 vi.mock('@/sync/syncBinding', () => ({
@@ -93,7 +93,7 @@ function createClientMock(options: ClientOptions = {}) {
   };
 }
 
-let database: TapTrackDatabase;
+let database: RavelDatabase;
 
 function authorize(client = createClientMock()) {
   vi.mocked(requireLinkedSyncAccess).mockResolvedValue({
@@ -115,7 +115,7 @@ function authorize(client = createClientMock()) {
 }
 
 beforeEach(async () => {
-  database = new TapTrackDatabase(`TapTrackSyncTest-${crypto.randomUUID()}`);
+  database = new RavelDatabase(`RavelSyncTest-${crypto.randomUUID()}`);
   await ensureDatabaseSeeded(database);
   const client = createClientMock();
   authorize(client);

@@ -26,7 +26,7 @@ export function CloudDeviceDisconnect({ onDisconnected }: CloudDeviceDisconnectP
     try {
       const changed = await disconnectDeviceLedger(db);
       if (changed) {
-        toast.success('This device was disconnected from sync. Its TapTrack data was kept.');
+        toast.success('This device was disconnected from sync. Its Ravel data was kept.');
       }
       setConfirmOpen(false);
       await onDisconnected?.();
@@ -42,7 +42,7 @@ export function CloudDeviceDisconnect({ onDisconnected }: CloudDeviceDisconnectP
       <div className="mt-3 rounded-xl border border-subtle bg-surface-muted p-4">
         <p className="text-sm font-semibold text-primary">This device</p>
         <p className="mt-1 text-xs font-medium text-muted">
-          Disconnecting stops this device from syncing. The TapTrack data already on this device stays here, and your synced account is not changed.
+          Disconnecting stops this device from syncing. The Ravel data already on this device stays here, and your synced account is not changed.
         </p>
         <Button
           type="button"
@@ -58,7 +58,7 @@ export function CloudDeviceDisconnect({ onDisconnected }: CloudDeviceDisconnectP
       <ConfirmDialog
         open={confirmOpen}
         title="Disconnect this device from sync?"
-        message="TapTrack will keep the data already on this device and leave your synced account unchanged. If you connect this device again later, TapTrack will ask how you want to combine the two sets of data."
+        message="Ravel will keep the data already on this device and leave your synced account unchanged. If you connect this device again later, Ravel will ask how you want to combine the two sets of data."
         confirmLabel="Disconnect device"
         onConfirm={() => void disconnect()}
         onCancel={() => setConfirmOpen(false)}

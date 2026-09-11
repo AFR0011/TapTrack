@@ -1,5 +1,5 @@
 import { getBudgetPerformance } from '@/reports/reportTransforms';
-import { db, ensureDatabaseSeeded, type TapTrackDatabase } from '@/database';
+import { db, ensureDatabaseSeeded, type RavelDatabase } from '@/database';
 import { getPreviousMonth } from '@/dates';
 import type { CategoryBudget, Currency, Transaction } from '@/types';
 
@@ -32,7 +32,7 @@ export type BudgetPerformance = {
 
 export async function getCategorySpending(
   month: string,
-  database: TapTrackDatabase = db,
+  database: RavelDatabase = db,
   currency: Currency = 'TRY'
 ): Promise<CategorySpending[]> {
   await ensureDatabaseSeeded(database);
@@ -42,7 +42,7 @@ export async function getCategorySpending(
 
 export async function getSpendingOverTime(
   month: string,
-  database: TapTrackDatabase = db,
+  database: RavelDatabase = db,
   currency: Currency = 'TRY'
 ): Promise<SpendingPoint[]> {
   await ensureDatabaseSeeded(database);
@@ -52,7 +52,7 @@ export async function getSpendingOverTime(
 
 export async function getIncomeVsExpense(
   month: string,
-  database: TapTrackDatabase = db,
+  database: RavelDatabase = db,
   currency: Currency = 'TRY'
 ): Promise<IncomeVsExpense> {
   await ensureDatabaseSeeded(database);
@@ -62,7 +62,7 @@ export async function getIncomeVsExpense(
 
 export async function getMonthlyComparison(
   month: string,
-  database: TapTrackDatabase = db,
+  database: RavelDatabase = db,
   currency: Currency = 'TRY'
 ): Promise<{
   currentMonth: IncomeVsExpense;
@@ -83,7 +83,7 @@ export async function getMonthlyComparison(
 
 export async function getBudgetPerformanceReport(
   month: string,
-  database: TapTrackDatabase = db,
+  database: RavelDatabase = db,
   fallbackCurrency: Currency = 'TRY'
 ): Promise<BudgetPerformance> {
   await ensureDatabaseSeeded(database);
@@ -99,7 +99,7 @@ export async function getBudgetPerformanceReport(
 
 export async function getFullTransactionList(
   month: string,
-  database: TapTrackDatabase = db
+  database: RavelDatabase = db
 ): Promise<Transaction[]> {
   await ensureDatabaseSeeded(database);
   const transactions = await getTransactionsForMonth(month, database);
@@ -109,7 +109,7 @@ export async function getFullTransactionList(
 export async function getDateRangeTransactionList(
   startDate: string,
   endDate: string,
-  database: TapTrackDatabase = db
+  database: RavelDatabase = db
 ): Promise<Transaction[]> {
   await ensureDatabaseSeeded(database);
   const transactions = await getTransactionsForDateRange(startDate, endDate, database);
@@ -119,7 +119,7 @@ export async function getDateRangeTransactionList(
 export async function getDateRangeIncomeVsExpense(
   startDate: string,
   endDate: string,
-  database: TapTrackDatabase = db,
+  database: RavelDatabase = db,
   currency: Currency = 'TRY'
 ): Promise<IncomeVsExpense> {
   await ensureDatabaseSeeded(database);
@@ -130,7 +130,7 @@ export async function getDateRangeIncomeVsExpense(
 export async function getDateRangeCategorySpending(
   startDate: string,
   endDate: string,
-  database: TapTrackDatabase = db,
+  database: RavelDatabase = db,
   currency: Currency = 'TRY'
 ): Promise<CategorySpending[]> {
   await ensureDatabaseSeeded(database);
@@ -141,7 +141,7 @@ export async function getDateRangeCategorySpending(
 export async function getDateRangeSpendingOverTime(
   startDate: string,
   endDate: string,
-  database: TapTrackDatabase = db,
+  database: RavelDatabase = db,
   currency: Currency = 'TRY'
 ): Promise<SpendingPoint[]> {
   await ensureDatabaseSeeded(database);
@@ -151,7 +151,7 @@ export async function getDateRangeSpendingOverTime(
 
 export async function getYearlySummary(
   year: string,
-  database: TapTrackDatabase = db,
+  database: RavelDatabase = db,
   currency: Currency = 'TRY'
 ): Promise<YearlySummary> {
   await ensureDatabaseSeeded(database);
@@ -238,14 +238,14 @@ export function calculateSpendingOverTime(
     .sort((a, b) => a.date.localeCompare(b.date));
 }
 
-async function getTransactionsForMonth(month: string, database: TapTrackDatabase) {
+async function getTransactionsForMonth(month: string, database: RavelDatabase) {
   return database.transactions.where('date').startsWith(month).toArray();
 }
 
 async function getTransactionsForDateRange(
   startDate: string,
   endDate: string,
-  database: TapTrackDatabase
+  database: RavelDatabase
 ) {
   const [start, end] = startDate <= endDate ? [startDate, endDate] : [endDate, startDate];
   return database.transactions.where('date').between(start, end, true, true).toArray();

@@ -1,7 +1,7 @@
 # Repository Profile
 
 Workflow schema: `agentic-workflow/v2`
-Project: TapTrack
+Project: Ravel
 Repository profile: software
 Initialized: 2026-09-05
 

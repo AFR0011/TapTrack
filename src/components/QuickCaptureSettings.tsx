@@ -20,8 +20,8 @@ type ShortcutType = 'expense' | 'income';
 type SetupSession = { token: string; device: CaptureTokenMetadata };
 
 const SHORTCUT_LINKS: Record<ShortcutType, string | undefined> = {
-  expense: process.env.NEXT_PUBLIC_TAPTRACK_EXPENSE_SHORTCUT_URL,
-  income: process.env.NEXT_PUBLIC_TAPTRACK_INCOME_SHORTCUT_URL,
+  expense: process.env.NEXT_PUBLIC_RAVEL_EXPENSE_SHORTCUT_URL ?? process.env.NEXT_PUBLIC_TAPTRACK_EXPENSE_SHORTCUT_URL,
+  income: process.env.NEXT_PUBLIC_RAVEL_INCOME_SHORTCUT_URL ?? process.env.NEXT_PUBLIC_TAPTRACK_INCOME_SHORTCUT_URL,
 };
 
 export function QuickCaptureSettings({ signedIn }: { signedIn: boolean }) {
@@ -169,7 +169,7 @@ export function QuickCaptureSettings({ signedIn }: { signedIn: boolean }) {
       }
       return false;
     } catch (error) {
-      toast.error(error instanceof Error ? error.message : 'TapTrack could not verify the shortcut yet.');
+      toast.error(error instanceof Error ? error.message : 'Ravel could not verify the shortcut yet.');
       return false;
     }
   };
@@ -357,9 +357,9 @@ function ShortcutSetupSheet({
   const onCancelRef = useRef(onCancel);
   const templateUrl = SHORTCUT_LINKS[shortcutType];
   const endpoint = typeof window === 'undefined' ? '/api/capture' : `${window.location.origin}/api/capture`;
-  const shortcutName = shortcutType === 'expense' ? 'TapTrack Expense' : 'TapTrack Income';
+  const shortcutName = shortcutType === 'expense' ? 'Ravel Expense' : 'Ravel Income';
   const verified = Boolean(session?.device.last_used_at);
-  const displayedCheckMessage = checkMessage || (verified ? 'Connected. TapTrack received a transaction from this shortcut.' : '');
+  const displayedCheckMessage = checkMessage || (verified ? 'Connected. Ravel received a transaction from this shortcut.' : '');
 
   useEffect(() => {
     onCancelRef.current = onCancel;
@@ -412,7 +412,7 @@ function ShortcutSetupSheet({
     const connected = await onVerify();
     setCheckMessage(
       connected
-        ? 'Connected. TapTrack received a transaction from this shortcut.'
+        ? 'Connected. Ravel received a transaction from this shortcut.'
         : 'Not connected yet. Run the shortcut once on your iPhone, then check again.'
     );
     setChecking(false);
@@ -473,7 +473,7 @@ function ShortcutSetupSheet({
             {session ? (
               <>
                 <p className="text-sm text-muted">
-                  Paste this key into the shortcut once. TapTrack stores only a hash and will not show the key again.
+                  Paste this key into the shortcut once. Ravel stores only a hash and will not show the key again.
                 </p>
                 <Button type="button" variant="secondary" className="mt-3" onClick={() => void copyToken()}>
                   {copied ? 'Copied ✓' : 'Copy setup key'}
@@ -511,7 +511,7 @@ function ShortcutSetupSheet({
             ) : (
               <>
                 <p className="text-sm text-muted">
-                  TapTrack’s capture API is ready, but this deployment does not have a prebuilt iCloud Shortcut link configured. Manual setup works with the same secure key.
+                  Ravel’s capture API is ready, but this deployment does not have a prebuilt iCloud Shortcut link configured. Manual setup works with the same secure key.
                 </p>
                 <ol className="mt-3 list-decimal space-y-2 pl-5 text-sm text-muted">
                   <li>
@@ -525,14 +525,14 @@ function ShortcutSetupSheet({
                     Add the Authorization header as <code className="rounded bg-surface px-1">Bearer [your setup key]</code>.
                   </li>
                 </ol>
-                <p className="mt-3 text-xs text-muted">TapTrack supplies the current date automatically.</p>
+                <p className="mt-3 text-xs text-muted">Ravel supplies the current date automatically.</p>
               </>
             )}
           </SetupStep>
 
           <SetupStep number="3" title="Run once to verify">
             <p className="text-sm text-muted">
-              Run the shortcut on your iPhone and save one transaction. TapTrack will only call the device connected after that first successful capture.
+              Run the shortcut on your iPhone and save one transaction. Ravel will only call the device connected after that first successful capture.
             </p>
             <Button
               type="button"

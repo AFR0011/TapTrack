@@ -1,10 +1,10 @@
-# TapTrack Project State
+# Ravel Project State
 
 Last updated: 2026-09-11
 
 ## Current status
 
-TapTrack V1 is in final release hardening on `hardening/conversion-corrections`, promoted through PR #16 against `main`.
+Ravel V1 is in final release hardening on `hardening/conversion-corrections`, promoted through PR #16 against `main`.
 
 The product is feature-complete for V1. The hardening pass closes the cross-workflow integrity issues found in the pre-marketing audit without adding new product scope.
 
@@ -43,7 +43,7 @@ These are intentionally not expanded into more V1 engineering work:
 - Native installed Safari/iOS PWA relaunch, upgrade, and storage-eviction behavior is not verified. Do not make platform-specific reliability claims until a real-device test is completed.
 - A complete local Git object/reflog historical secret scan has not been performed, so do not claim exhaustive history cleanliness.
 - Supabase leaked-password protection is still disabled as a project-level Auth setting and must be enabled manually if available on the deployed plan.
-- GitHub `main` currently has no ruleset/branch protection. Repository administration must require PR-only changes, TapTrack CI, and disable force-push/deletion.
+- GitHub `main` currently has no ruleset/branch protection. Repository administration must require PR-only changes, Ravel CI, and disable force-push/deletion.
 - Signing out removes the cloud session but intentionally does not erase the local-first ledger on the device. Account & Sync explains that the device remains usable independently; more prominent sign-out microcopy can be handled with later UI/branding work.
 
 ## Release boundary
@@ -55,4 +55,4 @@ No further product features are part of this hardening branch. Release acceptanc
 3. confirm the resulting Vercel production deployment is READY and perform a production smoke check;
 4. keep the residual controls above explicit rather than silently calling them solved.
 
-After that boundary, TapTrack V1 product engineering is frozen and work moves to positioning, branding, landing-page presentation, and launch planning.
+After that boundary, Ravel V1 product engineering is frozen and work moves to positioning, branding, landing-page presentation, and launch planning.

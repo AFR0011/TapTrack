@@ -1,13 +1,13 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
-import { TapTrackDatabase, ensureDatabaseSeeded } from '@/database';
+import { RavelDatabase, ensureDatabaseSeeded } from '@/database';
 import { exportBackupJSON } from '@/exports/backupService';
 import { getSyncAccess } from '@/sync/syncBinding';
 import { restoreOnlyThisDevice, restoreSyncedAccount } from './linkedRestoreService';
 
 vi.mock('@/sync/syncBinding', () => ({ getSyncAccess: vi.fn() }));
 
-let database: TapTrackDatabase;
-let source: TapTrackDatabase;
+let database: RavelDatabase;
+let source: RavelDatabase;
 
 const binding = {
   id: 'ledger-binding',
@@ -18,8 +18,8 @@ const binding = {
 };
 
 beforeEach(async () => {
-  database = new TapTrackDatabase(`TapTrackLinkedRestore-${crypto.randomUUID()}`);
-  source = new TapTrackDatabase(`TapTrackLinkedRestoreSource-${crypto.randomUUID()}`);
+  database = new RavelDatabase(`RavelLinkedRestore-${crypto.randomUUID()}`);
+  source = new RavelDatabase(`RavelLinkedRestoreSource-${crypto.randomUUID()}`);
   await ensureDatabaseSeeded(database);
   await ensureDatabaseSeeded(source);
   await database.deviceMetadata.put(binding);

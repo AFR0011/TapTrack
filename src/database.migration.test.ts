@@ -1,6 +1,6 @@
 import Dexie from 'dexie';
 import { afterEach, describe, expect, it } from 'vitest';
-import { TapTrackDatabase, ensureDatabaseSeeded } from '@/database';
+import { RavelDatabase, ensureDatabaseSeeded } from '@/database';
 
 const legacyStores = {
   transactions: 'id, type, date, categoryId, method, currency, recurringSourceId',
@@ -21,7 +21,7 @@ describe('database migrations', () => {
   });
 
   it('preserves finance data, creates no binding implicitly, and snapshots completed balances once', async () => {
-    const name = `taptrack-migration-${crypto.randomUUID()}`;
+    const name = `ravel-migration-${crypto.randomUUID()}`;
     names.push(name);
     const legacy = new Dexie(name);
     legacy.version(1).stores(legacyStores);
@@ -48,7 +48,7 @@ describe('database migrations', () => {
     for (const [table, row] of Object.entries(rows)) await legacy.table(table).put(row);
     legacy.close();
 
-    const upgraded = new TapTrackDatabase(name);
+    const upgraded = new RavelDatabase(name);
     await upgraded.open();
 
     for (const [table, row] of Object.entries(rows)) {
@@ -67,14 +67,14 @@ describe('database migrations', () => {
     const checkpointCount = await upgraded.balanceCheckpoints.count();
     upgraded.close();
 
-    const reopened = new TapTrackDatabase(name);
+    const reopened = new RavelDatabase(name);
     await reopened.open();
     await expect(reopened.balanceCheckpoints.count()).resolves.toBe(checkpointCount);
     reopened.close();
   });
 
   it('does not invent opening checkpoints before setup is complete', async () => {
-    const name = `taptrack-migration-unfinished-${crypto.randomUUID()}`;
+    const name = `ravel-migration-unfinished-${crypto.randomUUID()}`;
     names.push(name);
     const legacy = new Dexie(name);
     legacy.version(1).stores(legacyStores);
@@ -102,16 +102,16 @@ describe('database migrations', () => {
     });
     legacy.close();
 
-    const upgraded = new TapTrackDatabase(name);
+    const upgraded = new RavelDatabase(name);
     await upgraded.open();
     await expect(upgraded.balanceCheckpoints.count()).resolves.toBe(0);
     upgraded.close();
   });
 
   it('repairs missing default category ids without overwriting existing category changes', async () => {
-    const name = `taptrack-seed-repair-${crypto.randomUUID()}`;
+    const name = `ravel-seed-repair-${crypto.randomUUID()}`;
     names.push(name);
-    const database = new TapTrackDatabase(name);
+    const database = new RavelDatabase(name);
     await ensureDatabaseSeeded(database);
 
     const existingFood = await database.categories.get('cat-food');

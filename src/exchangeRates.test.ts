@@ -126,7 +126,7 @@ describe('exchange-rate cache', () => {
 
   it('rejects offline fallback when the only saved rate is after the requested date', async () => {
     const storage = new Map<string, string>();
-    storage.set('taptrack.exchange-rates.v1', JSON.stringify([directNewer]));
+    storage.set('ravel.exchange-rates.v1', JSON.stringify([directNewer]));
     vi.stubGlobal('window', {
       localStorage: {
         getItem: (key: string) => storage.get(key) ?? null,

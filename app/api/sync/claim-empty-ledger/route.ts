@@ -1,5 +1,5 @@
 import { NextResponse } from 'next/server';
-import { normalizeBackupJSON, type TapTrackBackupV2 } from '@/exports/backupService';
+import { normalizeBackupJSON, type RavelBackupV2 } from '@/exports/backupService';
 import { createSupabaseAdminClient } from '@/lib/supabase-admin';
 import { createSupabaseServerClient } from '@/lib/supabase-server';
 
@@ -38,7 +38,7 @@ export async function POST(request: Request): Promise<NextResponse> {
     return NextResponse.json({ error: 'Invalid request body.' }, { status: 400 });
   }
 
-  let backup: TapTrackBackupV2;
+  let backup: RavelBackupV2;
   try {
     backup = normalizeBackupJSON(JSON.stringify(body.backup)).backup;
   } catch (error) {
@@ -92,7 +92,7 @@ export async function POST(request: Request): Promise<NextResponse> {
   }
 }
 
-function toRemoteBackupPayload(backup: TapTrackBackupV2): Record<string, unknown> {
+function toRemoteBackupPayload(backup: RavelBackupV2): Record<string, unknown> {
   return {
     transactions: backup.transactions.map(toSnakeCaseRecord),
     balance_checkpoints: backup.balanceCheckpoints.map(toSnakeCaseRecord),

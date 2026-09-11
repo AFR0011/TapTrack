@@ -85,7 +85,7 @@ export function RestoreScopeDialog({
           <div className="rounded-lg border border-danger/40 bg-danger-muted p-4">
             <p className="text-sm font-semibold text-danger">Restore synced account</p>
             <p className="mt-1 text-xs font-medium text-secondary">
-              Replace the TapTrack data in your synced account with this backup. Other connected devices will receive the restored data when they next sync.
+              Replace the Ravel data in your synced account with this backup. Other connected devices will receive the restored data when they next sync.
             </p>
             <Button
               type="button"

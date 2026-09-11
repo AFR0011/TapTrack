@@ -1,10 +1,10 @@
-# TapTrack Repo Map
+# Ravel Repo Map
 
 Last mapped: 2026-09-05
 
 ## Overview
 
-TapTrack is a Next.js 16 App Router, React, TypeScript, Tailwind, and Dexie/IndexedDB personal
+Ravel is a Next.js 16 App Router, React, TypeScript, Tailwind, and Dexie/IndexedDB personal
 finance PWA. The browser-profile-local ledger is the normal source of truth; Supabase sync is an
 optional, explicitly bound capability. `BLUEPRINT.md` defines product scope and completed batch
 TT-B001; `DEV_STATE.md`, `QA_REPORT.md`, and `RISK_REGISTER.md` carry current closure evidence.
@@ -19,7 +19,7 @@ TT-B001; `DEV_STATE.md`, `QA_REPORT.md`, and `RISK_REGISTER.md` carry current cl
 | `app/(authenticated)/app/**` | Seven local routes: dashboard, transactions, conversions, budgets, recurring, reports, settings. |
 | `app/providers/DatabaseProvider.tsx` | Opens/seeds local data and processes recurring items before eligible optional sync. |
 | `proxy.ts` | Non-gating optional Supabase session refresh and authenticated-login redirect. |
-| `public/sw.js` | Versioned TapTrack-owned route/static cache and offline document fallback. |
+| `public/sw.js` | Versioned Ravel-owned route/static cache and offline document fallback. |
 | `public/manifest.webmanifest` | PWA install metadata with `/app` start route. |
 | `app/api/telegram/**` | Fail-closed bot registration/webhook boundaries. |
 | `app/api/exchange-rates/route.ts` | Public exchange-rate lookup with fallback behavior. |

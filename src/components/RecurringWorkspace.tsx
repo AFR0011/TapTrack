@@ -271,7 +271,7 @@ export default function RecurringWorkspace() {
         <div className="min-w-0">
           <h1 className="text-3xl font-semibold tracking-tight text-primary">Recurring</h1>
           <p className="mt-1 max-w-2xl text-sm font-medium text-muted">
-            Keep repeating income and expenses on schedule. TapTrack posts due occurrences to your ledger automatically.
+            Keep repeating income and expenses on schedule. Ravel posts due occurrences to your ledger automatically.
           </p>
         </div>
         <Button type="button" onClick={openCreate} className="w-full sm:w-auto">
@@ -294,7 +294,7 @@ export default function RecurringWorkspace() {
         <div className="min-w-0">
           <p className="text-sm font-semibold text-primary">Automatic due posting is on</p>
           <p className="mt-1 text-xs font-medium text-muted">
-            TapTrack checks active rules when the app starts. Checking manually is safe and will not duplicate an occurrence.
+            Ravel checks active rules when the app starts. Checking manually is safe and will not duplicate an occurrence.
           </p>
         </div>
         <Button
@@ -379,7 +379,7 @@ export default function RecurringWorkspace() {
         onClose={closeEditor}
         size="lg"
         title={editing ? 'Edit recurring transaction' : 'New recurring transaction'}
-        description={editing ? 'Changes affect future generated transactions only.' : 'Create one rule and let TapTrack handle each due occurrence.'}
+        description={editing ? 'Changes affect future generated transactions only.' : 'Create one rule and let Ravel handle each due occurrence.'}
         footer={
           <div className="flex items-center justify-end gap-2">
             <Button type="button" variant="ghost" onClick={closeEditor} disabled={saving}>Cancel</Button>

@@ -68,8 +68,8 @@ const placeholderExpectations = new Map([
   ['SUPABASE_SERVICE_ROLE_KEY', 'your-supabase-service-role-key'],
   ['TELEGRAM_BOT_TOKEN', 'your-telegram-bot-token'],
   ['TELEGRAM_WEBHOOK_SECRET', 'your-webhook-secret-token'],
-  ['TAPTRACK_OWNER_TELEGRAM_CHAT_ID', 'your-telegram-chat-id'],
-  ['TAPTRACK_OWNER_USER_ID', 'supabase-user-id'],
+  ['RAVEL_OWNER_TELEGRAM_CHAT_ID', 'your-telegram-chat-id'],
+  ['RAVEL_OWNER_USER_ID', 'supabase-user-id'],
   ['GROQ_API_KEY', 'your-groq-api-key'],
   ['GROQ_MODEL', 'openai/gpt-oss-20b'],
 ]);

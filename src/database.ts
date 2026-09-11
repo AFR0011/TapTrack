@@ -19,7 +19,11 @@ import {
 } from '@/defaultData';
 import { formatLocalDate, getCurrentMonth } from '@/dates';
 
-export class TapTrackDatabase extends Dexie {
+// Persisted on existing devices before the product was renamed to Ravel.
+// Changing this value would open a new IndexedDB database and strand the user's local ledger.
+const PERSISTED_DATABASE_NAME = 'TapTrackDB';
+
+export class RavelDatabase extends Dexie {
   transactions!: Table<Transaction, string>;
   balances!: Table<Balance, string>;
   balanceCheckpoints!: Table<BalanceCheckpoint, string>;
@@ -32,7 +36,7 @@ export class TapTrackDatabase extends Dexie {
   deviceMetadata!: Table<DeviceMetadata, string>;
   syncOutbox!: Table<SyncOutboxItem, string>;
 
-  constructor(name = 'TapTrackDB') {
+  constructor(name = PERSISTED_DATABASE_NAME) {
     super(name);
     this.version(1).stores({
       transactions: 'id, type, date, categoryId, method, currency, recurringSourceId',
@@ -110,9 +114,9 @@ export class TapTrackDatabase extends Dexie {
   }
 }
 
-export const db = new TapTrackDatabase();
+export const db = new RavelDatabase();
 
-export async function ensureDatabaseSeeded(database: TapTrackDatabase = db) {
+export async function ensureDatabaseSeeded(database: RavelDatabase = db) {
   const now = new Date().toISOString();
 
   await database.transaction('rw', database.categories, database.settings, async () => {

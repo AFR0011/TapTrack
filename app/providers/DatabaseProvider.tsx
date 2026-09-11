@@ -142,7 +142,7 @@ export function DatabaseProvider({ children }: { children: ReactNode }) {
           <p className="font-semibold text-primary">Recurring transaction needs ordering</p>
           <p className="mt-1 leading-5">
             “{firstConflict.title}” is due on {firstConflict.occurrenceDate}, the same date as a balance check.
-            Choose whether it happened before or after that recorded balance so TapTrack does not guess.
+            Choose whether it happened before or after that recorded balance so Ravel does not guess.
           </p>
           <div className="mt-3 flex flex-wrap gap-2">
             <Button

@@ -1,5 +1,5 @@
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
-import { TapTrackDatabase, ensureDatabaseSeeded } from '@/database';
+import { RavelDatabase, ensureDatabaseSeeded } from '@/database';
 import { getBalanceId } from '@/defaultData';
 import { addActiveCurrency, removeActiveCurrency } from '@/currencies/currencyService';
 import { completeInitialSetup } from '@/setup/setupService';
@@ -12,7 +12,7 @@ import {
   resolveHistoricalOccurrenceAroundCheckpoint,
 } from './reconciliationService';
 
-let database: TapTrackDatabase;
+let database: RavelDatabase;
 
 const initialBalances = {
   TRY: { cash: 500, card: 1000 },
@@ -21,7 +21,7 @@ const initialBalances = {
 };
 
 beforeEach(async () => {
-  database = new TapTrackDatabase(`TapTrackReconciliationTest-${crypto.randomUUID()}`);
+  database = new RavelDatabase(`RavelReconciliationTest-${crypto.randomUUID()}`);
   await ensureDatabaseSeeded(database);
   await completeInitialSetup(
     {

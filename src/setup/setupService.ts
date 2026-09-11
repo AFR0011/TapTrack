@@ -1,4 +1,4 @@
-import { db, ensureDatabaseSeeded, type TapTrackDatabase } from '@/database';
+import { db, ensureDatabaseSeeded, type RavelDatabase } from '@/database';
 import { createDefaultSettings, DEFAULT_SETTINGS_ID, getBalanceId } from '@/defaultData';
 import { formatLocalDate, getCurrentMonth } from '@/dates';
 import { getMonthlyBudgetId } from '@/budgets/budgetService';
@@ -23,7 +23,7 @@ export type InitialSetupInput = {
 
 export async function completeInitialSetup(
   input: InitialSetupInput,
-  database: TapTrackDatabase = db,
+  database: RavelDatabase = db,
   nowDate = new Date()
 ): Promise<Settings> {
   await ensureDatabaseSeeded(database);

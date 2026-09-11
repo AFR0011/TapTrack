@@ -1,21 +1,21 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
-import { TapTrackDatabase, ensureDatabaseSeeded } from '@/database';
+import { RavelDatabase, ensureDatabaseSeeded } from '@/database';
 import { completeInitialSetup } from '@/setup/setupService';
 import { createTransaction } from '@/transactions/createTransaction';
 import { getBalanceId } from '@/defaultData';
 import type { Currency, Method } from '@/types';
 import {
   BackupValidationError,
-  TAPTRACK_BACKUP_FORMAT,
-  TAPTRACK_BACKUP_VERSION,
+  RAVEL_BACKUP_FORMAT,
+  RAVEL_BACKUP_VERSION,
   exportBackupJSON,
   restoreBackupJSON,
 } from './backupService';
 
-let database: TapTrackDatabase;
+let database: RavelDatabase;
 
 beforeEach(async () => {
-  database = new TapTrackDatabase(`TapTrackBackupTest-${crypto.randomUUID()}`);
+  database = new RavelDatabase(`RavelBackupTest-${crypto.randomUUID()}`);
   await ensureDatabaseSeeded(database);
 });
 
@@ -76,8 +76,8 @@ describe('backupService', () => {
       await exportBackupJSON(database, new Date('2026-05-07T00:00:00.000Z'))
     ) as Record<string, unknown>;
 
-    expect(parsed.format).toBe(TAPTRACK_BACKUP_FORMAT);
-    expect(parsed.version).toBe(TAPTRACK_BACKUP_VERSION);
+    expect(parsed.format).toBe(RAVEL_BACKUP_FORMAT);
+    expect(parsed.version).toBe(RAVEL_BACKUP_VERSION);
     expect(parsed.exportedAt).toBe('2026-05-07T00:00:00.000Z');
     expect(Array.isArray(parsed.balanceCheckpoints)).toBe(true);
     expect(parsed).not.toHaveProperty('balances');

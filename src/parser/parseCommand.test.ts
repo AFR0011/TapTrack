@@ -58,7 +58,7 @@ describe('parseCommand', () => {
       })
     ).toEqual({
       ok: false,
-      message: 'USD is not active in this TapTrack ledger. Add it in Settings first.',
+      message: 'USD is not active in this Ravel ledger. Add it in Settings first.',
     });
   });
 

@@ -334,7 +334,7 @@ export default function ReportsWorkspace() {
         : { mode: 'range', startDate: rangeStart, endDate: rangeEnd, ...fx };
     try {
       const blob = await exportPDF(options);
-      downloadBlob(`taptrack-${mode}-report.pdf`, blob);
+      downloadBlob(`ravel-${mode}-report.pdf`, blob);
       setActionsOpen(false);
     } catch (error) {
       setExportError(error instanceof Error ? error.message : 'The PDF could not be created.');

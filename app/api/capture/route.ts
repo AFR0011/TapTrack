@@ -44,8 +44,8 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
     admin.from('categories').select('id, name, icon, color, is_default, type, created_at, updated_at').eq('user_id', tokenRow.user_id).is('deleted_at', null),
   ]);
 
-  if (settingsError || categoriesError) return NextResponse.json({ error: 'TapTrack could not load the linked ledger.' }, { status: 503 });
-  if (!settings?.setup_completed || !rawCategories?.length) return NextResponse.json({ error: 'Finish TapTrack setup and cloud linking before using Quick Capture.' }, { status: 409 });
+  if (settingsError || categoriesError) return NextResponse.json({ error: 'Ravel could not load the linked ledger.' }, { status: 503 });
+  if (!settings?.setup_completed || !rawCategories?.length) return NextResponse.json({ error: 'Finish Ravel setup and cloud linking before using Quick Capture.' }, { status: 409 });
 
   const categories: Category[] = rawCategories.map((category) => ({
     id: category.id as string,
@@ -59,7 +59,7 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
   }));
 
   const category = await suggestServerCategory({ userId: String(tokenRow.user_id), title: parsed.title, type: parsed.type, categories, aiEnabled: Boolean(settings.ai_categorization_enabled) });
-  if (!category) return NextResponse.json({ error: 'No matching TapTrack category is available.' }, { status: 409 });
+  if (!category) return NextResponse.json({ error: 'No matching Ravel category is available.' }, { status: 409 });
 
   const method: Method = parsed.method ?? (settings.last_used_method === 'cash' ? 'cash' : 'card');
   const defaultCurrency = normalizeCurrencyCode(settings.default_currency) ?? 'TRY';
@@ -72,7 +72,7 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
   });
   const currency: Currency = parsed.currency ?? defaultCurrency;
   if (!activeCurrencies.includes(currency)) {
-    return NextResponse.json({ error: `${currency} is not active in this TapTrack ledger.` }, { status: 409 });
+    return NextResponse.json({ error: `${currency} is not active in this Ravel ledger.` }, { status: 409 });
   }
 
   const requestId = canonicalCaptureRequestId(parsed.requestId);
@@ -91,7 +91,7 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
     if (result.errorCode === 'rate-limit') return NextResponse.json({ error: 'Quick Capture rate limit reached.' }, { status: 429 });
     if (result.errorCode === 'invalid-token') return NextResponse.json({ error: 'Quick Capture key is invalid or revoked.' }, { status: 401 });
     if (result.errorCode === 'insufficient-balance') return NextResponse.json({ error: 'Not enough balance for this expense.', currency: result.currency, method: result.method, availableAmount: result.availableAmount }, { status: 409 });
-    if (result.errorCode === 'ledger-not-ready') return NextResponse.json({ error: 'Finish TapTrack setup and cloud linking before using Quick Capture.' }, { status: 409 });
+    if (result.errorCode === 'ledger-not-ready') return NextResponse.json({ error: 'Finish Ravel setup and cloud linking before using Quick Capture.' }, { status: 409 });
     return NextResponse.json({ error: 'Transaction could not be captured.' }, { status: 409 });
   }
 
