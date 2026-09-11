@@ -1,71 +1,75 @@
-# QA Report
+# TapTrack QA Report
 
-Workflow schema: `agentic-workflow/v2`
-Project: TapTrack
-Repository profile: software
+Last updated: 2026-09-11
+Promotion PR: #16
 
-## Current promotion
+## Scope
 
-- Scope: completed editorial redesign plus pre-main ledger/sync/reporting hardening
-- Promotion PR: #15
-- Base before promotion: `main` at `0057367c2c7bb2bab1a3a13d3fc768766316a255`
-- Verified code candidate: `0d03ca1da0888744c374689fcd8015d5d67e5b23`
-- Verification run: GitHub Actions `34407468049`
-- Candidate verdict: `PASS`
+This report covers the final V1 hardening pass performed after the end-to-end product audit. The objective was to close integrity/release blockers without introducing new product scope before the branding/marketing phase.
 
-## Automated evidence for candidate `0d03ca1...`
+## Hardening coverage
 
-- publication guard: PASS
-- `npm audit --audit-level=high`: 0 vulnerabilities at configured threshold
-- `npm audit --omit=dev --audit-level=high`: 0 vulnerabilities at configured threshold
-- ESLint: PASS; three non-blocking unused-variable warnings remained at this candidate and are removed by the final cleanup commit in PR #15
-- TypeScript: PASS
-- Vitest: 44/44 files, 244/244 tests PASS
-- Next.js 16.3.4 production build: PASS
-- route smoke: 9/9 PASS
-- Playwright: 9 passed / 2 intentionally skipped across mobile 320, mobile 390, and desktop 1440 projects
-- warmed/fresh offline route coverage, offline local-ledger persistence, recurring mobile editing, settings mobile behavior, navigation overlay regression, and desktop responsive compositions remain in the browser gate
+### Transfers and exchanges
 
-The final PR head after warning cleanup and release-record updates must pass the complete gate again. Earlier green evidence is not substituted for exact-head verification.
+- full edit/delete lifecycle;
+- atomic canonical mutation + derived balance rebuild + sync intent;
+- overdraft rollback;
+- historical FX refresh when rate-affecting fields change;
+- preserved rate for metadata-only edits;
+- explicit same-day reconciliation ordering;
+- corrections remain possible for historical moves involving archived currencies.
 
-## Correctness findings closed in this promotion
+The browser regression uses real application onboarding and verifies an exchange changes actual balances: TRY cash `1000` + USD card `100`, USD `10` -> TRY `400`, ending at USD card `90` and TRY cash `1400`.
 
-### Sync/adoption
+### Cross-entity integrity
 
-Cloud adoption no longer clears/replaces canonical local data and binds the device as separate local transactions. Snapshot replacement, derived-balance rebuild, repair rows, outbox reset, and device binding are committed atomically after validation. Account changes during adoption fail closed.
+- category delete/type-change repairs dependent transactions and recurring rules;
+- incompatible category budgets are deleted atomically;
+- currency archival is blocked while an active recurring rule uses the currency;
+- paused rules in archived currencies cannot resume until the currency is active again;
+- archived nonzero holdings remain part of Dashboard Available.
 
-### Recurring integration
+### Validation and calendar behavior
 
-Online startup does not generate due recurring entries unless the pre-sync cycle succeeds. Offline startup remains local-first. Reconciliation-date occurrences use explicit before/after ordering rather than repeatedly failing on unresolved same-day ambiguity.
+- strict onboarding and monthly-budget amount parsing;
+- future-dated manual transactions/conversions rejected in services and constrained in UI;
+- Reports custom ranges default using local calendar date rather than UTC truncation;
+- reusable select controls generate unique IDs;
+- account registration/reset client minimum raised to 8 characters;
+- currency formatting follows currency-specific fraction digits rather than forcing two decimals.
 
-### Ledger/reconciliation
+### Sync race hardening
 
-Future-dated manual transaction/conversion writes are rejected. Monthly reconciliation is evaluated per active balance, including balances introduced during a month, while archived currencies do not block completion.
+TT-R15 is mitigated through the server-authorized `claim_empty_taptrack_ledger` PostgreSQL function. The function locks the account ledger version, locks canonical finance tables, rechecks emptiness, and seeds the full initial ledger in one transaction. The route returns a conflict to a concurrent losing first-device claim, and the browser remains unbound.
 
-### FX/reporting
+The migration is live on production Supabase. Privilege verification confirms `authenticated` cannot execute the function and `service_role` can.
 
-Historical cache fallback cannot select a rate observation later than the requested historical date. Dashboard financial maps are bound to the quote currency that produced them, preventing stale default-currency values after a preference switch. PDF report text wraps and paginates rather than flowing below a one-page content stream.
+## Verified baseline
 
-### Preference conflict domain
+GitHub Actions run `34605264268` on candidate `de7458adc27fef4d0ce37bae2a12dbaaa55121dc` passed:
 
-Creating ordinary ledger transactions no longer updates the synchronized Settings row merely to remember the most recently used cash/card method. The Settings payment method is treated as an explicit default preference, reducing unnecessary multi-device same-record conflicts.
+- publication guard;
+- full dependency audit: 0 high vulnerabilities;
+- production dependency audit: 0 high vulnerabilities;
+- ESLint;
+- TypeScript;
+- Vitest: 260 tests;
+- production build;
+- route smoke: 9/9;
+- responsive/offline Playwright, including the real exchange balance workflow.
 
-## Release acceptance rule
+Later password/currency-formatting and documentation commits require the same full exact-head gate before merge. The release is not accepted solely from this earlier baseline.
 
-Promotion is accepted only when all of the following are true:
+## Residual release controls
 
-1. PR #15 exact head passes the full GitHub Actions gate.
-2. PR #15 is mergeable against unchanged `main` and is merged with expected-head protection.
-3. GitHub Actions succeeds for the resulting exact `main` merge SHA.
-4. The corresponding Vercel production deployment reaches READY.
-5. Production smoke confirms the public/authenticated shell responds without fresh deployment errors.
+The following are explicit residuals rather than hidden failures:
 
-## Residuals not closed by this release
+- Supabase leaked-password protection is disabled and requires a manual Auth setting change if supported on the plan.
+- GitHub `main` has no ruleset/branch protection and requires repository-admin configuration.
+- Native installed Safari/iOS PWA behavior has not been verified on a real device.
+- Exhaustive Git all-object/reflog secret scanning has not been performed locally.
+- JavaScript `number` remains money storage; integer minor-unit/decimal storage is deferred to a future migration.
 
-- native Safari/iOS installed-PWA relaunch/upgrade/storage-eviction behavior;
-- empty-cloud claim + seed TOCTOU across provider boundaries;
-- JavaScript-number monetary precision;
-- IndexedDB at-rest exposure without application-level encryption;
-- exhaustive all-object/reflog historical secret scanning;
-- Supabase leaked-password protection project setting;
-- repository branch protection, tracked by issue #14 because repository-administration write permission is unavailable through the connected GitHub App.
+## Release gate
+
+PR #16 may be promoted only after its documentation-frozen head passes the complete CI gate. After merge, the exact `main` merge SHA must also be green and the corresponding Vercel production deployment must be READY with a production smoke check.
