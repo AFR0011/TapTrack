@@ -12,7 +12,9 @@ const checks = [
         contentType.includes('text/html') &&
         body.includes('Ravel') &&
         body.includes('Your money doesn’t live in one place. Your ledger can.') &&
-        body.includes('Illustrative interface')
+        body.includes('Illustrative interface') &&
+        body.includes('rel="canonical"') &&
+        body.includes('https://ravel-fawn.vercel.app')
       );
     },
   },
@@ -85,6 +87,34 @@ const checks = [
         body.includes('/icons/ravel-maskable.svg') &&
         !body.includes('/icons/taptrack-icon.svg') &&
         !body.includes('/icons/taptrack-maskable.svg')
+      );
+    },
+  },
+  {
+    name: 'Ravel robots policy exposes only public discovery surface',
+    path: '/robots.txt',
+    expect: async (response) => {
+      const contentType = response.headers.get('content-type') ?? '';
+      const body = await response.clone().text();
+      return (
+        response.status === 200 &&
+        contentType.includes('text/plain') &&
+        body.includes('Disallow: /app') &&
+        body.includes('Disallow: /login') &&
+        body.includes('Sitemap: https://ravel-fawn.vercel.app/sitemap.xml')
+      );
+    },
+  },
+  {
+    name: 'Ravel public sitemap uses canonical production origin',
+    path: '/sitemap.xml',
+    expect: async (response) => {
+      const contentType = response.headers.get('content-type') ?? '';
+      const body = await response.clone().text();
+      return (
+        response.status === 200 &&
+        contentType.includes('application/xml') &&
+        body.includes('<loc>https://ravel-fawn.vercel.app</loc>')
       );
     },
   },

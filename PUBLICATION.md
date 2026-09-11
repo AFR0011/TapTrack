@@ -1,86 +1,84 @@
 # Publication Readiness
 
-Ravel is a public engineering portfolio repository for a mobile-first, local-first personal finance application built with Next.js, React, TypeScript, Dexie/IndexedDB, and Supabase Auth, with optional remote canonical sync and server-side integrations.
+Ravel is a public engineering portfolio repository for a mobile-first, local-first personal finance ledger built with Next.js, React, TypeScript, Dexie/IndexedDB, optional Supabase Auth/sync, and optional server-side integrations.
 
 ## Release status
 
-TT-B002 is now deployed to production on `main`.
+Ravel V1 is released on `main`. The public product, GitHub repository, PWA identity, CI workflow, and Vercel project use the Ravel name. The public production URL is `https://ravel-fawn.vercel.app`.
 
-The production release includes:
+The last fully verified production baseline before the release-closure audit branch is `dd4546cbeec5f9cab1817f67c04ab24dfd017152`.
+
+Ravel CI run `34630711573` passed:
+
+- publication guard;
+- full and production dependency audits with 0 reported vulnerabilities;
+- ESLint;
+- TypeScript;
+- 49 Vitest files / 268 tests;
+- production build;
+- 9/9 route-smoke checks;
+- Playwright: 10 passed / 3 intentionally skipped across mobile and desktop coverage.
+
+The corresponding Vercel production deployment `dpl_FWn9vqGpuNyqkbXb6194KvQV93vK` is READY, and no runtime error clusters were found in the checked 24-hour production window.
+
+## Implemented release capabilities
 
 - canonical checkpoint-based ledger reconstruction and reconciliation;
-- atomic local finance mutation + durable IndexedDB sync intent;
+- atomic local finance mutation plus durable IndexedDB sync intent;
 - explicit cloud-use vs local-merge adoption;
-- multi-device convergence and generation-aware account replacement;
+- generation-aware multi-device convergence and account replacement;
+- server-authorized atomic empty-cloud claim plus initial seed;
 - versioned backup/restore with explicit device/account scope;
-- explicit reset-only-this-device vs reset-synced-account-everywhere semantics;
+- explicit device-only vs account-wide reset semantics;
 - explicit per-device cloud disconnect;
 - anchored recurring schedules and deterministic occurrence IDs;
-- historical TCMB/Frankfurter FX and transaction-date report/PDF valuation;
-- authenticated server-side Groq categorization with server-only quota enforcement;
-- private-owner Telegram capture using atomic/idempotent server-side mutation;
+- historical exchange-rate support and transaction-date report valuation;
+- authenticated server-side Groq categorization with non-blocking save behavior;
+- private-owner Telegram capture through protected server/database paths;
+- capture-token workflow with legacy-token compatibility;
 - PKCE/token-hash auth callback handling;
 - production CSP/security headers;
-- authenticated-shell PWA registration and offline-mobile Chromium verification.
-
-## Verification
-
-The B002 automated gate passed on implementation head `2e01cda7e69e80a4b75fa2bcea20f253fb4ebbc5` in GitHub Actions run `34206762454`:
-
-- 32/32 Vitest files PASS;
-- 172/172 tests PASS;
-- TypeScript PASS;
-- production build PASS;
-- 9/9 route-smoke checks PASS;
-- 2/2 mobile offline Playwright projects PASS;
-- dependency audits reported 0 vulnerabilities at the configured threshold.
-
-The compatible B002 application was promoted to `main` and deployed to Vercel production. Production Supabase server credentials were configured, protected sync was confirmed working, and `enforce_protected_sync_writes` was then applied.
-
-Post-enforcement verification confirmed:
-
-- canonical finance tables expose owner SELECT policies only;
-- direct authenticated-browser INSERT/UPDATE/DELETE policies are removed;
-- protected mutation and replacement RPCs remain `SECURITY DEFINER`, service-role executable, and unavailable to ordinary authenticated clients;
-- no fresh production runtime errors were observed in the checked sync/restore/AI/Telegram route window.
-
-The subsequent `optimize_rls_and_indexes` migration removed RLS initplan warnings and duplicate unique indexes while preserving policy semantics.
+- authenticated-shell PWA registration and Chromium offline/mobile verification;
+- complete Ravel public visual identity and provider rename for GitHub/Vercel.
 
 ## Public claims currently supportable
 
 Ravel can accurately claim that:
 
-- finance capture is local-first and can operate offline after the application shell is warmed;
+- finance capture is local-first and can operate offline after the application shell is prepared;
+- cash, cards, multiple currencies, transfers, exchanges, reconciliations, income, and expenses coexist in one ledger;
 - balances are derived from canonical checkpoints, transactions, and conversions rather than synchronized as independent truth;
 - normal local finance writes durably queue sync intent atomically with local mutation;
 - cloud binding is explicit and account mismatches fail closed;
-- same-record conflicts use last-successful-sync-wins behavior;
 - account-wide replacement rotates ledger generation so stale clients adopt instead of replaying old pending work;
+- first-device empty-cloud claim and initial seed are one server-authorized transaction;
 - restore/reset have explicit device-only and account-wide semantics;
-- device disconnect preserves the canonical local ledger while removing cloud binding and pending sync intent;
-- historical FX and TRY-unified reports use transaction-date valuation;
-- hosted AI categorization is authenticated and server-side;
-- Telegram mutation is private-owner-only, atomic, and idempotent by Telegram `update_id`;
-- canonical production writes are now enforced through server-mediated protected routes rather than browser mutation policies.
+- historical FX/report conversion follows explicit date-aware behavior rather than inventing rates;
+- hosted AI categorization is authenticated, server-side, optional, and non-blocking;
+- Telegram mutation is private-owner-only, atomic at the database primitive, and idempotent by Telegram `update_id`;
+- canonical production writes use server-mediated protected routes rather than direct browser mutation policies.
 
 Do not claim that:
 
 - native installed Safari/iOS behavior has been comprehensively verified;
-- empty-cloud claim + initial seed is one transactional server operation;
 - IndexedDB is encrypted by Ravel;
 - money uses exact integer-minor-unit or decimal arithmetic;
-- the repository's entire unreachable/reflog/object history has been exhaustively secret-scanned unless a full local mirror scan is completed.
+- the repository's entire unreachable/reflog/object history has been exhaustively secret-scanned;
+- all account-security protections are enabled while Supabase leaked-password protection remains disabled.
+
+## Rebrand compatibility
+
+A small set of historical TapTrack identifiers remains intentionally because existing devices, backups, environment configuration, credentials, or deployed database contracts depend on them. They are compatibility identifiers, not public branding. See `docs/RAVEL_COMPATIBILITY.md`.
 
 ## Residuals
 
-The following are intentionally retained as documented residuals rather than hidden behind release wording:
-
-- native installed Safari/iOS relaunch, upgrade, and storage-eviction behavior;
-- empty-cloud claim/seed TOCTOU between final emptiness check and initial seed;
-- JavaScript `number` monetary precision;
-- local IndexedDB at-rest exposure;
-- exhaustive full-object historical secret scan;
-- Supabase leaked-password protection remains disabled at the Auth project level unless enabled separately.
+- Native installed Safari/iOS relaunch, upgrade, and storage-eviction behavior remains unverified.
+- JavaScript `number` remains the money representation.
+- IndexedDB remains visible to anyone with access to the browser profile and is not application-level encrypted.
+- A complete local Git all-object/reflog historical secret scan remains outstanding.
+- Supabase leaked-password protection is currently disabled at the Auth project level.
+- GitHub `main` still lacks a repository ruleset; issue #14 tracks the governance control.
+- The Supabase project display name still uses the historical TapTrack label.
 
 ## Privacy presentation rule
 
