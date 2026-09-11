@@ -1,13 +1,13 @@
-name: Ravel migration
+name: Ravel migration audit
 
 on:
   push:
 
 permissions:
-  contents: write
+  contents: read
 
 jobs:
-  migrate:
+  audit:
     if: github.ref == 'refs/heads/brand/ravel-public-cleanup'
     runs-on: ubuntu-latest
     steps:
@@ -23,17 +23,7 @@ jobs:
       - name: Install locked dependencies
         run: npm ci
 
-      - name: Apply Ravel compatibility migration
-        run: node scripts/apply-ravel-migration.mjs
-
-      - name: Commit migration if needed
+      - name: Print remaining historical name references
         run: |
-          if git diff --quiet && git diff --cached --quiet; then
-            echo "Ravel migration already applied."
-            exit 0
-          fi
-          git config user.name "github-actions[bot]"
-          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
-          git add -A
-          git commit -m "Complete Ravel compatibility migration"
-          git push origin HEAD:brand/ravel-public-cleanup
+          node scripts/name-migration-audit.mjs
+          exit 1
