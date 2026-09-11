@@ -73,10 +73,20 @@ const checks = [
     },
   },
   {
-    name: 'service worker is public JavaScript',
+    name: 'Ravel service worker precaches current app assets',
     path: '/sw.js',
-    expect: (response) =>
-      response.status === 200 && response.headers.get('content-type')?.includes('javascript'),
+    expect: async (response) => {
+      const contentType = response.headers.get('content-type') ?? '';
+      const body = await response.clone().text();
+      return (
+        response.status === 200 &&
+        contentType.includes('javascript') &&
+        body.includes('/icons/ravel-icon.svg') &&
+        body.includes('/icons/ravel-maskable.svg') &&
+        !body.includes('/icons/taptrack-icon.svg') &&
+        !body.includes('/icons/taptrack-maskable.svg')
+      );
+    },
   },
   {
     name: 'telegram webhook fails closed when integration is unconfigured',
