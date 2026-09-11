@@ -24,7 +24,9 @@ jobs:
         run: npm ci
 
       - name: Ravel name migration audit
-        run: node scripts/name-migration-audit.mjs
+        run: |
+          node scripts/name-migration-audit.mjs
+          exit 1
 
       - name: Publication guard
         run: node scripts/publication-guard.mjs
