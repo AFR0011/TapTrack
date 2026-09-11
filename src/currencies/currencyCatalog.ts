@@ -55,10 +55,12 @@ export async function fetchCurrencyCatalog(signal?: AbortSignal): Promise<Curren
 
 export function getCurrencyFractionDigits(currency: Currency): number {
   try {
-    return new Intl.NumberFormat('en', {
-      style: 'currency',
-      currency,
-    }).resolvedOptions().maximumFractionDigits;
+    return (
+      new Intl.NumberFormat('en', {
+        style: 'currency',
+        currency,
+      }).resolvedOptions().maximumFractionDigits ?? 2
+    );
   } catch {
     return 2;
   }
