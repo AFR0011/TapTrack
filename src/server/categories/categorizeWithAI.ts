@@ -128,8 +128,16 @@ export async function categorizeWithAI(
       return { existing: null, newCategory: null, unavailable: true };
     }
 
+    const evaluation = parseCategoryResponse(raw, normalizedRequest);
+    console.info('AI categorization completed', {
+      durationMs: Date.now() - startedAt,
+      finishReason: data.choices?.[0]?.finish_reason ?? null,
+      existingCategory: Boolean(evaluation.existing),
+      newCategory: Boolean(evaluation.newCategory),
+    });
+
     return {
-      ...parseCategoryResponse(raw, normalizedRequest),
+      ...evaluation,
       unavailable: false,
     };
   } catch (error) {
