@@ -11,6 +11,10 @@ const config: Config = {
   ],
   theme: {
     extend: {
+      fontFamily: {
+        sans: ['var(--font-inter)', 'Inter', 'ui-sans-serif', 'system-ui', 'sans-serif'],
+        display: ['var(--font-newsreader)', 'Georgia', 'Times New Roman', 'serif'],
+      },
       colors: {
         background: 'var(--bg)',
         foreground: 'var(--text-primary)',
@@ -26,6 +30,13 @@ const config: Config = {
         accent: {
           DEFAULT: 'var(--accent)',
           muted: 'var(--accent-muted)',
+        },
+        brand: {
+          bone: 'var(--brand-bone)',
+          espresso: 'var(--brand-espresso)',
+          olive: 'var(--brand-olive)',
+          copper: 'var(--brand-copper)',
+          plum: 'var(--brand-plum)',
         },
         action: {
           primary: 'var(--action-primary)',
