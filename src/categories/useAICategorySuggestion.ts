@@ -28,7 +28,7 @@ export function useAICategorySuggestion({
   enabled,
   recommendNewCategories = false,
   blocked = false,
-  delayMs = 450,
+  delayMs = 180,
 }: {
   title: string;
   type: TransactionType;
