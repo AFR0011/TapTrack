@@ -1,4 +1,4 @@
-import { forwardRef, type InputHTMLAttributes } from 'react';
+import { forwardRef, useId, type InputHTMLAttributes } from 'react';
 import { cn, focusVisibleRing } from '@/lib/cn';
 
 export type FieldProps = Omit<InputHTMLAttributes<HTMLInputElement>, 'id'> & {
@@ -10,7 +10,8 @@ export type FieldProps = Omit<InputHTMLAttributes<HTMLInputElement>, 'id'> & {
 
 export const Field = forwardRef<HTMLInputElement, FieldProps>(
   ({ label, id, error, hint, className, ...props }, ref) => {
-    const fieldId = id ?? label.toLowerCase().replace(/\s+/g, '-');
+    const generatedId = useId();
+    const fieldId = id ?? generatedId;
 
     return (
       <label htmlFor={fieldId} className="grid min-w-0 gap-1.5">
