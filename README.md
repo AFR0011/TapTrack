@@ -6,7 +6,7 @@ Ravel is a local-first personal finance ledger for people whose money is split a
 
 > **Product status:** Ravel is the current public product and repository name. Historical TapTrack identifiers remain only where compatibility requires them; see [`docs/RAVEL_COMPATIBILITY.md`](docs/RAVEL_COMPATIBILITY.md).
 
-[Open the live app](https://taptrack-fawn.vercel.app) · [Read the architecture notes](docs/ARCHITECTURE.md) · [Security notes](SECURITY.md)
+[Open the live app](https://ravel-ali-farrokhnejads-projects.vercel.app) · [Read the architecture notes](docs/ARCHITECTURE.md) · [Security notes](SECURITY.md)
 
 ## Why Ravel exists
 
