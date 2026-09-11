@@ -31,7 +31,7 @@ const backup = {
       defaultCurrency: 'TRY',
       activeCurrencies: ['TRY'],
       lastUsedMethod: 'card',
-      setupCompleted: true,
+      setupCompleted: false,
       aiCategorizationEnabled: false,
       aiAutoCategorizationEnabled: true,
       aiRecommendNewCategoriesEnabled: true,
