@@ -603,6 +603,7 @@ function TransactionForm({ categories, transaction, activeCurrencies, onCancel, 
   const selectedCategoryId = typedCategories.some((category) => category.id === form.categoryId)
     ? form.categoryId
     : typedCategories[0]?.id ?? form.categoryId;
+  const today = formatLocalDate(new Date());
 
   const setField = <K extends keyof TransactionFormState>(field: K, value: TransactionFormState[K]) => {
     setPendingOrdering(null);
@@ -649,6 +650,11 @@ function TransactionForm({ categories, transaction, activeCurrencies, onCancel, 
         if (nextErrors.amount) amountRef.current?.focus();
         else titleRef.current?.focus();
       });
+      return;
+    }
+    if (form.date > today) {
+      setError('Transactions cannot be dated in the future.');
+      setPendingOrdering(null);
       return;
     }
     setFieldErrors({});
@@ -731,7 +737,14 @@ function TransactionForm({ categories, transaction, activeCurrencies, onCancel, 
           value={selectedCategoryId}
           onChange={(categoryId) => setField('categoryId', categoryId)}
         />
-        <Field label="Date" type="date" value={form.date} onChange={(event) => setField('date', event.target.value)} required />
+        <Field
+          label="Date"
+          type="date"
+          value={form.date}
+          max={today}
+          onChange={(event) => setField('date', event.target.value)}
+          required
+        />
         <Field label="Note" value={form.note} onChange={(event) => setField('note', event.target.value)} />
       </div>
 
