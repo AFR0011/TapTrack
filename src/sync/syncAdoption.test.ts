@@ -36,6 +36,8 @@ type CloudClientOptions = {
   tableData?: Record<string, unknown[]>;
 };
 
+const claimGeneration = '123e4567-e89b-42d3-a456-426614174000';
+
 function createCloudClient(options: CloudClientOptions = {}) {
   return {
     from: vi.fn((tableName: string) => {
@@ -76,9 +78,19 @@ describe('cloud ledger adoption', () => {
       syncOwnerUserId: 'user-1',
       linkedAt: '2026-09-07T00:00:00.000Z',
     });
+    vi.stubGlobal(
+      'fetch',
+      vi.fn().mockResolvedValue(
+        new Response(JSON.stringify({ revision: 1, generation: claimGeneration }), {
+          status: 200,
+          headers: { 'content-type': 'application/json' },
+        })
+      )
+    );
   });
 
   afterEach(async () => {
+    vi.unstubAllGlobals();
     vi.clearAllMocks();
     await database.delete();
   });
@@ -250,11 +262,44 @@ describe('cloud ledger adoption', () => {
     expect(pullUpdates).toHaveBeenCalledWith(database);
   });
 
-  it('uses empty-only mode when creating the first cloud ledger', async () => {
+  it('claims and seeds an empty account before persisting the local binding', async () => {
     await linkEmptyCloudLedger(database);
 
-    expect(linkDeviceLedgerToCurrentUser).toHaveBeenCalledWith(database, 'empty-only');
+    expect(prepareDeviceLedgerBindingToCurrentUser).toHaveBeenCalledWith(database, 'empty-only');
+    expect(linkDeviceLedgerToCurrentUser).not.toHaveBeenCalledWith(database, 'empty-only');
+    expect(fetch).toHaveBeenCalledWith(
+      '/api/sync/claim-empty-ledger',
+      expect.objectContaining({ method: 'POST' })
+    );
+    await expect(database.deviceMetadata.get(DEVICE_LEDGER_BINDING_ID)).resolves.toMatchObject({
+      syncOwnerUserId: 'user-1',
+      cloudRevision: 1,
+      cloudGeneration: claimGeneration,
+    });
     expect(pushLocalChanges).toHaveBeenCalledWith(database);
     expect(pullUpdates).toHaveBeenCalledWith(database);
+  });
+
+  it('stays unbound when another device wins the empty-account claim', async () => {
+    vi.stubGlobal(
+      'fetch',
+      vi.fn().mockResolvedValue(
+        new Response(
+          JSON.stringify({
+            error:
+              'This account already has cloud data. Choose whether to use the cloud ledger or merge this device before linking.',
+            revision: 1,
+            generation: claimGeneration,
+          }),
+          { status: 409, headers: { 'content-type': 'application/json' } }
+        )
+      )
+    );
+
+    await expect(linkEmptyCloudLedger(database)).rejects.toThrow('already has cloud data');
+
+    await expect(database.deviceMetadata.get(DEVICE_LEDGER_BINDING_ID)).resolves.toBeUndefined();
+    expect(pushLocalChanges).not.toHaveBeenCalled();
+    expect(pullUpdates).not.toHaveBeenCalled();
   });
 });

@@ -1,4 +1,4 @@
-import { forwardRef, type SelectHTMLAttributes } from 'react';
+import { forwardRef, useId, type SelectHTMLAttributes } from 'react';
 import { cn, focusVisibleRing } from '@/lib/cn';
 
 export type SelectOption = string | { value: string; label: string };
@@ -12,7 +12,8 @@ export type SelectFieldProps = Omit<SelectHTMLAttributes<HTMLSelectElement>, 'id
 
 export const SelectField = forwardRef<HTMLSelectElement, SelectFieldProps>(
   ({ label, id, options, error, className, ...props }, ref) => {
-    const fieldId = id ?? label.toLowerCase().replace(/\s+/g, '-');
+    const generatedId = useId();
+    const fieldId = id ?? generatedId;
 
     return (
       <label htmlFor={fieldId} className="grid min-w-0 gap-1.5">

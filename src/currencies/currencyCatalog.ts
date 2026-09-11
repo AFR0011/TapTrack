@@ -53,14 +53,30 @@ export async function fetchCurrencyCatalog(signal?: AbortSignal): Promise<Curren
   }
 }
 
+export function getCurrencyFractionDigits(currency: Currency): number {
+  try {
+    return (
+      new Intl.NumberFormat('en', {
+        style: 'currency',
+        currency,
+      }).resolvedOptions().maximumFractionDigits ?? 2
+    );
+  } catch {
+    return 2;
+  }
+}
+
 export function formatCurrency(amount: number, currency: Currency): string {
   try {
     return new Intl.NumberFormat(undefined, {
       style: 'currency',
       currency,
-      maximumFractionDigits: 2,
     }).format(amount);
   } catch {
-    return `${amount.toLocaleString(undefined, { maximumFractionDigits: 2 })} ${currency}`;
+    const fractionDigits = getCurrencyFractionDigits(currency);
+    return `${amount.toLocaleString(undefined, {
+      minimumFractionDigits: fractionDigits,
+      maximumFractionDigits: fractionDigits,
+    })} ${currency}`;
   }
 }

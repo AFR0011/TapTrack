@@ -8,6 +8,7 @@ import {
   createDefaultSettings,
   DEFAULT_SETTINGS_ID,
 } from '@/defaultData';
+import { createBackup } from '@/exports/backupService';
 import { createSupabaseBrowserClient } from '@/lib/supabase';
 import {
   inspectDeviceLedgerLinkToCurrentUser,
@@ -39,11 +40,19 @@ const CANONICAL_TABLES: Array<{ local: CanonicalTableName; remote: string }> = [
   { local: 'settings', remote: 'settings' },
 ];
 
+const UUID_PATTERN = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
+
 type RemoteSnapshot = Record<CanonicalTableName, Array<Record<string, unknown>>>;
 
 type AdoptionRepairs = {
   settings: Record<string, unknown> | null;
   categories: Array<Record<string, unknown>>;
+};
+
+type EmptyLedgerClaimResponse = {
+  error?: unknown;
+  revision?: unknown;
+  generation?: unknown;
 };
 
 function createEmptySnapshot(): RemoteSnapshot {
@@ -171,6 +180,64 @@ async function replaceLocalCanonicalSnapshot(
   };
 }
 
+async function claimEmptyCloudLedger(
+  database: TapTrackDatabase,
+  preparedBinding: DeviceMetadata
+): Promise<DeviceMetadata> {
+  const backup = await createBackup(database);
+  const response = await fetch('/api/sync/claim-empty-ledger', {
+    method: 'POST',
+    headers: { 'content-type': 'application/json' },
+    body: JSON.stringify({ backup }),
+  });
+
+  let payload: EmptyLedgerClaimResponse = {};
+  try {
+    payload = (await response.json()) as EmptyLedgerClaimResponse;
+  } catch {
+    // The status still determines the fail-closed error below.
+  }
+
+  if (!response.ok) {
+    throw new Error(
+      typeof payload.error === 'string'
+        ? payload.error
+        : 'Cloud ledger could not be initialized. Nothing was linked.'
+    );
+  }
+
+  if (
+    !Number.isInteger(payload.revision) ||
+    Number(payload.revision) < 1 ||
+    typeof payload.generation !== 'string' ||
+    !UUID_PATTERN.test(payload.generation)
+  ) {
+    throw new Error('Cloud ledger initialization returned an invalid version. Nothing was linked.');
+  }
+
+  return {
+    ...preparedBinding,
+    cloudRevision: Number(payload.revision),
+    cloudGeneration: payload.generation,
+  };
+}
+
+async function commitPreparedBinding(
+  binding: DeviceMetadata,
+  database: TapTrackDatabase
+): Promise<void> {
+  await database.transaction('rw', database.deviceMetadata, async () => {
+    const existing = await database.deviceMetadata.get(binding.id);
+    if (existing) {
+      if (existing.syncOwnerUserId !== binding.syncOwnerUserId) {
+        throw new Error('This device ledger was linked by another operation.');
+      }
+      return;
+    }
+    await database.deviceMetadata.add(binding);
+  });
+}
+
 /** Returns the exact preflight state the UI should present to the user. */
 export async function inspectCloudAdoption(
   database: TapTrackDatabase = db
@@ -217,11 +284,18 @@ export async function mergeLocalLedgerIntoCloud(
   await pullUpdates(database);
 }
 
-/** Empty cloud account: link safely, then seed it from this device if needed. */
+/**
+ * Empty cloud account: prepare the intended owner, atomically claim + seed the
+ * server ledger, then persist the local binding. Any local changes made while
+ * the server request was in flight remain in the outbox and are replayed after
+ * binding, so the initial snapshot cannot silently erase concurrent local work.
+ */
 export async function linkEmptyCloudLedger(
   database: TapTrackDatabase = db
 ): Promise<void> {
-  await linkDeviceLedgerToCurrentUser(database, 'empty-only');
+  const preparedBinding = await prepareDeviceLedgerBindingToCurrentUser(database, 'empty-only');
+  const binding = await claimEmptyCloudLedger(database, preparedBinding);
+  await commitPreparedBinding(binding, database);
   await pushLocalChanges(database);
   await pullUpdates(database);
 }

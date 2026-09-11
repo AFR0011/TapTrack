@@ -1,6 +1,10 @@
 import { describe, expect, it } from 'vitest';
 import type { MonthlyBudget } from '@/types';
-import { ratesForCurrency, selectMonthlyBudgetForCurrency } from './dashboardFinance';
+import {
+  ratesForCurrency,
+  selectDashboardBalanceScopes,
+  selectMonthlyBudgetForCurrency,
+} from './dashboardFinance';
 
 const budgets: MonthlyBudget[] = [
   {
@@ -37,5 +41,21 @@ describe('dashboard finance selection', () => {
     const rates: Record<string, number> = { USD: 42 };
     expect(ratesForCurrency(rates, 'TRY', 'TRY', {})).toBe(rates);
     expect(ratesForCurrency(rates, 'TRY', 'EUR', {})).toEqual({});
+  });
+
+  it('keeps archived nonzero holdings in Available while excluding them from active shortcuts', () => {
+    const balances = [
+      { id: 'TRY-card', currency: 'TRY' as const, amount: 1000 },
+      { id: 'USD-card', currency: 'USD' as const, amount: 100 },
+      { id: 'EUR-cash', currency: 'EUR' as const, amount: 0 },
+    ];
+
+    const scopes = selectDashboardBalanceScopes(balances, ['TRY']);
+
+    expect(scopes.activeBalances.map((balance) => balance.id)).toEqual(['TRY-card']);
+    expect(scopes.availableBalances.map((balance) => balance.id)).toEqual([
+      'TRY-card',
+      'USD-card',
+    ]);
   });
 });

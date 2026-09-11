@@ -1,7 +1,12 @@
+import { getCurrencyFractionDigits } from '@/currencies/currencyCatalog';
 import type { Currency } from '@/types';
 
 export function formatMoney(amount: number, currency: Currency | 'TRY' = 'TRY') {
-  return `${amount.toLocaleString(undefined, { maximumFractionDigits: 2 })} ${currency}`;
+  const fractionDigits = getCurrencyFractionDigits(currency);
+  return `${amount.toLocaleString(undefined, {
+    minimumFractionDigits: fractionDigits,
+    maximumFractionDigits: fractionDigits,
+  })} ${currency}`;
 }
 
 function parseStrictDecimal(value: string): number | null {

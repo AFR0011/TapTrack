@@ -25,7 +25,7 @@ import { StatRow } from '@/components/ui/StatRow';
 import { useActiveCurrencies } from '@/currencies/useActiveCurrencies';
 import { formatCurrency } from '@/currencies/currencyCatalog';
 import { db } from '@/database';
-import { getCurrentMonth, getPreviousMonth } from '@/dates';
+import { formatLocalDate, getCurrentMonth, getPreviousMonth } from '@/dates';
 import { exportPDF, type ReportExportOptions } from '@/exports/exportService';
 import { clampPercent } from '@/format';
 import { cn, focusVisibleRing } from '@/lib/cn';
@@ -94,7 +94,7 @@ export default function ReportsWorkspace() {
   const [mode, setMode] = useState<ReportMode>('month');
   const [month, setMonth] = useState(currentMonth);
   const [rangeStart, setRangeStart] = useState(`${currentMonth}-01`);
-  const [rangeEnd, setRangeEnd] = useState(new Date().toISOString().slice(0, 10));
+  const [rangeEnd, setRangeEnd] = useState(() => formatLocalDate(new Date()));
   const [year, setYear] = useState(currentMonth.slice(0, 4));
   const [currencyChoice, setCurrencyChoice] = useState<Currency | null>(null);
   const [rates, setRates] = useState<HistoricalReportRateMap>({});
@@ -109,7 +109,7 @@ export default function ReportsWorkspace() {
   const [draftMode, setDraftMode] = useState<ReportMode>('month');
   const [draftMonth, setDraftMonth] = useState(currentMonth);
   const [draftRangeStart, setDraftRangeStart] = useState(`${currentMonth}-01`);
-  const [draftRangeEnd, setDraftRangeEnd] = useState(new Date().toISOString().slice(0, 10));
+  const [draftRangeEnd, setDraftRangeEnd] = useState(() => formatLocalDate(new Date()));
   const [draftYear, setDraftYear] = useState(currentMonth.slice(0, 4));
   const [draftCurrency, setDraftCurrency] = useState<Currency>('TRY');
 

@@ -1,5 +1,6 @@
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 import { TapTrackDatabase, ensureDatabaseSeeded } from '@/database';
+import { createRecurringTransaction } from '@/recurring/recurringService';
 import { createTransaction } from '@/transactions/createTransaction';
 import { seedOpeningBalance } from '@/test/ledgerTestUtils';
 import {
@@ -222,6 +223,66 @@ describe('budgetService', () => {
     });
   });
 
+  it('repairs recurring references and removes budgets when a category becomes income', async () => {
+    const now = new Date().toISOString();
+    await database.categories.add({
+      id: 'cat-gym',
+      name: 'Gym',
+      icon: 'circle',
+      color: '#64748b',
+      isDefault: false,
+      type: 'expense',
+      createdAt: now,
+      updatedAt: now,
+    });
+    const recurring = await createRecurringTransaction(
+      {
+        type: 'expense',
+        amount: 500,
+        currency: 'TRY',
+        title: 'Gym membership',
+        categoryId: 'cat-gym',
+        method: 'card',
+        frequency: 'monthly',
+        startDate: '2026-05-05',
+        nextRunDate: '2026-05-05',
+        isActive: true,
+      },
+      database
+    );
+    const budget = await upsertCategoryBudget(
+      { month: '2026-05', categoryId: 'cat-gym', amount: 1000, currency: 'TRY' },
+      database
+    );
+
+    await updateCategory(
+      {
+        id: 'cat-gym',
+        name: 'Gym reimbursement',
+        icon: 'circle',
+        color: '#64748b',
+        type: 'income',
+      },
+      database
+    );
+
+    await expect(database.recurringTransactions.get(recurring.id)).resolves.toMatchObject({
+      categoryId: 'cat-other',
+      type: 'expense',
+    });
+    await expect(database.categoryBudgets.get(budget.id)).resolves.toBeUndefined();
+    await expect(database.syncOutbox.get(`recurringTransactions:${recurring.id}`)).resolves.toMatchObject({
+      tableName: 'recurringTransactions',
+      operation: 'upsert',
+      record: expect.objectContaining({ categoryId: 'cat-other' }),
+    });
+    await expect(database.syncOutbox.get(`categoryBudgets:${budget.id}`)).resolves.toMatchObject({
+      tableName: 'categoryBudgets',
+      operation: 'delete',
+      recordId: budget.id,
+    });
+  });
+
   it('prevents deleting default categories', async () => {
     await expect(deleteCategory('cat-other', database)).rejects.toThrow(
       'Default categories cannot be deleted.'
@@ -269,6 +330,56 @@ describe('budgetService', () => {
       tableName: 'categories',
       operation: 'delete',
       recordId: 'cat-bonus',
+    });
+  });
+
+  it('reassigns recurring rules and deletes category budgets when a category is deleted', async () => {
+    const now = new Date().toISOString();
+    await database.categories.add({
+      id: 'cat-gym',
+      name: 'Gym',
+      icon: 'circle',
+      color: '#64748b',
+      isDefault: false,
+      type: 'expense',
+      createdAt: now,
+      updatedAt: now,
+    });
+    const recurring = await createRecurringTransaction(
+      {
+        type: 'expense',
+        amount: 500,
+        currency: 'TRY',
+        title: 'Gym membership',
+        categoryId: 'cat-gym',
+        method: 'card',
+        frequency: 'monthly',
+        startDate: '2026-05-05',
+        nextRunDate: '2026-05-05',
+        isActive: true,
+      },
+      database
+    );
+    const budget = await upsertCategoryBudget(
+      { month: '2026-05', categoryId: 'cat-gym', amount: 1000, currency: 'TRY' },
+      database
+    );
+
+    await deleteCategory('cat-gym', database);
+
+    await expect(database.recurringTransactions.get(recurring.id)).resolves.toMatchObject({
+      categoryId: 'cat-other',
+      type: 'expense',
+    });
+    await expect(database.categoryBudgets.get(budget.id)).resolves.toBeUndefined();
+    await expect(database.categories.get('cat-gym')).resolves.toBeUndefined();
+    await expect(database.syncOutbox.get(`recurringTransactions:${recurring.id}`)).resolves.toMatchObject({
+      operation: 'upsert',
+      record: expect.objectContaining({ categoryId: 'cat-other' }),
+    });
+    await expect(database.syncOutbox.get(`categoryBudgets:${budget.id}`)).resolves.toMatchObject({
+      operation: 'delete',
+      recordId: budget.id,
     });
   });
 });

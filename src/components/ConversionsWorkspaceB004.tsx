@@ -10,10 +10,13 @@ import {
 } from '@/balances/reconciliationService';
 import {
   createConversion,
+  deleteConversion,
   InvalidConversionError,
   InsufficientConversionBalanceError,
+  updateConversion,
   type ConversionDraft,
 } from '@/conversions/conversionService';
+import ConfirmDialog from '@/components/ConfirmDialog';
 import ConversionsLoadingFrame from '@/components/ConversionsLoadingFrame';
 import { Button } from '@/components/ui/Button';
 import { EmptyState } from '@/components/ui/EmptyState';
@@ -28,11 +31,11 @@ import {
 } from '@/exchangeRates';
 import { formatMoney, parseAmountInput } from '@/format';
 import { cn, focusVisibleRing } from '@/lib/cn';
-import { SUPPORTED_METHODS, type Currency, type Method } from '@/types';
+import { SUPPORTED_METHODS, type Conversion, type Currency, type Method } from '@/types';
 
 type OpKind = 'transfer' | 'exchange';
 type RateState = { requestKey: string; rate: HistoricalExchangeRateResponse | null; error: string };
-type PendingOrdering = { draft: ConversionDraft; checkpointId: string };
+type PendingOrdering = { draft: ConversionDraft; checkpointId: string; conversionId: string | null };
 
 export default function ConversionsWorkspaceB004() {
   const today = formatLocalDate(new Date());
@@ -49,29 +52,43 @@ export default function ConversionsWorkspaceB004() {
   const [error, setError] = useState('');
   const [pendingOrdering, setPendingOrdering] = useState<PendingOrdering | null>(null);
   const [rateState, setRateState] = useState<RateState>({ requestKey: '', rate: null, error: '' });
+  const [editingConversion, setEditingConversion] = useState<Conversion | null>(null);
+  const [deleteTarget, setDeleteTarget] = useState<Conversion | null>(null);
+  const [deleting, setDeleting] = useState(false);
 
   const balances = useLiveQuery(() => db.balances.toArray());
   const conversions = useLiveQuery(() => db.conversions.orderBy('date').reverse().limit(30).toArray());
   const isLoading = balances === undefined || conversions === undefined || currenciesLoading;
   const initialized = !currenciesLoading && currencies.length > 0;
-  const canExchange = currencies.length > 1;
+  const editorCurrencies = useMemo(() => {
+    const next = [...currencies];
+    if (editingConversion) {
+      for (const currency of [editingConversion.fromCurrency, editingConversion.toCurrency]) {
+        if (!next.includes(currency)) next.push(currency);
+      }
+    }
+    return next;
+  }, [currencies, editingConversion]);
+  const canExchange = editorCurrencies.length > 1;
   const fromCurrency =
-    fromCurrencyOverride && currencies.includes(fromCurrencyOverride)
+    fromCurrencyOverride && editorCurrencies.includes(fromCurrencyOverride)
       ? fromCurrencyOverride
       : defaultCurrency;
-  const exchangeFallback = currencies.find((currency) => currency !== fromCurrency) ?? fromCurrency;
+  const exchangeFallback = editorCurrencies.find((currency) => currency !== fromCurrency) ?? fromCurrency;
   const toCurrency =
     mode === 'transfer'
       ? fromCurrency
-      : toCurrencyOverride && currencies.includes(toCurrencyOverride) && toCurrencyOverride !== fromCurrency
+      : toCurrencyOverride &&
+          editorCurrencies.includes(toCurrencyOverride) &&
+          toCurrencyOverride !== fromCurrency
         ? toCurrencyOverride
         : exchangeFallback;
   const destinationMethod =
     mode === 'transfer' && toMethod === fromMethod
       ? SUPPORTED_METHODS.find((method) => method !== fromMethod) ?? toMethod
       : toMethod;
-  const currencyOptions = currencies.map((currency) => ({ value: currency, label: currency }));
-  const destinationCurrencyOptions = currencies
+  const currencyOptions = editorCurrencies.map((currency) => ({ value: currency, label: currency }));
+  const destinationCurrencyOptions = editorCurrencies
     .filter((currency) => mode === 'transfer' || currency !== fromCurrency)
     .map((currency) => ({ value: currency, label: currency }));
   const methodOptions = SUPPORTED_METHODS.map((method) => ({ value: method, label: capitalize(method) }));
@@ -83,13 +100,37 @@ export default function ConversionsWorkspaceB004() {
     [balances]
   );
   const fromAmount = parseAmountInput(fromAmountRaw);
+  const preservesRecordedExchange = Boolean(
+    editingConversion &&
+      editingConversion.fromCurrency !== editingConversion.toCurrency &&
+      mode === 'exchange' &&
+      editingConversion.fromCurrency === fromCurrency &&
+      editingConversion.toCurrency === toCurrency &&
+      editingConversion.date === date &&
+      Math.abs(editingConversion.fromAmount - fromAmount) <= 0.000001
+  );
+  const recordedRate =
+    preservesRecordedExchange && editingConversion && editingConversion.fromAmount > 0
+      ? editingConversion.toAmount / editingConversion.fromAmount
+      : null;
   const rateRequestKey = mode === 'exchange' ? `${fromCurrency}|${toCurrency}|${date}` : '';
-  const exchangeRate = rateState.requestKey === rateRequestKey ? rateState.rate : null;
-  const rateError = rateState.requestKey === rateRequestKey ? rateState.error : '';
-  const rateLoading = mode === 'exchange' && rateState.requestKey !== rateRequestKey;
+  const exchangeRate =
+    !preservesRecordedExchange && rateState.requestKey === rateRequestKey ? rateState.rate : null;
+  const rateError =
+    !preservesRecordedExchange && rateState.requestKey === rateRequestKey ? rateState.error : '';
+  const rateLoading =
+    mode === 'exchange' && !preservesRecordedExchange && rateState.requestKey !== rateRequestKey;
 
   useEffect(() => {
-    if (mode !== 'exchange' || !initialized || !canExchange || fromCurrency === toCurrency) return;
+    if (
+      mode !== 'exchange' ||
+      preservesRecordedExchange ||
+      !initialized ||
+      !canExchange ||
+      fromCurrency === toCurrency
+    ) {
+      return;
+    }
     const controller = new AbortController();
     void fetchHistoricalExchangeRate({ base: fromCurrency, quote: toCurrency, date, signal: controller.signal })
       .then((rate) => {
@@ -104,14 +145,25 @@ export default function ConversionsWorkspaceB004() {
         });
       });
     return () => controller.abort();
-  }, [canExchange, date, fromCurrency, initialized, mode, rateRequestKey, toCurrency]);
+  }, [
+    canExchange,
+    date,
+    fromCurrency,
+    initialized,
+    mode,
+    preservesRecordedExchange,
+    rateRequestKey,
+    toCurrency,
+  ]);
 
   const toAmount =
     mode === 'transfer'
       ? fromAmount
-      : exchangeRate && fromAmount > 0
-        ? roundCurrencyAmount(fromAmount * exchangeRate.rate)
-        : 0;
+      : preservesRecordedExchange && editingConversion
+        ? editingConversion.toAmount
+        : exchangeRate && fromAmount > 0
+          ? roundCurrencyAmount(fromAmount * exchangeRate.rate)
+          : 0;
   const fromBalanceId = `${fromCurrency}-${fromMethod}`;
   const toBalanceId = `${toCurrency}-${destinationMethod}`;
   const fromAvailable = balanceMap.get(fromBalanceId) ?? 0;
@@ -124,35 +176,73 @@ export default function ConversionsWorkspaceB004() {
     setError('');
   };
 
+  const resetEditor = () => {
+    setEditingConversion(null);
+    setMode('transfer');
+    setFromCurrencyOverride(null);
+    setToCurrencyOverride(null);
+    setFromMethod('card');
+    setToMethod('cash');
+    setFromAmountRaw('');
+    setDate(today);
+    setNote('');
+    setRateState({ requestKey: '', rate: null, error: '' });
+    clearFeedback();
+  };
+
   const selectMode = (nextMode: OpKind) => {
     if (nextMode === 'exchange' && !canExchange) return;
     clearFeedback();
     setMode(nextMode);
+    setRateState({ requestKey: '', rate: null, error: '' });
     if (nextMode === 'exchange') {
-      setToCurrencyOverride(currencies.find((currency) => currency !== fromCurrency) ?? null);
+      setToCurrencyOverride(editorCurrencies.find((currency) => currency !== fromCurrency) ?? null);
     }
   };
 
   const selectFromCurrency = (nextCurrency: Currency) => {
     clearFeedback();
     setFromCurrencyOverride(nextCurrency);
+    setRateState({ requestKey: '', rate: null, error: '' });
     if (mode === 'exchange' && toCurrency === nextCurrency) {
-      setToCurrencyOverride(currencies.find((currency) => currency !== nextCurrency) ?? null);
+      setToCurrencyOverride(editorCurrencies.find((currency) => currency !== nextCurrency) ?? null);
     }
   };
 
-  const persistDraft = async (draft: ConversionDraft) => {
+  const startEditing = (conversion: Conversion) => {
+    const isExchange = conversion.fromCurrency !== conversion.toCurrency;
+    setEditingConversion(conversion);
+    setMode(isExchange ? 'exchange' : 'transfer');
+    setFromCurrencyOverride(conversion.fromCurrency);
+    setFromMethod(conversion.fromMethod);
+    setFromAmountRaw(String(conversion.fromAmount));
+    setToCurrencyOverride(conversion.toCurrency);
+    setToMethod(conversion.toMethod);
+    setDate(conversion.date);
+    setNote(conversion.note ?? '');
+    setRateState({ requestKey: '', rate: null, error: '' });
+    clearFeedback();
+    window.scrollTo({ top: 0, behavior: 'smooth' });
+  };
+
+  const persistDraft = async (draft: ConversionDraft, conversionId: string | null) => {
     setSaving(true);
     setError('');
     try {
-      await createConversion(draft);
-      toast.success(draft.fromCurrency !== draft.toCurrency ? 'Exchange recorded.' : 'Transfer recorded.');
-      setFromAmountRaw('');
-      setNote('');
-      setPendingOrdering(null);
+      if (conversionId) {
+        await updateConversion(conversionId, draft);
+        toast.success(draft.fromCurrency !== draft.toCurrency ? 'Exchange updated.' : 'Transfer updated.');
+        resetEditor();
+      } else {
+        await createConversion(draft);
+        toast.success(draft.fromCurrency !== draft.toCurrency ? 'Exchange recorded.' : 'Transfer recorded.');
+        setFromAmountRaw('');
+        setNote('');
+        setPendingOrdering(null);
+      }
     } catch (requestError) {
       if (requestError instanceof AmbiguousLedgerOrderingError) {
-        setPendingOrdering({ draft, checkpointId: requestError.checkpointId });
+        setPendingOrdering({ draft, checkpointId: requestError.checkpointId, conversionId });
         setError(
           'This move is on the same date as a balance check. Choose whether it happened before or after that balance was recorded.'
         );
@@ -173,13 +263,13 @@ export default function ConversionsWorkspaceB004() {
     event.preventDefault();
     clearFeedback();
     if (fromAmount <= 0) return setError('Enter an amount greater than zero.');
-    if (fromAmount > fromAvailable) {
+    if (!editingConversion && fromAmount > fromAvailable) {
       return setError(`Only ${formatMoney(fromAvailable, fromCurrency)} is available in the source balance.`);
     }
     if (mode === 'exchange' && !canExchange) return setError('Add another active currency before exchanging money.');
     if (mode === 'exchange' && fromCurrency === toCurrency) return setError('Choose two different currencies for an exchange.');
     if (mode === 'exchange' && rateLoading) return setError('The exchange rate is still loading.');
-    if (mode === 'exchange' && !exchangeRate) {
+    if (mode === 'exchange' && !preservesRecordedExchange && !exchangeRate) {
       return setError(rateError || 'No exchange rate is available for this date yet.');
     }
     if (toAmount <= 0) return setError('The destination amount could not be calculated.');
@@ -187,16 +277,19 @@ export default function ConversionsWorkspaceB004() {
       return setError('Choose a different destination method for this transfer.');
     }
 
-    await persistDraft({
-      fromCurrency,
-      toCurrency,
-      fromMethod,
-      toMethod: destinationMethod,
-      fromAmount,
-      toAmount,
-      date,
-      note: note.trim() || undefined,
-    });
+    await persistDraft(
+      {
+        fromCurrency,
+        toCurrency,
+        fromMethod,
+        toMethod: destinationMethod,
+        fromAmount,
+        toAmount,
+        date,
+        note: note.trim() || undefined,
+      },
+      editingConversion?.id ?? null
+    );
   };
 
   const resolveOrdering = async (relation: HistoricalOrderingRelation) => {
@@ -207,10 +300,34 @@ export default function ConversionsWorkspaceB004() {
       setPendingOrdering(null);
       return;
     }
-    await persistDraft({
-      ...pendingOrdering.draft,
-      occurredAt: resolveHistoricalOccurrenceAroundCheckpoint(checkpoint, relation),
-    });
+    await persistDraft(
+      {
+        ...pendingOrdering.draft,
+        occurredAt: resolveHistoricalOccurrenceAroundCheckpoint(checkpoint, relation),
+      },
+      pendingOrdering.conversionId
+    );
+  };
+
+  const confirmDelete = async () => {
+    if (!deleteTarget) return;
+    setDeleting(true);
+    try {
+      await deleteConversion(deleteTarget.id);
+      if (editingConversion?.id === deleteTarget.id) resetEditor();
+      toast.success(
+        deleteTarget.fromCurrency !== deleteTarget.toCurrency ? 'Exchange deleted.' : 'Transfer deleted.'
+      );
+    } catch (requestError) {
+      toast.error(
+        requestError instanceof InsufficientConversionBalanceError
+          ? `${requestError.message} Later ledger activity depends on money from this move.`
+          : 'This transfer or exchange could not be deleted.'
+      );
+    } finally {
+      setDeleting(false);
+      setDeleteTarget(null);
+    }
   };
 
   if (isLoading) return <ConversionsLoadingFrame />;
@@ -240,6 +357,20 @@ export default function ConversionsWorkspaceB004() {
         <p className="-mt-3 text-xs font-medium text-muted">Add another active currency to enable exchanges.</p>
       ) : null}
 
+      {editingConversion ? (
+        <div className="flex flex-wrap items-center justify-between gap-3 rounded-xl bg-accent-muted px-4 py-3 ring-1 ring-subtle/70">
+          <div>
+            <p className="text-sm font-semibold text-primary">Correcting an existing move</p>
+            <p className="mt-0.5 text-xs font-medium text-muted">
+              Saving replaces the original move and recalculates affected balances atomically.
+            </p>
+          </div>
+          <Button variant="ghost" size="sm" onClick={resetEditor} disabled={saving}>
+            Cancel editing
+          </Button>
+        </div>
+      ) : null}
+
       <section
         className="grid min-w-0 gap-4 lg:grid-cols-[minmax(0,1.12fr)_minmax(320px,0.88fr)]"
         data-layout="conversions-workspace"
@@ -250,10 +381,16 @@ export default function ConversionsWorkspaceB004() {
         >
           <div>
             <p className="text-xs font-semibold uppercase tracking-[0.14em] text-muted">
-              {mode === 'exchange' ? 'Currency exchange' : 'Balance transfer'}
+              {editingConversion ? 'Move correction' : mode === 'exchange' ? 'Currency exchange' : 'Balance transfer'}
             </p>
             <h2 className="mt-2 text-xl font-semibold tracking-tight text-primary">
-              {mode === 'exchange' ? 'Exchange money' : 'Move money between methods'}
+              {editingConversion
+                ? mode === 'exchange'
+                  ? 'Edit exchange'
+                  : 'Edit transfer'
+                : mode === 'exchange'
+                  ? 'Exchange money'
+                  : 'Move money between methods'}
             </h2>
             <p className="mt-1 text-sm font-medium text-muted">
               {mode === 'exchange'
@@ -350,6 +487,7 @@ export default function ConversionsWorkspaceB004() {
                   onChange={(event) => {
                     clearFeedback();
                     setToCurrencyOverride(event.target.value);
+                    setRateState({ requestKey: '', rate: null, error: '' });
                   }}
                   options={destinationCurrencyOptions}
                   disabled={saving || mode === 'transfer'}
@@ -377,7 +515,15 @@ export default function ConversionsWorkspaceB004() {
             </div>
 
             {mode === 'exchange' ? (
-              <ExchangeRateStatus rate={exchangeRate} loading={rateLoading} error={rateError} />
+              preservesRecordedExchange && recordedRate ? (
+                <RecordedRateStatus
+                  rate={recordedRate}
+                  base={fromCurrency}
+                  quote={toCurrency}
+                />
+              ) : (
+                <ExchangeRateStatus rate={exchangeRate} loading={rateLoading} error={rateError} />
+              )
             ) : (
               <p className="px-1 text-xs font-medium text-muted">
                 Transfers keep the amount and currency unchanged. Only the balance method changes.
@@ -403,6 +549,7 @@ export default function ConversionsWorkspaceB004() {
                   onChange={(event) => {
                     clearFeedback();
                     setDate(event.target.value);
+                    setRateState({ requestKey: '', rate: null, error: '' });
                   }}
                   required
                   disabled={saving}
@@ -453,9 +600,11 @@ export default function ConversionsWorkspaceB004() {
               loading={saving}
               disabled={saving || rateLoading || fromAmount <= 0 || toAmount <= 0}
             >
-              {mode === 'exchange'
-                ? `Exchange ${fromCurrency} to ${toCurrency}`
-                : `Transfer to ${capitalize(destinationMethod)}`}
+              {editingConversion
+                ? 'Save correction'
+                : mode === 'exchange'
+                  ? `Exchange ${fromCurrency} to ${toCurrency}`
+                  : `Transfer to ${capitalize(destinationMethod)}`}
             </Button>
           </form>
         </section>
@@ -465,8 +614,14 @@ export default function ConversionsWorkspaceB004() {
           data-conversions-column="preview"
         >
           <p className="text-xs font-semibold uppercase tracking-[0.14em] text-muted">Review</p>
-          <h2 className="mt-2 text-xl font-semibold tracking-tight text-primary">After this move</h2>
-          <p className="mt-1 text-sm font-medium text-muted">Nothing changes until you save.</p>
+          <h2 className="mt-2 text-xl font-semibold tracking-tight text-primary">
+            {editingConversion ? 'Corrected move' : 'After this move'}
+          </h2>
+          <p className="mt-1 text-sm font-medium text-muted">
+            {editingConversion
+              ? 'The current ledger stays unchanged until this correction is saved.'
+              : 'Nothing changes until you save.'}
+          </p>
 
           <div className="mt-6 rounded-[1.25rem] bg-surface-muted/70 p-5 text-center ring-1 ring-subtle/70">
             <p className="text-sm font-medium text-muted">
@@ -485,41 +640,61 @@ export default function ConversionsWorkspaceB004() {
             </div>
           </div>
 
-          <div className="mt-5 space-y-3">
-            <BalanceDelta
-              label="Source balance"
-              currency={fromCurrency}
-              method={fromMethod}
-              before={fromAvailable}
-              after={fromAfter}
-              tone={fromAfter < 0 ? 'bad' : 'neutral'}
-            />
-            <BalanceDelta
-              label="Destination balance"
-              currency={toCurrency}
-              method={destinationMethod}
-              before={toAvailable}
-              after={toAfter}
-              tone="good"
-            />
-          </div>
-
-          {mode === 'exchange' && exchangeRate ? (
-            <div className="mt-5 rounded-xl bg-surface-muted/70 p-4 ring-1 ring-subtle/70">
-              <div className="flex flex-wrap items-center justify-between gap-2">
-                <p className="text-sm font-semibold text-secondary">Rate used</p>
-                <span className="rounded-full bg-surface px-2.5 py-1 text-[11px] font-semibold text-muted ring-1 ring-subtle/70">
-                  {exchangeRate.cached ? 'Saved rate' : exchangeRate.source}
-                </span>
-              </div>
-              <p className="mt-2 text-sm font-semibold tabular-nums text-primary">
-                1 {exchangeRate.base} = {exchangeRate.rate.toFixed(6)} {exchangeRate.quote}
-              </p>
-              <p className="mt-1 text-xs font-medium text-muted">
-                Rate date {exchangeRate.dateUsed}
-                {exchangeRate.dateUsed !== exchangeRate.dateRequested ? ' · nearest earlier available date' : ''}
-              </p>
+          {editingConversion ? (
+            <div className="mt-5 rounded-xl bg-surface-muted/70 p-4 text-sm font-medium text-secondary ring-1 ring-subtle/70">
+              TapTrack will remove the original move, apply this corrected version, and rebuild all affected balances in one local transaction. If the correction would make any balance negative, nothing is changed.
             </div>
+          ) : (
+            <div className="mt-5 space-y-3">
+              <BalanceDelta
+                label="Source balance"
+                currency={fromCurrency}
+                method={fromMethod}
+                before={fromAvailable}
+                after={fromAfter}
+                tone={fromAfter < 0 ? 'bad' : 'neutral'}
+              />
+              <BalanceDelta
+                label="Destination balance"
+                currency={toCurrency}
+                method={destinationMethod}
+                before={toAvailable}
+                after={toAfter}
+                tone="good"
+              />
+            </div>
+          )}
+
+          {mode === 'exchange' ? (
+            preservesRecordedExchange && recordedRate ? (
+              <div className="mt-5 rounded-xl bg-surface-muted/70 p-4 ring-1 ring-subtle/70">
+                <div className="flex flex-wrap items-center justify-between gap-2">
+                  <p className="text-sm font-semibold text-secondary">Rate used</p>
+                  <span className="rounded-full bg-surface px-2.5 py-1 text-[11px] font-semibold text-muted ring-1 ring-subtle/70">
+                    Recorded rate
+                  </span>
+                </div>
+                <p className="mt-2 text-sm font-semibold tabular-nums text-primary">
+                  1 {fromCurrency} = {recordedRate.toFixed(6)} {toCurrency}
+                </p>
+              </div>
+            ) : exchangeRate ? (
+              <div className="mt-5 rounded-xl bg-surface-muted/70 p-4 ring-1 ring-subtle/70">
+                <div className="flex flex-wrap items-center justify-between gap-2">
+                  <p className="text-sm font-semibold text-secondary">Rate used</p>
+                  <span className="rounded-full bg-surface px-2.5 py-1 text-[11px] font-semibold text-muted ring-1 ring-subtle/70">
+                    {exchangeRate.cached ? 'Saved rate' : exchangeRate.source}
+                  </span>
+                </div>
+                <p className="mt-2 text-sm font-semibold tabular-nums text-primary">
+                  1 {exchangeRate.base} = {exchangeRate.rate.toFixed(6)} {exchangeRate.quote}
+                </p>
+                <p className="mt-1 text-xs font-medium text-muted">
+                  Rate date {exchangeRate.dateUsed}
+                  {exchangeRate.dateUsed !== exchangeRate.dateRequested ? ' · nearest earlier available date' : ''}
+                </p>
+              </div>
+            ) : null
           ) : null}
 
           <div className="mt-5 rounded-xl bg-accent-muted px-4 py-3 text-sm font-medium text-secondary ring-1 ring-subtle/70">
@@ -551,7 +726,7 @@ export default function ConversionsWorkspaceB004() {
               return (
                 <div
                   key={conversion.id}
-                  className="grid gap-3 px-5 py-4 sm:grid-cols-[minmax(0,1fr)_auto] sm:items-center sm:px-6"
+                  className="grid gap-3 px-5 py-4 lg:grid-cols-[minmax(0,1fr)_auto_auto] lg:items-center sm:px-6"
                 >
                   <div className="min-w-0">
                     <div className="flex flex-wrap items-center gap-2">
@@ -568,7 +743,7 @@ export default function ConversionsWorkspaceB004() {
                       {conversion.date}{conversion.note ? ` · ${conversion.note}` : ''}
                     </p>
                   </div>
-                  <div className="flex flex-wrap items-center gap-x-3 gap-y-1 sm:block sm:text-right">
+                  <div className="flex flex-wrap items-center gap-x-3 gap-y-1 lg:block lg:text-right">
                     <p className="text-sm font-semibold tabular-nums text-danger">
                       −{formatMoney(conversion.fromAmount, conversion.fromCurrency)}{' '}
                       <span className="font-medium text-muted">{capitalize(conversion.fromMethod)}</span>
@@ -578,12 +753,42 @@ export default function ConversionsWorkspaceB004() {
                       <span className="font-medium text-muted">{capitalize(conversion.toMethod)}</span>
                     </p>
                   </div>
+                  <div className="flex flex-wrap gap-2 lg:justify-end">
+                    <Button
+                      variant="ghost"
+                      size="sm"
+                      onClick={() => startEditing(conversion)}
+                      disabled={saving || deleting}
+                    >
+                      Edit
+                    </Button>
+                    <Button
+                      variant="dangerGhost"
+                      size="sm"
+                      onClick={() => setDeleteTarget(conversion)}
+                      disabled={saving || deleting}
+                    >
+                      Delete
+                    </Button>
+                  </div>
                 </div>
               );
             })}
           </div>
         )}
       </section>
+
+      <ConfirmDialog
+        open={Boolean(deleteTarget)}
+        title={deleteTarget?.fromCurrency !== deleteTarget?.toCurrency ? 'Delete exchange?' : 'Delete transfer?'}
+        message="This removes the original move and recalculates the ledger. If later activity depends on money introduced by this move, TapTrack will block the deletion rather than create a negative balance."
+        confirmLabel="Delete move"
+        confirmVariant="danger"
+        confirmLoading={deleting}
+        cancelDisabled={deleting}
+        onConfirm={() => void confirmDelete()}
+        onCancel={() => setDeleteTarget(null)}
+      />
     </div>
   );
 }
@@ -651,6 +856,30 @@ function BalanceDelta({
         </p>
       </div>
       <p className="mt-2 text-xs font-medium text-muted">Before {formatMoney(before, currency)}</p>
+    </div>
+  );
+}
+
+function RecordedRateStatus({
+  rate,
+  base,
+  quote,
+}: {
+  rate: number;
+  base: Currency;
+  quote: Currency;
+}) {
+  return (
+    <div className="rounded-xl bg-surface-muted/70 px-4 py-3 ring-1 ring-subtle/70">
+      <div className="flex flex-wrap items-center justify-between gap-2">
+        <p className="text-xs font-semibold text-secondary">
+          1 {base} = {rate.toFixed(6)} {quote}
+        </p>
+        <span className="text-[11px] font-semibold text-muted">Recorded rate</span>
+      </div>
+      <p className="mt-1 text-[11px] font-medium text-muted">
+        The original rate is kept until the amount, currencies, or date changes.
+      </p>
     </div>
   );
 }

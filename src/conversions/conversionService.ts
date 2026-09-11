@@ -1,9 +1,13 @@
-import { db, type TapTrackDatabase } from '@/database';
+import { db, ensureDatabaseSeeded, type TapTrackDatabase } from '@/database';
 import { getBalanceId } from '@/defaultData';
 import { formatLocalDate, getAutomaticOccurredAt } from '@/dates';
 import { rebuildDerivedBalances } from '@/balances/ledgerService';
-import type { Conversion, Currency, Method } from '@/types';
-import { flushSyncQueueBestEffort, queueRecordForSync } from '@/sync/syncService';
+import type { Balance, Conversion, Currency, Method } from '@/types';
+import {
+  flushSyncQueueBestEffort,
+  queueDeleteForSync,
+  queueRecordForSync,
+} from '@/sync/syncService';
 
 export interface ConversionDraft {
   fromCurrency: Currency;
@@ -31,12 +35,7 @@ export class InvalidConversionError extends Error {
   }
 }
 
-/** Creates a conversion record, rebuilds balances, and queues sync intent atomically. */
-export async function createConversion(
-  draft: ConversionDraft,
-  database: TapTrackDatabase = db,
-  nowDate = new Date()
-): Promise<Conversion> {
+function validateDraft(draft: ConversionDraft, nowDate: Date) {
   if (
     !Number.isFinite(draft.fromAmount) ||
     !Number.isFinite(draft.toAmount) ||
@@ -64,6 +63,33 @@ export async function createConversion(
       'For same-currency transfers, source and destination amounts must match.'
     );
   }
+}
+
+function getPreviousBalanceMap(balances: Balance[]) {
+  return new Map(balances.map((balance) => [balance.id, balance.amount] as const));
+}
+
+function assertNoNegativeBalances(
+  balances: Balance[],
+  previousBalances: Map<string, number>
+) {
+  const negative = balances.find((balance) => balance.amount < 0);
+  if (!negative) return;
+
+  throw new InsufficientConversionBalanceError(
+    negative.currency,
+    negative.method,
+    previousBalances.get(negative.id) ?? 0
+  );
+}
+
+/** Creates a conversion record, rebuilds balances, and queues sync intent atomically. */
+export async function createConversion(
+  draft: ConversionDraft,
+  database: TapTrackDatabase = db,
+  nowDate = new Date()
+): Promise<Conversion> {
+  validateDraft(draft, nowDate);
 
   const now = nowDate.toISOString();
   const conversion: Conversion = {
@@ -115,4 +141,104 @@ export async function createConversion(
 
   void flushSyncQueueBestEffort(database);
   return conversion;
+}
+
+/** Corrects an existing transfer/exchange and rebuilds every derived balance atomically. */
+export async function updateConversion(
+  id: string,
+  draft: ConversionDraft,
+  database: TapTrackDatabase = db,
+  nowDate = new Date()
+): Promise<Conversion> {
+  validateDraft(draft, nowDate);
+  await ensureDatabaseSeeded(database);
+
+  const now = nowDate.toISOString();
+  let updatedConversion: Conversion | null = null;
+
+  await database.transaction(
+    'rw',
+    [
+      database.transactions,
+      database.conversions,
+      database.balanceCheckpoints,
+      database.balances,
+      database.syncOutbox,
+    ],
+    async () => {
+      const existing = await database.conversions.get(id);
+      if (!existing) throw new Error('Conversion not found');
+
+      const previousBalances = getPreviousBalanceMap(await database.balances.toArray());
+      const occurredAt =
+        draft.occurredAt ??
+        (existing.date === draft.date
+          ? existing.occurredAt
+          : getAutomaticOccurredAt(draft.date, nowDate));
+
+      const nextConversion: Conversion = {
+        id,
+        fromCurrency: draft.fromCurrency,
+        toCurrency: draft.toCurrency,
+        fromMethod: draft.fromMethod,
+        toMethod: draft.toMethod,
+        fromAmount: draft.fromAmount,
+        toAmount: draft.toAmount,
+        date: draft.date,
+        occurredAt,
+        note: draft.note,
+        createdAt: existing.createdAt,
+        updatedAt: now,
+      };
+
+      await database.conversions.put(nextConversion);
+      const rebuilt = await rebuildDerivedBalances(database, now);
+      assertNoNegativeBalances(rebuilt, previousBalances);
+
+      await queueRecordForSync(
+        'conversions',
+        nextConversion as unknown as Record<string, unknown>,
+        database
+      );
+      updatedConversion = nextConversion;
+    }
+  );
+
+  if (!updatedConversion) throw new Error('Conversion was not updated');
+
+  void flushSyncQueueBestEffort(database);
+  return updatedConversion;
+}
+
+/** Deletes a transfer/exchange only when the remaining ledger can still produce valid balances. */
+export async function deleteConversion(
+  id: string,
+  database: TapTrackDatabase = db
+): Promise<void> {
+  await ensureDatabaseSeeded(database);
+  const now = new Date().toISOString();
+
+  await database.transaction(
+    'rw',
+    [
+      database.transactions,
+      database.conversions,
+      database.balanceCheckpoints,
+      database.balances,
+      database.syncOutbox,
+    ],
+    async () => {
+      const existing = await database.conversions.get(id);
+      if (!existing) throw new Error('Conversion not found');
+
+      const previousBalances = getPreviousBalanceMap(await database.balances.toArray());
+      await database.conversions.delete(id);
+
+      const rebuilt = await rebuildDerivedBalances(database, now);
+      assertNoNegativeBalances(rebuilt, previousBalances);
+      await queueDeleteForSync('conversions', id, database);
+    }
+  );
+
+  void flushSyncQueueBestEffort(database);
 }

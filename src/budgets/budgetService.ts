@@ -263,11 +263,18 @@ export async function deleteCategory(
   const now = new Date().toISOString();
   await database.transaction(
     'rw',
-    [database.categories, database.categoryBudgets, database.transactions, database.syncOutbox],
+    [
+      database.categories,
+      database.categoryBudgets,
+      database.transactions,
+      database.recurringTransactions,
+      database.syncOutbox,
+    ],
     async () => {
       const category = await database.categories.get(categoryId);
       if (!category) throw new Error('Category not found.');
       if (category.isDefault) throw new Error('Default categories cannot be deleted.');
+
       const transactions = await database.transactions.where('categoryId').equals(categoryId).toArray();
       for (const transaction of transactions) {
         const replacementCategoryId = await getFallbackCategoryId(
@@ -287,6 +294,29 @@ export async function deleteCategory(
           database
         );
       }
+
+      const recurringTransactions = await database.recurringTransactions
+        .filter((recurring) => recurring.categoryId === categoryId)
+        .toArray();
+      for (const recurring of recurringTransactions) {
+        const replacementCategoryId = await getFallbackCategoryId(
+          recurring.type,
+          database,
+          categoryId
+        );
+        const updatedRecurring = {
+          ...recurring,
+          categoryId: replacementCategoryId,
+          updatedAt: now,
+        };
+        await database.recurringTransactions.put(updatedRecurring);
+        await queueRecordForSync(
+          'recurringTransactions',
+          updatedRecurring as unknown as Record<string, unknown>,
+          database
+        );
+      }
+
       const categoryBudgets = await database.categoryBudgets
         .where('categoryId')
         .equals(categoryId)
@@ -295,6 +325,7 @@ export async function deleteCategory(
         await database.categoryBudgets.delete(budget.id);
         await queueDeleteForSync('categoryBudgets', budget.id, database);
       }
+
       await database.categories.delete(categoryId);
       await queueDeleteForSync('categories', categoryId, database);
     }
@@ -311,7 +342,13 @@ export async function updateCategory(
   let updatedCategory: Category | null = null;
   await database.transaction(
     'rw',
-    [database.categories, database.transactions, database.syncOutbox],
+    [
+      database.categories,
+      database.categoryBudgets,
+      database.transactions,
+      database.recurringTransactions,
+      database.syncOutbox,
+    ],
     async () => {
       const existing = await database.categories.get(input.id);
       if (!existing) throw new Error('Category not found.');
@@ -335,29 +372,62 @@ export async function updateCategory(
         nextCategory as unknown as Record<string, unknown>,
         database
       );
-      if (existing.type !== input.type) {
-        const transactions = await database.transactions
+
+      const transactions = await database.transactions
+        .where('categoryId')
+        .equals(input.id)
+        .toArray();
+      for (const transaction of transactions) {
+        if (transaction.type === input.type) continue;
+        const replacementCategoryId = await getFallbackCategoryId(
+          transaction.type,
+          database,
+          input.id
+        );
+        const updatedTransaction = {
+          ...transaction,
+          categoryId: replacementCategoryId,
+          updatedAt: now,
+        };
+        await database.transactions.put(updatedTransaction);
+        await queueRecordForSync(
+          'transactions',
+          updatedTransaction as unknown as Record<string, unknown>,
+          database
+        );
+      }
+
+      const recurringTransactions = await database.recurringTransactions
+        .filter((recurring) => recurring.categoryId === input.id)
+        .toArray();
+      for (const recurring of recurringTransactions) {
+        if (recurring.type === input.type) continue;
+        const replacementCategoryId = await getFallbackCategoryId(
+          recurring.type,
+          database,
+          input.id
+        );
+        const updatedRecurring = {
+          ...recurring,
+          categoryId: replacementCategoryId,
+          updatedAt: now,
+        };
+        await database.recurringTransactions.put(updatedRecurring);
+        await queueRecordForSync(
+          'recurringTransactions',
+          updatedRecurring as unknown as Record<string, unknown>,
+          database
+        );
+      }
+
+      if (input.type !== 'expense') {
+        const categoryBudgets = await database.categoryBudgets
           .where('categoryId')
           .equals(input.id)
           .toArray();
-        for (const transaction of transactions) {
-          if (transaction.type === input.type) continue;
-          const replacementCategoryId = await getFallbackCategoryId(
-            transaction.type,
-            database,
-            input.id
-          );
-          const updatedTransaction = {
-            ...transaction,
-            categoryId: replacementCategoryId,
-            updatedAt: now,
-          };
-          await database.transactions.put(updatedTransaction);
-          await queueRecordForSync(
-            'transactions',
-            updatedTransaction as unknown as Record<string, unknown>,
-            database
-          );
+        for (const budget of categoryBudgets) {
+          await database.categoryBudgets.delete(budget.id);
+          await queueDeleteForSync('categoryBudgets', budget.id, database);
         }
       }
     }

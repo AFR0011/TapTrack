@@ -16,3 +16,20 @@ export function ratesForCurrency<T>(
 ): T {
   return loadedQuoteCurrency === currentQuoteCurrency ? rates : empty;
 }
+
+type BalanceLike = { currency: Currency; amount: number };
+
+/**
+ * Dashboard shortcuts should only surface currencies enabled for new activity,
+ * but the headline available-money total must still include archived holdings.
+ */
+export function selectDashboardBalanceScopes<T extends BalanceLike>(
+  balances: T[],
+  activeCurrencies: Currency[]
+): { availableBalances: T[]; activeBalances: T[] } {
+  const active = new Set(activeCurrencies);
+  return {
+    availableBalances: balances.filter((balance) => balance.amount !== 0),
+    activeBalances: balances.filter((balance) => active.has(balance.currency)),
+  };
+}

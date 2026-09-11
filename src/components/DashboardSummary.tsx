@@ -15,6 +15,7 @@ import { resolveActiveCurrencies } from '@/currencies/activeCurrencySelection';
 import { fetchHistoricalExchangeRate } from '@/exchangeRates';
 import {
   ratesForCurrency,
+  selectDashboardBalanceScopes,
   selectMonthlyBudgetForCurrency,
 } from '@/dashboard/dashboardFinance';
 import {
@@ -68,10 +69,10 @@ export default function DashboardSummary() {
     () => (settings ? resolveActiveCurrencies(settings, balances ?? []) : []),
     [balances, settings]
   );
-  const activeBalances = useMemo(() => {
-    const active = new Set(activeCurrencies);
-    return (balances ?? []).filter((balance) => active.has(balance.currency));
-  }, [activeCurrencies, balances]);
+  const { availableBalances, activeBalances } = useMemo(
+    () => selectDashboardBalanceScopes(balances ?? [], activeCurrencies),
+    [activeCurrencies, balances]
+  );
   const balanceSummaries = useMemo(
     () =>
       activeCurrencies.map((currency) => ({
@@ -111,7 +112,7 @@ export default function DashboardSummary() {
       try {
         const [defaultRates, currentBalanceRates] = await Promise.all([
           loadHistoricalReportRatesInCurrency(dashboardTransactions, defaultCurrency, controller.signal),
-          loadBalanceRates(activeBalances, defaultCurrency, today, controller.signal),
+          loadBalanceRates(availableBalances, defaultCurrency, today, controller.signal),
         ]);
         if (controller.signal.aborted) return;
         setRates(defaultRates);
@@ -128,7 +129,7 @@ export default function DashboardSummary() {
     };
     void load();
     return () => controller.abort();
-  }, [activeBalances, balances, dashboardTransactions, defaultCurrency, settings, today, transactions]);
+  }, [availableBalances, balances, dashboardTransactions, defaultCurrency, settings, today, transactions]);
 
   if (!balances || !transactions || !categories || !settings || monthlyBudget === undefined) {
     return <DashboardSkeleton />;
@@ -158,7 +159,7 @@ export default function DashboardSummary() {
     convert
   );
   const monthNet = monthIncome - monthExpenses;
-  const totalBalance = activeBalances.reduce((sum, balance) => {
+  const totalBalance = availableBalances.reduce((sum, balance) => {
     if (balance.currency === defaultCurrency) return sum + balance.amount;
     const rate = currentBalanceRates[balance.currency];
     return rate ? sum + balance.amount * rate : sum;
@@ -276,7 +277,7 @@ export default function DashboardSummary() {
 
         {rateError ? (
           <p className="rounded-2xl bg-surface-muted px-4 py-3 text-xs font-medium text-muted">
-            Some active currency balances could not be included in the total right now.
+            Some currency balances could not be included in the total right now.
           </p>
         ) : null}
 

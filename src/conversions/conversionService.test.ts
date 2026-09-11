@@ -1,11 +1,14 @@
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
+import { rebuildDerivedBalances } from '@/balances/ledgerService';
 import { TapTrackDatabase, ensureDatabaseSeeded } from '@/database';
 import { getBalanceId } from '@/defaultData';
-import type { Currency, Method } from '@/types';
+import type { Currency, Method, Transaction } from '@/types';
 import {
   createConversion,
+  deleteConversion,
   InsufficientConversionBalanceError,
   InvalidConversionError,
+  updateConversion,
   type ConversionDraft,
 } from './conversionService';
 
@@ -156,5 +159,129 @@ describe('createConversion', () => {
     await expect(createConversion(invalidMismatchedAmount, database)).rejects.toBeInstanceOf(
       InvalidConversionError
     );
+  });
+});
+
+describe('conversion corrections', () => {
+  it('updates an existing move, preserves identity, rebuilds balances, and queues an upsert', async () => {
+    await setOpeningBalance('USD', 'card', 100);
+    const created = await createConversion(baseDraft, database);
+    await database.syncOutbox.clear();
+
+    const updated = await updateConversion(
+      created.id,
+      { ...baseDraft, fromAmount: 20, toAmount: 760, note: 'corrected' },
+      database,
+      new Date(2026, 4, 20, 12, 0, 0)
+    );
+
+    expect(updated.id).toBe(created.id);
+    expect(updated.createdAt).toBe(created.createdAt);
+    expect(updated).toMatchObject({ fromAmount: 20, toAmount: 760, note: 'corrected' });
+    expect((await database.balances.get(getBalanceId('USD', 'card')))?.amount).toBe(80);
+    expect((await database.balances.get(getBalanceId('TRY', 'cash')))?.amount).toBe(760);
+
+    const queued = await database.syncOutbox.get(`conversions:${created.id}`);
+    expect(queued).toMatchObject({
+      tableName: 'conversions',
+      operation: 'upsert',
+      recordId: created.id,
+    });
+    expect(queued?.record).toMatchObject({
+      id: created.id,
+      fromAmount: 20,
+      toAmount: 760,
+      note: 'corrected',
+    });
+  });
+
+  it('rolls an invalid update back completely when the corrected move would overdraw a balance', async () => {
+    await setOpeningBalance('USD', 'card', 100);
+    const created = await createConversion(baseDraft, database);
+    await database.syncOutbox.clear();
+
+    await expect(
+      updateConversion(
+        created.id,
+        { ...baseDraft, fromAmount: 120, toAmount: 4560 },
+        database,
+        new Date(2026, 4, 20, 12, 0, 0)
+      )
+    ).rejects.toBeInstanceOf(InsufficientConversionBalanceError);
+
+    expect(await database.conversions.get(created.id)).toMatchObject({
+      fromAmount: 10,
+      toAmount: 380,
+    });
+    expect((await database.balances.get(getBalanceId('USD', 'card')))?.amount).toBe(90);
+    expect((await database.balances.get(getBalanceId('TRY', 'cash')))?.amount).toBe(380);
+    expect(
+      (await database.syncOutbox.toArray()).filter((item) => item.tableName === 'conversions')
+    ).toEqual([]);
+  });
+
+  it('rejects a future-dated correction without changing the existing move', async () => {
+    await setOpeningBalance('USD', 'card', 100);
+    const created = await createConversion(baseDraft, database);
+    await database.syncOutbox.clear();
+    const now = new Date(2026, 4, 18, 16, 0, 0);
+
+    await expect(
+      updateConversion(created.id, { ...baseDraft, date: '2026-05-19' }, database, now)
+    ).rejects.toBeInstanceOf(InvalidConversionError);
+
+    expect(await database.conversions.get(created.id)).toMatchObject({ date: '2026-05-18' });
+    expect(
+      (await database.syncOutbox.toArray()).filter((item) => item.tableName === 'conversions')
+    ).toEqual([]);
+  });
+
+  it('deletes a move, rebuilds the ledger, and queues a delete intent', async () => {
+    await setOpeningBalance('USD', 'card', 100);
+    const created = await createConversion(baseDraft, database);
+    await database.syncOutbox.clear();
+
+    await deleteConversion(created.id, database);
+
+    expect(await database.conversions.get(created.id)).toBeUndefined();
+    expect((await database.balances.get(getBalanceId('USD', 'card')))?.amount).toBe(100);
+    expect((await database.balances.get(getBalanceId('TRY', 'cash')))?.amount ?? 0).toBe(0);
+    expect(await database.syncOutbox.get(`conversions:${created.id}`)).toMatchObject({
+      tableName: 'conversions',
+      operation: 'delete',
+      recordId: created.id,
+    });
+  });
+
+  it('rolls deletion back when later activity depends on money introduced by the move', async () => {
+    await setOpeningBalance('USD', 'card', 100);
+    const created = await createConversion(baseDraft, database);
+
+    const laterExpense: Transaction = {
+      id: 'later-try-expense',
+      type: 'expense',
+      amount: 300,
+      currency: 'TRY',
+      title: 'Later expense',
+      categoryId: 'other',
+      method: 'cash',
+      date: '2026-05-19',
+      createdAt: '2026-05-19T12:00:00.000Z',
+      updatedAt: '2026-05-19T12:00:00.000Z',
+    };
+    await database.transactions.add(laterExpense);
+    await rebuildDerivedBalances(database, '2026-05-19T12:00:00.000Z');
+    await database.syncOutbox.clear();
+
+    await expect(deleteConversion(created.id, database)).rejects.toBeInstanceOf(
+      InsufficientConversionBalanceError
+    );
+
+    expect(await database.conversions.get(created.id)).toBeDefined();
+    expect((await database.balances.get(getBalanceId('USD', 'card')))?.amount).toBe(90);
+    expect((await database.balances.get(getBalanceId('TRY', 'cash')))?.amount).toBe(80);
+    expect(
+      (await database.syncOutbox.toArray()).filter((item) => item.tableName === 'conversions')
+    ).toEqual([]);
   });
 });
