@@ -23,6 +23,8 @@ Ravel is built for people who may have:
 
 The goal is simple: **record something in seconds, then keep one dependable picture of what happened.**
 
+Ravel is **not a banking service** and does not move, custody, or hold funds. It is a personal ledger for recording and understanding financial activity.
+
 ## Product principles
 
 ### One ledger, not one bank
@@ -135,7 +137,7 @@ The layered Ravel mark represents fragmented financial parts resolving into one 
 - **Framework:** Next.js / React / TypeScript
 - **Styling:** Tailwind CSS
 - **Local database:** IndexedDB via Dexie
-- **Server / account sync:** Supabase
+- **Server / account sync:** Supabase + Supabase Auth
 - **AI categorization:** Groq API
 - **Testing:** Vitest + Playwright
 - **Deployment:** Vercel
@@ -163,7 +165,7 @@ The app can run locally without the optional cloud/AI integrations. Copy `.env.e
 
 Important groups include:
 
-- Supabase public/server credentials for account sync
+- Supabase public/server credentials for Supabase Auth and account sync
 - Groq credentials for Smart Categories
 - Telegram integration secrets
 - optional iPhone Shortcut template URLs
@@ -189,7 +191,7 @@ At the Ravel branding checkpoint merged on **11 September 2026**, the exact main
 
 Ravel is local-first, not “local-only.” Core ledger data starts on the device. Optional features can send narrowly scoped information to external services:
 
-- **Supabase** when account sync is enabled;
+- **Supabase / Supabase Auth** when account sync or authentication is used;
 - **Groq** when Smart Categories are enabled;
 - **Telegram / capture endpoints** when those capture methods are configured.
 
