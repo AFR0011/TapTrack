@@ -153,9 +153,11 @@ export function QuickAddTransaction({
         setError(
           'This transaction is on the same date as a balance check. Choose whether it happened before or after that balance was recorded.'
         );
+      } else if (err instanceof InsufficientBalanceError) {
+        setError(err.message);
       } else {
         setError(
-          err instanceof InsufficientBalanceError
+          err instanceof Error
             ? err.message
             : 'Transaction could not be saved. Check the details and try again.'
         );
@@ -182,6 +184,12 @@ export function QuickAddTransaction({
         if (nextFieldErrors.amount) amountRef.current?.focus();
         else titleRef.current?.focus();
       });
+      return;
+    }
+
+    if (date > today) {
+      setError('Transactions cannot be dated in the future.');
+      setPendingOrdering(null);
       return;
     }
 
@@ -410,7 +418,11 @@ export function QuickAddTransaction({
               label="Date"
               type="date"
               value={date}
-              onChange={(event) => setDate(event.target.value)}
+              max={today}
+              onChange={(event) => {
+                setDate(event.target.value);
+                setError('');
+              }}
               required
             />
             <div className="sm:col-span-2">
