@@ -1,6 +1,6 @@
 # Architecture
 
-TapTrack is a Next.js 16 App Router PWA. React client components read and write a browser-profile
+Ravel is a Next.js 16 App Router PWA. React client components read and write a browser-profile
 local Dexie database; this local database is the product's source of truth. Supabase authentication
 and synchronization are optional integration capabilities and must never gate local routes or local
 finance operations.

@@ -1,5 +1,5 @@
 import { fetchAICategorySuggestion } from '@/categories/categorySuggestion';
-import { db, type TapTrackDatabase } from '@/database';
+import { db, type RavelDatabase } from '@/database';
 import { updateTransaction } from '@/transactions/createTransaction';
 import type { Category, Transaction, TransactionDraft } from '@/types';
 
@@ -11,7 +11,7 @@ type LateCategorizationDependencies = {
 export async function reconcileSavedTransactionCategoryWithAI(
   created: Transaction,
   categories: Category[],
-  database: TapTrackDatabase = db,
+  database: RavelDatabase = db,
   dependencies: LateCategorizationDependencies = {}
 ): Promise<boolean> {
   const fetchSuggestion = dependencies.fetchSuggestion ?? fetchAICategorySuggestion;

@@ -1,5 +1,5 @@
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
-import { TapTrackDatabase, ensureDatabaseSeeded } from '@/database';
+import { RavelDatabase, ensureDatabaseSeeded } from '@/database';
 import { EXCHANGE_RATE_SOURCE } from '@/exchangeRates';
 import { getHistoricalReportRateKey, type HistoricalReportRateMap } from '@/reports/historicalReportRates';
 import { createTransaction } from '@/transactions/createTransaction';
@@ -7,10 +7,10 @@ import { seedOpeningBalance } from '@/test/ledgerTestUtils';
 import { exportCSV, exportJSON, exportPDF, importJSON } from './exportService';
 import type { Transaction, TransactionDraft } from '@/types';
 
-let database: TapTrackDatabase;
+let database: RavelDatabase;
 
 beforeEach(async () => {
-  database = new TapTrackDatabase(`TapTrackTest-${crypto.randomUUID()}`);
+  database = new RavelDatabase(`RavelTest-${crypto.randomUUID()}`);
   await ensureDatabaseSeeded(database);
 });
 
@@ -72,7 +72,7 @@ describe('exportService', () => {
     const text = await pdf.text();
 
     expect(pdf.type).toBe('application/pdf');
-    expect(text).toContain('TapTrack Monthly Report');
+    expect(text).toContain('Ravel Monthly Report');
     expect(text).toContain('coffee');
     expect(text).toContain('Food');
     expect(text).toContain('Page 1 of 1');
@@ -203,7 +203,7 @@ describe('exportService', () => {
     const text = await pdf.text();
 
     expect(pdf.type).toBe('application/pdf');
-    expect(text).toContain('TapTrack Range Report');
+    expect(text).toContain('Ravel Range Report');
     expect(text).toContain('2026-05-01 to 2026-05-31');
     expect(text).toContain('Food');
   });
@@ -227,7 +227,7 @@ describe('exportService', () => {
     const text = await pdf.text();
 
     expect(pdf.type).toBe('application/pdf');
-    expect(text).toContain('TapTrack Yearly Report');
+    expect(text).toContain('Ravel Yearly Report');
     expect(text).toContain('MONTHLY SUMMARY');
     expect(text).toContain('2026-01 | income 1000 TRY');
   });

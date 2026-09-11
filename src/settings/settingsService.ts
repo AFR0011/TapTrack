@@ -1,4 +1,4 @@
-import { db, ensureDatabaseSeeded, type TapTrackDatabase } from '@/database';
+import { db, ensureDatabaseSeeded, type RavelDatabase } from '@/database';
 import { DEFAULT_SETTINGS_ID } from '@/defaultData';
 import { flushSyncQueueBestEffort, queueRecordForSync } from '@/sync/syncService';
 import type { Settings } from '@/types';
@@ -20,7 +20,7 @@ export type SettingsPreferenceUpdates = Partial<
  */
 export async function updateSettingsPreferences(
   updates: SettingsPreferenceUpdates,
-  database: TapTrackDatabase = db
+  database: RavelDatabase = db
 ): Promise<Settings> {
   await ensureDatabaseSeeded(database);
 

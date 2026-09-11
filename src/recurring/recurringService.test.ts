@@ -1,5 +1,5 @@
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
-import { TapTrackDatabase, ensureDatabaseSeeded } from '@/database';
+import { RavelDatabase, ensureDatabaseSeeded } from '@/database';
 import { getBalanceId } from '@/defaultData';
 import {
   createDueRecurringTransactions,
@@ -12,10 +12,10 @@ import {
   updateRecurringTransaction,
 } from './recurringService';
 
-let database: TapTrackDatabase;
+let database: RavelDatabase;
 
 beforeEach(async () => {
-  database = new TapTrackDatabase(`TapTrackTest-${crypto.randomUUID()}`);
+  database = new RavelDatabase(`RavelTest-${crypto.randomUUID()}`);
   await ensureDatabaseSeeded(database);
 });
 

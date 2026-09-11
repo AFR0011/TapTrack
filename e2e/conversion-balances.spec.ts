@@ -58,7 +58,7 @@ test('exchange moves money between currency balances in the real browser workflo
   await expect(page.getByRole('heading', { name: 'Make daily logging faster.' })).toBeVisible();
   await page.getByRole('button', { name: 'Continue', exact: true }).click();
   await expect(page.getByRole('heading', { name: 'You’re ready.' })).toBeVisible();
-  await page.getByRole('button', { name: 'Open TapTrack' }).click();
+  await page.getByRole('button', { name: 'Open Ravel' }).click();
   await expect(page.getByRole('heading', { name: 'Dashboard', exact: true })).toBeVisible();
 
   await page.goto('/app/conversions');

@@ -1,7 +1,7 @@
 'use client';
 
 import type { Table } from 'dexie';
-import { db, type TapTrackDatabase } from '@/database';
+import { db, type RavelDatabase } from '@/database';
 import { rebuildDerivedBalances } from '@/balances/ledgerService';
 import {
   getSyncAccess,
@@ -20,7 +20,7 @@ import {
 } from '@/sync/restoreSnapshot';
 
 export type SyncedDexieTableName = keyof Pick<
-  TapTrackDatabase,
+  RavelDatabase,
   | 'transactions'
   | 'balanceCheckpoints'
   | 'categories'
@@ -45,8 +45,10 @@ const DEXIE_TO_SUPABASE: Record<SyncedDexieTableName, string> = {
 };
 
 const CANONICAL_TABLE_NAMES = Object.keys(DEXIE_TO_SUPABASE) as SyncedDexieTableName[];
-const LAST_SYNC_PREFIX = 'taptrack_last_pull:';
-const LAST_PUSH_PREFIX = 'taptrack_last_push:';
+const LAST_SYNC_PREFIX = 'ravel_last_pull:';
+const LAST_PUSH_PREFIX = 'ravel_last_push:';
+const LEGACY_LAST_SYNC_PREFIX = 'taptrack_last_pull:';
+const LEGACY_LAST_PUSH_PREFIX = 'taptrack_last_push:';
 
 interface SupabaseRow extends Record<string, unknown> {
   id?: string;
@@ -80,7 +82,7 @@ function getOutboxId(tableName: string, recordId: string): string {
 }
 
 function getDexieTable(
-  database: TapTrackDatabase,
+  database: RavelDatabase,
   tableName: SyncedDexieTableName
 ): Table<Record<string, unknown>, string> {
   return database[tableName] as unknown as Table<Record<string, unknown>, string>;
@@ -140,8 +142,13 @@ function writeStorage(key: string, value: string): void {
   }
 }
 
-function getStatusTimestamp(prefix: string, userId: string | null): string | null {
-  return userId ? readStorage(`${prefix}${userId}`) : null;
+function getStatusTimestamp(prefix: string, legacyPrefix: string, userId: string | null): string | null {
+  if (!userId) return null;
+  const current = readStorage(`${prefix}${userId}`);
+  if (current) return current;
+  const legacy = readStorage(`${legacyPrefix}${userId}`);
+  if (legacy) writeStorage(`${prefix}${userId}`, legacy);
+  return legacy;
 }
 
 function setStatusTimestamp(prefix: string, userId: string, value = new Date().toISOString()) {
@@ -152,7 +159,7 @@ async function queueOutboxOperation(
   tableName: SyncedDexieTableName,
   operation: SyncOutboxItem['operation'],
   recordId: string,
-  database: TapTrackDatabase,
+  database: RavelDatabase,
   record?: Record<string, unknown>
 ): Promise<SyncOutboxItem> {
   const queuedAt = new Date().toISOString();
@@ -181,7 +188,7 @@ async function queueOutboxOperation(
 export async function queueRecordForSync(
   tableName: PublicSyncTableName,
   record: Record<string, unknown>,
-  database: TapTrackDatabase = db
+  database: RavelDatabase = db
 ): Promise<SyncOutboxItem | null> {
   if (tableName === 'balances') return null;
 
@@ -195,7 +202,7 @@ export async function queueRecordForSync(
 export async function queueDeleteForSync(
   tableName: PublicSyncTableName,
   recordId: string,
-  database: TapTrackDatabase = db
+  database: RavelDatabase = db
 ): Promise<SyncOutboxItem | null> {
   if (tableName === 'balances' || !recordId) return null;
   return queueOutboxOperation(tableName, 'delete', recordId, database);
@@ -203,7 +210,7 @@ export async function queueDeleteForSync(
 
 async function acknowledgeExactOperation(
   item: SyncOutboxItem,
-  database: TapTrackDatabase
+  database: RavelDatabase
 ): Promise<void> {
   const current = await database.syncOutbox.get(item.id);
   if (current?.operationId === item.operationId) {
@@ -213,7 +220,7 @@ async function acknowledgeExactOperation(
 
 async function recordOperationFailure(
   item: SyncOutboxItem,
-  database: TapTrackDatabase
+  database: RavelDatabase
 ): Promise<void> {
   const current = await database.syncOutbox.get(item.id);
   if (current?.operationId !== item.operationId) return;
@@ -227,7 +234,7 @@ async function recordOperationFailure(
 
 async function adoptChangedLedgerGeneration(
   access: NonNullable<Awaited<ReturnType<typeof requireLinkedSyncAccess>>>,
-  database: TapTrackDatabase,
+  database: RavelDatabase,
   remoteVersion?: CloudLedgerVersion
 ): Promise<void> {
   const version = remoteVersion ?? (await ensureCloudLedgerVersion(access.client, access.userId));
@@ -242,7 +249,7 @@ async function adoptChangedLedgerGeneration(
 
 async function ensurePushLedgerVersion(
   access: NonNullable<Awaited<ReturnType<typeof requireLinkedSyncAccess>>>,
-  database: TapTrackDatabase
+  database: RavelDatabase
 ): Promise<CloudLedgerVersion | null> {
   const remote = await ensureCloudLedgerVersion(access.client, access.userId);
   const binding = access.binding;
@@ -273,7 +280,7 @@ async function sendOutboxItem(
   item: SyncOutboxItem,
   access: NonNullable<Awaited<ReturnType<typeof requireLinkedSyncAccess>>>,
   version: CloudLedgerVersion,
-  database: TapTrackDatabase
+  database: RavelDatabase
 ): Promise<boolean> {
   if (!isCanonicalTableName(item.tableName)) {
     await acknowledgeExactOperation(item, database);
@@ -335,7 +342,7 @@ async function sendOutboxItem(
  */
 export async function deliverQueuedOperationBestEffort(
   item: SyncOutboxItem | null,
-  database: TapTrackDatabase = db
+  database: RavelDatabase = db
 ): Promise<void> {
   if (!item) return;
 
@@ -359,7 +366,7 @@ export async function deliverQueuedOperationBestEffort(
 export async function pushRecord(
   tableName: PublicSyncTableName,
   record: Record<string, unknown>,
-  database: TapTrackDatabase = db
+  database: RavelDatabase = db
 ): Promise<void> {
   const item = await queueRecordForSync(tableName, record, database);
   await deliverQueuedOperationBestEffort(item, database);
@@ -369,7 +376,7 @@ export async function pushRecord(
 export async function deleteRecord(
   tableName: PublicSyncTableName,
   recordId: string,
-  database: TapTrackDatabase = db
+  database: RavelDatabase = db
 ): Promise<void> {
   const item = await queueDeleteForSync(tableName, recordId, database);
   await deliverQueuedOperationBestEffort(item, database);
@@ -379,7 +386,7 @@ export async function deleteRecord(
  * Destructive snapshot replacement remains intentionally unavailable. Linking
  * uses explicit cloud-adoption or local-merge workflows instead.
  */
-export async function syncAllLocalData(database: TapTrackDatabase = db): Promise<void> {
+export async function syncAllLocalData(database: RavelDatabase = db): Promise<void> {
   void database;
   throw new Error(
     'Remote snapshot replacement is disabled until an atomic, reviewed workflow is available.'
@@ -387,7 +394,7 @@ export async function syncAllLocalData(database: TapTrackDatabase = db): Promise
 }
 
 /** Processes every durable pending operation in queue order. Failed items remain queued. */
-export async function processRetryQueue(database: TapTrackDatabase = db): Promise<void> {
+export async function processRetryQueue(database: RavelDatabase = db): Promise<void> {
   const access = await requireLinkedSyncAccess(database);
   if (!access) return;
   const version = await ensurePushLedgerVersion(access, database);
@@ -401,7 +408,7 @@ export async function processRetryQueue(database: TapTrackDatabase = db): Promis
 }
 
 /** Starts a retry pass without allowing provider/network failures to escape. */
-export async function flushSyncQueueBestEffort(database: TapTrackDatabase = db): Promise<void> {
+export async function flushSyncQueueBestEffort(database: RavelDatabase = db): Promise<void> {
   try {
     await processRetryQueue(database);
   } catch {
@@ -413,7 +420,7 @@ export async function flushSyncQueueBestEffort(database: TapTrackDatabase = db):
  * Explicit local-ledger backfill used by the user's "Merge this device" choice.
  * Normal sync never performs an implicit full upload.
  */
-export async function pushLocalChanges(database: TapTrackDatabase = db): Promise<void> {
+export async function pushLocalChanges(database: RavelDatabase = db): Promise<void> {
   for (const tableName of CANONICAL_TABLE_NAMES) {
     const rows = await getDexieTable(database, tableName).toArray();
     for (const record of rows) {
@@ -431,7 +438,7 @@ export async function pushLocalChanges(database: TapTrackDatabase = db): Promise
  * optimistic record until that exact operation succeeds. Remote soft-deletes
  * remove local canonical rows. Balances are rebuilt once from pulled ledger data.
  */
-export async function pullUpdates(database: TapTrackDatabase = db): Promise<void> {
+export async function pullUpdates(database: RavelDatabase = db): Promise<void> {
   const access = await requireLinkedSyncAccess(database);
   if (!access) return;
 
@@ -505,13 +512,13 @@ function sameLedgerVersion(a: CloudLedgerVersion, b: CloudLedgerVersion): boolea
 }
 
 /** A normal cycle sends durable local changes first, then adopts canonical server state. */
-export async function syncNow(database: TapTrackDatabase = db): Promise<void> {
+export async function syncNow(database: RavelDatabase = db): Promise<void> {
   await processRetryQueue(database);
   await pullUpdates(database);
 }
 
 export async function getSyncStatus(
-  database: TapTrackDatabase = db
+  database: RavelDatabase = db
 ): Promise<SyncStatusSnapshot> {
   const online = typeof navigator === 'undefined' ? true : navigator.onLine !== false;
 
@@ -524,8 +531,8 @@ export async function getSyncStatus(
       userId,
       bindingState: access.state,
       syncAllowed: access.state === 'linked',
-      lastSyncAt: getStatusTimestamp(LAST_SYNC_PREFIX, userId),
-      lastPushAt: getStatusTimestamp(LAST_PUSH_PREFIX, userId),
+      lastSyncAt: getStatusTimestamp(LAST_SYNC_PREFIX, LEGACY_LAST_SYNC_PREFIX, userId),
+      lastPushAt: getStatusTimestamp(LAST_PUSH_PREFIX, LEGACY_LAST_PUSH_PREFIX, userId),
       pendingRetryCount: await database.syncOutbox.count(),
       online,
     };

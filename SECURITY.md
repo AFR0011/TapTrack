@@ -1,10 +1,10 @@
 # Security Policy
 
-TapTrack is a personal finance tracking application and engineering portfolio project. It is not a bank, payment processor, accounting service, investment platform, tax service, or financial-advice service.
+Ravel is a personal finance tracking application and engineering portfolio project. It is not a bank, payment processor, accounting service, investment platform, tax service, or financial-advice service.
 
 ## Data and trust boundaries
 
-TapTrack is local-first for finance data. Normal finance workflows read and write IndexedDB through Dexie. Optional Supabase synchronization mirrors supported canonical records only after a device is explicitly linked to an authenticated account.
+Ravel is local-first for finance data. Normal finance workflows read and write IndexedDB through Dexie. Optional Supabase synchronization mirrors supported canonical records only after a device is explicitly linked to an authenticated account.
 
 Enabling integrations changes the privacy boundary:
 
@@ -31,7 +31,7 @@ The public Supabase browser key is intended for client use, but authorization mu
 
 ## Local finance boundary
 
-IndexedDB may contain sensitive personal finance history. Shared browser profiles, unlocked devices, browser backups, developer tools, or malware with local-browser access may expose that information. TapTrack does not provide application-level local database encryption at rest.
+IndexedDB may contain sensitive personal finance history. Shared browser profiles, unlocked devices, browser backups, developer tools, or malware with local-browser access may expose that information. Ravel does not provide application-level local database encryption at rest.
 
 Canonical balance state is reconstructed from opening/reconciliation checkpoints plus later transactions and conversions. The local `balances` table is derived cache, not independent truth.
 
@@ -94,7 +94,7 @@ Signed-out users retain local deterministic categorization without consuming Gro
 
 ## Exchange-rate boundary
 
-TapTrack does not use hard-coded or estimated exchange-rate fallbacks.
+Ravel does not use hard-coded or estimated exchange-rate fallbacks.
 
 Historical exchange and TRY-unified reporting use TCMB rates via Frankfurter for the requested transaction/conversion date. If no rate is published on that date, only the most recent prior published rate is accepted. If no valid rate can be obtained, the operation/report conversion fails visibly rather than substituting an invented value.
 

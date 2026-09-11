@@ -1,4 +1,4 @@
-import { db, type TapTrackDatabase } from '@/database';
+import { db, type RavelDatabase } from '@/database';
 import { getBalanceId } from '@/defaultData';
 import { formatLocalDate } from '@/dates';
 import { findSameDayOrderingCheckpoint } from '@/balances/reconciliationService';
@@ -17,7 +17,7 @@ export type TransactionOrderingRequirement = {
  */
 export async function findHistoricalTransactionOrderingRequirements(
   drafts: TransactionDraft[],
-  database: TapTrackDatabase = db,
+  database: RavelDatabase = db,
   nowDate = new Date()
 ): Promise<TransactionOrderingRequirement[]> {
   const today = formatLocalDate(nowDate);

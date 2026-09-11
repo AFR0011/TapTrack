@@ -1,4 +1,4 @@
-import { db, type TapTrackDatabase } from '@/database';
+import { db, type RavelDatabase } from '@/database';
 import { getBalanceId } from '@/defaultData';
 import type {
   Balance,
@@ -39,7 +39,7 @@ type LedgerActivity = {
  * restore, sync, and ordinary local mutations.
  */
 export async function rebuildDerivedBalances(
-  database: TapTrackDatabase = db,
+  database: RavelDatabase = db,
   updatedAt = new Date().toISOString()
 ): Promise<Balance[]> {
   const [checkpoints, transactions, conversions] = await Promise.all([

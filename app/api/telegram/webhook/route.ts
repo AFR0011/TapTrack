@@ -130,9 +130,9 @@ function normalizeActiveCurrencies(rows: Array<{ currency: unknown }> | null | u
 export async function POST(request: NextRequest): Promise<NextResponse> {
   const webhookSecret = process.env.TELEGRAM_WEBHOOK_SECRET;
   const botToken = process.env.TELEGRAM_BOT_TOKEN;
-  const ownerChatId = process.env.TAPTRACK_OWNER_TELEGRAM_CHAT_ID;
-  const ownerId = process.env.TAPTRACK_OWNER_USER_ID;
-  const timeZone = process.env.TAPTRACK_TIME_ZONE;
+  const ownerChatId = process.env.RAVEL_OWNER_TELEGRAM_CHAT_ID ?? process.env.TAPTRACK_OWNER_TELEGRAM_CHAT_ID;
+  const ownerId = process.env.RAVEL_OWNER_USER_ID ?? process.env.TAPTRACK_OWNER_USER_ID;
+  const timeZone = process.env.RAVEL_TIME_ZONE ?? process.env.TAPTRACK_TIME_ZONE;
 
   if (
     !webhookSecret ||
@@ -263,7 +263,7 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
   if (matchesCommand(text, '/help') || matchesCommand(text, '/start')) {
     await sendMessage(
       chatId,
-      '📒 <b>TapTrack Bot</b>\n\n' +
+      '📒 <b>Ravel Bot</b>\n\n' +
         'Log transactions:\n' +
         '  <code>-120 coffee cash</code>\n' +
         '  <code>+20000 salary card</code>\n' +
@@ -299,7 +299,7 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
     ]);
 
     if (categoryError || settingsError || currencyError) {
-      await sendMessage(chatId, '❌ TapTrack could not load your ledger settings.');
+      await sendMessage(chatId, '❌ Ravel could not load your ledger settings.');
       return NextResponse.json({ ok: true });
     }
 

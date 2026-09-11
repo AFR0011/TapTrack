@@ -1,5 +1,5 @@
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
-import { TapTrackDatabase, ensureDatabaseSeeded } from '@/database';
+import { RavelDatabase, ensureDatabaseSeeded } from '@/database';
 import { DEFAULT_SETTINGS_ID } from '@/defaultData';
 import {
   createRecurringTransaction,
@@ -8,10 +8,10 @@ import {
 } from '@/recurring/recurringService';
 import { addActiveCurrency, removeActiveCurrency } from './currencyService';
 
-let database: TapTrackDatabase;
+let database: RavelDatabase;
 
 beforeEach(async () => {
-  database = new TapTrackDatabase(`TapTrackTest-${crypto.randomUUID()}`);
+  database = new RavelDatabase(`RavelTest-${crypto.randomUUID()}`);
   await ensureDatabaseSeeded(database);
   await addActiveCurrency('USD', database, new Date(2026, 8, 1, 12, 0, 0));
 });

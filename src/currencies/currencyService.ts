@@ -1,4 +1,4 @@
-import { db, ensureDatabaseSeeded, type TapTrackDatabase } from '@/database';
+import { db, ensureDatabaseSeeded, type RavelDatabase } from '@/database';
 import { DEFAULT_SETTINGS_ID, getBalanceId } from '@/defaultData';
 import { formatLocalDate, getCurrentMonth } from '@/dates';
 import { normalizeCurrencyCode } from '@/currencies/currencyCatalog';
@@ -21,7 +21,7 @@ function deriveActiveCurrencies(
 
 export async function addActiveCurrency(
   currencyInput: Currency,
-  database: TapTrackDatabase = db,
+  database: RavelDatabase = db,
   nowDate = new Date()
 ): Promise<Currency> {
   await ensureDatabaseSeeded(database);
@@ -96,7 +96,7 @@ export async function addActiveCurrency(
 
 export async function removeActiveCurrency(
   currencyInput: Currency,
-  database: TapTrackDatabase = db
+  database: RavelDatabase = db
 ): Promise<Settings> {
   await ensureDatabaseSeeded(database);
   const currency = normalizeCurrencyCode(currencyInput);
@@ -149,7 +149,7 @@ export async function removeActiveCurrency(
 
 export async function setDefaultCurrency(
   currencyInput: Currency,
-  database: TapTrackDatabase = db
+  database: RavelDatabase = db
 ): Promise<Settings> {
   await ensureDatabaseSeeded(database);
   const currency = normalizeCurrencyCode(currencyInput);
@@ -179,7 +179,7 @@ export async function setDefaultCurrency(
   return result;
 }
 
-export async function getActiveCurrencies(database: TapTrackDatabase = db): Promise<Currency[]> {
+export async function getActiveCurrencies(database: RavelDatabase = db): Promise<Currency[]> {
   await ensureDatabaseSeeded(database);
   const [settings, balances] = await Promise.all([
     database.settings.get(DEFAULT_SETTINGS_ID),

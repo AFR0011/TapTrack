@@ -9,7 +9,7 @@ async function completeFreshOnboarding(page: Page) {
   await expect(page.getByRole('heading', { name: 'Make daily logging faster.' })).toBeVisible();
   await page.getByRole('button', { name: 'Continue' }).click();
   await expect(page.getByRole('heading', { name: 'You’re ready.' })).toBeVisible();
-  await page.getByRole('button', { name: 'Open TapTrack' }).click();
+  await page.getByRole('button', { name: 'Open Ravel' }).click();
   await expect(page.getByRole('heading', { name: 'Dashboard', exact: true })).toBeVisible();
 }
 
@@ -67,6 +67,6 @@ test('settings navigation and local preferences remain usable offline on mobile'
   await expect(dataSection.getByRole('button', { name: 'Export CSV', exact: true })).toBeVisible();
   await expect(dataSection.getByRole('button', { name: 'Download backup', exact: true })).toBeVisible();
   await expect(dataSection.getByRole('button', { name: 'Choose backup', exact: true })).toBeVisible();
-  await expect(dataSection.getByRole('button', { name: 'Reset TapTrack data', exact: true })).toBeVisible();
+  await expect(dataSection.getByRole('button', { name: 'Reset Ravel data', exact: true })).toBeVisible();
   await assertNoHorizontalOverflow(page);
 });

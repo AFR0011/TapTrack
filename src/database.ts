@@ -19,7 +19,7 @@ import {
 } from '@/defaultData';
 import { formatLocalDate, getCurrentMonth } from '@/dates';
 
-export class TapTrackDatabase extends Dexie {
+export class RavelDatabase extends Dexie {
   transactions!: Table<Transaction, string>;
   balances!: Table<Balance, string>;
   balanceCheckpoints!: Table<BalanceCheckpoint, string>;
@@ -110,9 +110,9 @@ export class TapTrackDatabase extends Dexie {
   }
 }
 
-export const db = new TapTrackDatabase();
+export const db = new RavelDatabase();
 
-export async function ensureDatabaseSeeded(database: TapTrackDatabase = db) {
+export async function ensureDatabaseSeeded(database: RavelDatabase = db) {
   const now = new Date().toISOString();
 
   await database.transaction('rw', database.categories, database.settings, async () => {

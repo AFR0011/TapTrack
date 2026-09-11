@@ -170,7 +170,7 @@ Important groups include:
 - Telegram integration secrets
 - optional iPhone Shortcut template URLs
 
-Some environment-variable names retain the historical `TAPTRACK_` prefix for compatibility. They are technical contracts, not the current public product name.
+New configuration uses the `RAVEL_` prefix. Existing deployments using historical `TAPTRACK_` environment names remain supported as fallbacks. Persisted storage/database and deployed Supabase RPC identifiers may also retain historical names internally so the rebrand never strands existing data.
 
 ## Verification
 

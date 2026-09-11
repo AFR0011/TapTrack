@@ -1,4 +1,4 @@
-import { db, ensureDatabaseSeeded, type TapTrackDatabase } from '@/database';
+import { db, ensureDatabaseSeeded, type RavelDatabase } from '@/database';
 import { getBalanceId } from '@/defaultData';
 import { formatLocalDate, getAutomaticOccurredAt } from '@/dates';
 import { rebuildDerivedBalances } from '@/balances/ledgerService';
@@ -40,7 +40,7 @@ function assertTransactionDateNotFuture(input: TransactionDraft, nowDate: Date) 
 
 export async function createTransaction(
   input: TransactionDraft,
-  database: TapTrackDatabase = db,
+  database: RavelDatabase = db,
   nowDate = new Date(),
   transactionId = crypto.randomUUID()
 ): Promise<Transaction> {
@@ -96,7 +96,7 @@ export async function createTransaction(
 export async function updateTransaction(
   id: string,
   input: TransactionDraft,
-  database: TapTrackDatabase = db
+  database: RavelDatabase = db
 ): Promise<Transaction> {
   await ensureDatabaseSeeded(database);
 
@@ -164,7 +164,7 @@ export async function updateTransaction(
 
 export async function deleteTransaction(
   id: string,
-  database: TapTrackDatabase = db
+  database: RavelDatabase = db
 ): Promise<void> {
   await ensureDatabaseSeeded(database);
 
@@ -207,7 +207,7 @@ export async function deleteTransaction(
 /** Creates multiple transactions atomically and rebuilds all derived balances once. */
 export async function createTransactions(
   inputs: TransactionDraft[],
-  database: TapTrackDatabase = db
+  database: RavelDatabase = db
 ): Promise<Transaction[]> {
   if (inputs.length === 0) return [];
   if (inputs.length === 1) return [await createTransaction(inputs[0]!, database)];

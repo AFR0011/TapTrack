@@ -51,7 +51,7 @@ export function CloudLedgerLink({ onLinked }: CloudLedgerLinkProps) {
   const persistPreAdoptionSafetyBackup = async () => {
     const backup = await exportJSON();
     const timestamp = new Date().toISOString().replace(/[:.]/g, '-');
-    downloadText(`taptrack-pre-sync-replace-${timestamp}.json`, backup, 'application/json');
+    downloadText(`ravel-pre-sync-replace-${timestamp}.json`, backup, 'application/json');
   };
 
   const run = async (action: 'empty' | 'account' | 'merge') => {

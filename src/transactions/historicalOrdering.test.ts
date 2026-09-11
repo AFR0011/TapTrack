@@ -1,13 +1,13 @@
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
-import { TapTrackDatabase, ensureDatabaseSeeded } from '@/database';
+import { RavelDatabase, ensureDatabaseSeeded } from '@/database';
 import { getBalanceId } from '@/defaultData';
 import type { BalanceCheckpoint, TransactionDraft } from '@/types';
 import { findHistoricalTransactionOrderingRequirements } from './historicalOrdering';
 
-let database: TapTrackDatabase;
+let database: RavelDatabase;
 
 beforeEach(async () => {
-  database = new TapTrackDatabase(`TapTrackHistoricalOrdering-${crypto.randomUUID()}`);
+  database = new RavelDatabase(`RavelHistoricalOrdering-${crypto.randomUUID()}`);
   await ensureDatabaseSeeded(database);
 
   const checkpoint: BalanceCheckpoint = {

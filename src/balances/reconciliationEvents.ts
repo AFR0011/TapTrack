@@ -1,1 +1,1 @@
-export const OPEN_BALANCE_CHECK_EVENT = 'taptrack:open-balance-check';
+export const OPEN_BALANCE_CHECK_EVENT = 'ravel:open-balance-check';

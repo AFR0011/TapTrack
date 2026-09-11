@@ -1,4 +1,4 @@
-const baseUrl = process.env.TAPTRACK_SMOKE_BASE_URL ?? 'http://127.0.0.1:3000';
+const baseUrl = process.env.RAVEL_SMOKE_BASE_URL ?? process.env.TAPTRACK_SMOKE_BASE_URL ?? 'http://127.0.0.1:3000';
 
 const checks = [
   {

@@ -1,6 +1,6 @@
 import Dexie from 'dexie';
 import { afterEach, describe, expect, it } from 'vitest';
-import { TapTrackDatabase, ensureDatabaseSeeded } from '@/database';
+import { RavelDatabase, ensureDatabaseSeeded } from '@/database';
 
 const legacyStores = {
   transactions: 'id, type, date, categoryId, method, currency, recurringSourceId',
@@ -48,7 +48,7 @@ describe('database migrations', () => {
     for (const [table, row] of Object.entries(rows)) await legacy.table(table).put(row);
     legacy.close();
 
-    const upgraded = new TapTrackDatabase(name);
+    const upgraded = new RavelDatabase(name);
     await upgraded.open();
 
     for (const [table, row] of Object.entries(rows)) {
@@ -67,7 +67,7 @@ describe('database migrations', () => {
     const checkpointCount = await upgraded.balanceCheckpoints.count();
     upgraded.close();
 
-    const reopened = new TapTrackDatabase(name);
+    const reopened = new RavelDatabase(name);
     await reopened.open();
     await expect(reopened.balanceCheckpoints.count()).resolves.toBe(checkpointCount);
     reopened.close();
@@ -102,7 +102,7 @@ describe('database migrations', () => {
     });
     legacy.close();
 
-    const upgraded = new TapTrackDatabase(name);
+    const upgraded = new RavelDatabase(name);
     await upgraded.open();
     await expect(upgraded.balanceCheckpoints.count()).resolves.toBe(0);
     upgraded.close();
@@ -111,7 +111,7 @@ describe('database migrations', () => {
   it('repairs missing default category ids without overwriting existing category changes', async () => {
     const name = `taptrack-seed-repair-${crypto.randomUUID()}`;
     names.push(name);
-    const database = new TapTrackDatabase(name);
+    const database = new RavelDatabase(name);
     await ensureDatabaseSeeded(database);
 
     const existingFood = await database.categories.get('cat-food');

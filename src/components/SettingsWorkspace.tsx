@@ -156,23 +156,23 @@ export default function SettingsWorkspace() {
   };
 
   const handleExportCSV = async () => {
-    downloadText('taptrack-transactions.csv', await exportCSV(), 'text/csv');
+    downloadText('ravel-transactions.csv', await exportCSV(), 'text/csv');
     toast.success('CSV downloaded.');
   };
 
   const handleExportJSON = async () => {
-    downloadText('taptrack-backup.json', await exportJSON(), 'application/json');
+    downloadText('ravel-backup.json', await exportJSON(), 'application/json');
     toast.success('Backup downloaded.');
   };
 
   const persistPreRestoreSafetyBackup = useCallback((safetyBackup: string) => {
     const timestamp = new Date().toISOString().replace(/[:.]/g, '-');
-    downloadText(`taptrack-pre-restore-${timestamp}.json`, safetyBackup, 'application/json');
+    downloadText(`ravel-pre-restore-${timestamp}.json`, safetyBackup, 'application/json');
   }, []);
 
   const persistPreResetSafetyBackup = useCallback((safetyBackup: string) => {
     const timestamp = new Date().toISOString().replace(/[:.]/g, '-');
-    downloadText(`taptrack-pre-reset-${timestamp}.json`, safetyBackup, 'application/json');
+    downloadText(`ravel-pre-reset-${timestamp}.json`, safetyBackup, 'application/json');
   }, []);
 
   const clearPendingRestore = useCallback(() => {
@@ -369,7 +369,7 @@ export default function SettingsWorkspace() {
       <div className="space-y-5" aria-busy="true" aria-label="Loading settings">
         <PageHeader
           title="Settings"
-          description="Control TapTrack's defaults, connections, and data on this device."
+          description="Control Ravel's defaults, connections, and data on this device."
         />
         <div className="grid gap-5 md:grid-cols-[260px_minmax(0,1fr)]">
           <SkeletonCard />
@@ -385,7 +385,7 @@ export default function SettingsWorkspace() {
     <div className="min-w-0 space-y-5 sm:space-y-6" data-layout="settings-workspace">
       <PageHeader
         title="Settings"
-        description="Set everyday defaults, connect devices, and keep control of where your TapTrack data lives."
+        description="Set everyday defaults, connect devices, and keep control of where your Ravel data lives."
       />
 
       <div className="grid min-w-0 gap-5 md:grid-cols-[260px_minmax(0,1fr)] md:items-start">
@@ -437,7 +437,7 @@ export default function SettingsWorkspace() {
                 <SectionHeading
                   eyebrow="Everyday behavior"
                   title="Defaults & appearance"
-                  description="Choose how TapTrack starts common actions on this device."
+                  description="Choose how Ravel starts common actions on this device."
                 />
 
                 <div className="mt-5 grid gap-4 xl:grid-cols-2">
@@ -462,7 +462,7 @@ export default function SettingsWorkspace() {
                     <ToggleRow
                       className="py-4"
                       label="Dark mode"
-                      description="Use TapTrack's dark appearance on this device."
+                      description="Use Ravel's dark appearance on this device."
                       checked={darkModeEnabled}
                       onChange={handleToggleDarkMode}
                     />
@@ -585,7 +585,7 @@ export default function SettingsWorkspace() {
                       {buildSyncSummary(syncStatus)}
                     </p>
                     <p className="mt-2 max-w-2xl text-xs font-medium leading-5 text-muted">
-                      TapTrack keeps this device usable on its own. Sync is an optional way to copy ledger changes between devices signed into the same account.
+                      Ravel keeps this device usable on its own. Sync is an optional way to copy ledger changes between devices signed into the same account.
                     </p>
                   </div>
                   <Button
@@ -609,7 +609,7 @@ export default function SettingsWorkspace() {
                   <div className="mt-4 rounded-2xl bg-accent-muted/40 p-4 ring-1 ring-accent/25">
                     <p className="text-sm font-semibold text-primary">This device is not connected yet</p>
                     <p className="mt-1 text-xs font-medium leading-5 text-muted">
-                      Connecting never silently chooses between two ledgers. If both this device and your account contain data, TapTrack will ask what you want to keep.
+                      Connecting never silently chooses between two ledgers. If both this device and your account contain data, Ravel will ask what you want to keep.
                     </p>
                     <CloudLedgerLink onLinked={refreshSyncStatus} />
                   </div>
@@ -678,7 +678,7 @@ export default function SettingsWorkspace() {
                   />
                   <DataAction
                     eyebrow="Complete copy"
-                    title="Backup TapTrack"
+                    title="Backup Ravel"
                     description="Download a restorable JSON backup of your ledger and settings."
                     action={
                       <Button type="button" variant="secondary" onClick={handleExportJSON}>
@@ -689,7 +689,7 @@ export default function SettingsWorkspace() {
                   <DataAction
                     eyebrow="Replacement"
                     title="Restore backup"
-                    description="Replace TapTrack data from a backup. A safety backup is created before anything is replaced."
+                    description="Replace Ravel data from a backup. A safety backup is created before anything is replaced."
                     action={
                       <Button
                         type="button"
@@ -713,9 +713,9 @@ export default function SettingsWorkspace() {
 
               <section className="rounded-[1.5rem] border border-danger/30 bg-danger-muted p-5 sm:p-6">
                 <p className="text-xs font-semibold uppercase tracking-[0.14em] text-danger">Danger zone</p>
-                <h2 className="mt-1 text-lg font-semibold tracking-tight text-danger">Reset TapTrack data</h2>
+                <h2 className="mt-1 text-lg font-semibold tracking-tight text-danger">Reset Ravel data</h2>
                 <p className="mt-1 max-w-2xl text-sm font-medium leading-6 text-muted">
-                  Reset clears ledger data after downloading a safety backup. When sync is connected, TapTrack asks whether you mean only this device or the synced account everywhere.
+                  Reset clears ledger data after downloading a safety backup. When sync is connected, Ravel asks whether you mean only this device or the synced account everywhere.
                 </p>
                 <Button
                   type="button"
@@ -726,7 +726,7 @@ export default function SettingsWorkspace() {
                     else setShowResetConfirm(true);
                   }}
                 >
-                  Reset TapTrack data
+                  Reset Ravel data
                 </Button>
               </section>
             </div>
@@ -757,7 +757,7 @@ export default function SettingsWorkspace() {
       <ConfirmDialog
         open={showAccountRestoreConfirm}
         title="Replace data in your synced account"
-        message="This replaces the TapTrack data in your synced account with the selected backup. Other connected devices will receive the restored data when they next sync. A safety backup is downloaded first."
+        message="This replaces the Ravel data in your synced account with the selected backup. Other connected devices will receive the restored data when they next sync. A safety backup is downloaded first."
         confirmLabel="Replace synced account data"
         confirmVariant="danger"
         onConfirm={() => {
@@ -772,7 +772,7 @@ export default function SettingsWorkspace() {
       <ConfirmDialog
         open={showAccountResetConfirm}
         title="Reset synced account everywhere"
-        message="This clears the TapTrack data in your synced account. Other connected devices will receive the empty account when they next sync. A safety backup is downloaded first."
+        message="This clears the Ravel data in your synced account. Other connected devices will receive the empty account when they next sync. A safety backup is downloaded first."
         confirmLabel="Reset synced account"
         confirmVariant="danger"
         onConfirm={() => {
@@ -787,7 +787,7 @@ export default function SettingsWorkspace() {
       <ConfirmDialog
         open={showResetConfirm}
         title="Reset data on this device"
-        message="This clears TapTrack on this device and starts it with an empty account. A safety backup is downloaded first."
+        message="This clears Ravel on this device and starts it with an empty account. A safety backup is downloaded first."
         confirmLabel="Reset this device"
         confirmVariant="danger"
         onConfirm={() => void executeDeviceOnlyReset()}

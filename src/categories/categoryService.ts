@@ -1,4 +1,4 @@
-import { db, ensureDatabaseSeeded, type TapTrackDatabase } from '@/database';
+import { db, ensureDatabaseSeeded, type RavelDatabase } from '@/database';
 import { flushSyncQueueBestEffort, queueRecordForSync } from '@/sync/syncService';
 import type { Category, TransactionType } from '@/types';
 
@@ -12,7 +12,7 @@ export type CustomCategoryInput = {
 /** Creates a custom category and durable sync intent in the same IndexedDB commit. */
 export async function createCustomCategory(
   input: CustomCategoryInput,
-  database: TapTrackDatabase = db
+  database: RavelDatabase = db
 ): Promise<Category> {
   await ensureDatabaseSeeded(database);
 

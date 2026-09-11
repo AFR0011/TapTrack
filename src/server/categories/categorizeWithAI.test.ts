@@ -56,7 +56,7 @@ describe('categorizeWithAI', () => {
     expect(body.response_format).toMatchObject({
       type: 'json_schema',
       json_schema: {
-        name: 'taptrack_category_evaluation',
+        name: 'ravel_category_evaluation',
         strict: true,
       },
     });

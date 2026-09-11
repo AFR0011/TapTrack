@@ -43,8 +43,12 @@ export default defineConfig({
       SUPABASE_SERVICE_ROLE_KEY: '',
       TELEGRAM_BOT_TOKEN: '',
       TELEGRAM_WEBHOOK_SECRET: '',
+      RAVEL_OWNER_TELEGRAM_CHAT_ID: '',
+      RAVEL_OWNER_USER_ID: '',
+      RAVEL_TIME_ZONE: '',
       TAPTRACK_OWNER_TELEGRAM_CHAT_ID: '',
       TAPTRACK_OWNER_USER_ID: '',
+      TAPTRACK_TIME_ZONE: '',
     },
   },
 });

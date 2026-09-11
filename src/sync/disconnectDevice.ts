@@ -1,6 +1,6 @@
 'use client';
 
-import { db, type TapTrackDatabase } from '@/database';
+import { db, type RavelDatabase } from '@/database';
 import { DEVICE_LEDGER_BINDING_ID } from '@/sync/syncBinding';
 
 /**
@@ -10,7 +10,7 @@ import { DEVICE_LEDGER_BINDING_ID } from '@/sync/syncBinding';
  * re-enqueue the current canonical local state under the newly chosen account.
  */
 export async function disconnectDeviceLedger(
-  database: TapTrackDatabase = db
+  database: RavelDatabase = db
 ): Promise<boolean> {
   let disconnected = false;
 

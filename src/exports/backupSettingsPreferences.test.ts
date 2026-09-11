@@ -1,12 +1,12 @@
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
-import { TapTrackDatabase, ensureDatabaseSeeded } from '@/database';
+import { RavelDatabase, ensureDatabaseSeeded } from '@/database';
 import { completeInitialSetup } from '@/setup/setupService';
 import { exportBackupJSON, restoreBackupJSON } from './backupService';
 
-let database: TapTrackDatabase;
+let database: RavelDatabase;
 
 beforeEach(async () => {
-  database = new TapTrackDatabase(`TapTrackBackupPreferences-${crypto.randomUUID()}`);
+  database = new RavelDatabase(`RavelBackupPreferences-${crypto.randomUUID()}`);
   await ensureDatabaseSeeded(database);
   await completeInitialSetup(
     {

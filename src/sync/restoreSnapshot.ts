@@ -3,7 +3,7 @@
 import type { SupabaseClient } from '@supabase/supabase-js';
 import type { Table } from 'dexie';
 import { rebuildDerivedBalances } from '@/balances/ledgerService';
-import type { TapTrackDatabase } from '@/database';
+import type { RavelDatabase } from '@/database';
 
 export type CanonicalSnapshotTableName =
   | 'transactions'
@@ -58,7 +58,7 @@ function deserializeRow(row: Record<string, unknown>): Record<string, unknown> {
 }
 
 function getLocalTable(
-  database: TapTrackDatabase,
+  database: RavelDatabase,
   tableName: CanonicalSnapshotTableName
 ): Table<Record<string, unknown>, string> {
   return database[tableName] as unknown as Table<Record<string, unknown>, string>;
@@ -92,7 +92,7 @@ export async function fetchActiveCloudCanonicalSnapshot(
  */
 export async function replaceLocalWithRestoredCloudSnapshot(
   snapshot: CloudCanonicalSnapshot,
-  database: TapTrackDatabase
+  database: RavelDatabase
 ): Promise<void> {
   const tables = CANONICAL_TABLES.map(({ local }) => getLocalTable(database, local));
 

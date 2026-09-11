@@ -1,5 +1,6 @@
-const CACHE_PREFIX = 'taptrack-shell-';
-const CACHE_NAME = `${CACHE_PREFIX}2026-09-11-v13`;
+const CACHE_PREFIX = 'ravel-shell-';
+const LEGACY_CACHE_PREFIX = 'taptrack-shell-';
+const CACHE_NAME = `${CACHE_PREFIX}2026-09-11-v14`;
 const NAVIGATION_TIMEOUT_MS = 3500;
 const APP_ROUTES = [
   '/app',
@@ -33,7 +34,10 @@ self.addEventListener('activate', (event) => {
       const keys = await caches.keys();
       await Promise.all(
         keys
-          .filter((key) => key.startsWith(CACHE_PREFIX) && key !== CACHE_NAME)
+          .filter((key) =>
+            (key.startsWith(CACHE_PREFIX) || key.startsWith(LEGACY_CACHE_PREFIX)) &&
+            key !== CACHE_NAME
+          )
           .map((key) => caches.delete(key))
       );
       await self.clients.claim();

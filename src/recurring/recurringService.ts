@@ -4,7 +4,7 @@ import {
   type HistoricalOrderingRelation,
 } from '@/balances/reconciliationService';
 import { getActiveCurrencies } from '@/currencies/currencyService';
-import { db, ensureDatabaseSeeded, type TapTrackDatabase } from '@/database';
+import { db, ensureDatabaseSeeded, type RavelDatabase } from '@/database';
 import { addFrequency, formatLocalDate, parseLocalDate } from '@/dates';
 import { createTransaction } from '@/transactions/createTransaction';
 import {
@@ -36,7 +36,7 @@ export function getRecurringOccurrenceId(recurringId: string, date: string): str
 
 async function assertActiveRecurringCurrency(
   currency: Currency,
-  database: TapTrackDatabase
+  database: RavelDatabase
 ): Promise<void> {
   const activeCurrencies = await getActiveCurrencies(database);
   if (!activeCurrencies.includes(currency)) {
@@ -46,7 +46,7 @@ async function assertActiveRecurringCurrency(
 
 export async function createRecurringTransaction(
   recurring: RecurringInput,
-  database: TapTrackDatabase = db
+  database: RavelDatabase = db
 ): Promise<RecurringTransaction> {
   await ensureDatabaseSeeded(database);
   if (recurring.isActive) await assertActiveRecurringCurrency(recurring.currency, database);
@@ -79,7 +79,7 @@ export async function createRecurringTransaction(
 export async function updateRecurringTransaction(
   id: string,
   updates: Partial<RecurringTransaction>,
-  database: TapTrackDatabase = db
+  database: RavelDatabase = db
 ): Promise<RecurringTransaction> {
   await ensureDatabaseSeeded(database);
 
@@ -125,19 +125,19 @@ export async function updateRecurringTransaction(
   return updated;
 }
 
-export async function getRecurringTransactions(database: TapTrackDatabase = db) {
+export async function getRecurringTransactions(database: RavelDatabase = db) {
   await ensureDatabaseSeeded(database);
   return database.recurringTransactions.toArray();
 }
 
-export async function getActiveRecurringTransactions(database: TapTrackDatabase = db) {
+export async function getActiveRecurringTransactions(database: RavelDatabase = db) {
   await ensureDatabaseSeeded(database);
   return database.recurringTransactions.filter((item) => item.isActive).toArray();
 }
 
 export async function getRecurringTransaction(
   id: string,
-  database: TapTrackDatabase = db
+  database: RavelDatabase = db
 ): Promise<RecurringTransaction | null> {
   await ensureDatabaseSeeded(database);
   return (await database.recurringTransactions.get(id)) ?? null;
@@ -145,7 +145,7 @@ export async function getRecurringTransaction(
 
 export async function deleteRecurringTransaction(
   id: string,
-  database: TapTrackDatabase = db
+  database: RavelDatabase = db
 ): Promise<void> {
   await ensureDatabaseSeeded(database);
 
@@ -216,7 +216,7 @@ export function getNextScheduledOccurrenceDate(
 export async function resumeRecurringTransaction(
   id: string,
   currentDate = new Date(),
-  database: TapTrackDatabase = db
+  database: RavelDatabase = db
 ) {
   const recurring = await getRecurringTransaction(id, database);
   if (!recurring) throw new Error('Recurring transaction not found');
@@ -261,7 +261,7 @@ export function calculateNextRunDate(
 async function advanceRecurringAfterOccurrence(
   recurring: RecurringTransaction,
   occurrenceDate: string,
-  database: TapTrackDatabase
+  database: RavelDatabase
 ): Promise<void> {
   const anchorDate = parseLocalDate(recurring.startDate);
   const nextRunDate = formatLocalDate(
@@ -275,7 +275,7 @@ async function advanceRecurringAfterOccurrence(
 export async function resolveRecurringOccurrenceOrdering(
   conflict: RecurringOrderingConflict,
   relation: HistoricalOrderingRelation,
-  database: TapTrackDatabase = db,
+  database: RavelDatabase = db,
   currentDate = new Date()
 ): Promise<void> {
   await ensureDatabaseSeeded(database);
@@ -312,7 +312,7 @@ export async function resolveRecurringOccurrenceOrdering(
 
 export async function createDueRecurringTransactions(
   currentDate: Date = new Date(),
-  database: TapTrackDatabase = db
+  database: RavelDatabase = db
 ): Promise<DueRecurringResult> {
   await ensureDatabaseSeeded(database);
 

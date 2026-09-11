@@ -1,4 +1,4 @@
-# TapTrack Production Checklist
+# Ravel Production Checklist
 
 Last updated: 2026-05-20
 
@@ -6,7 +6,7 @@ Last updated: 2026-05-20
 
 - Run `npm.cmd run check` before deployment.
 - Confirm `/`, `/login`, `/app`, `/api/exchange-rates`, `/api/telegram/webhook`, `/api/telegram/register`, `/manifest.webmanifest`, and `/sw.js` with `npm.cmd run smoke:routes` against the deployed URL.
-- Confirm PWA metadata loads publicly: `/manifest.webmanifest`, `/sw.js`, and `/icons/taptrack-icon.svg` must not require auth.
+- Confirm PWA metadata loads publicly: `/manifest.webmanifest`, `/sw.js`, and `/icons/ravel-icon.svg` must not require auth.
 
 ## Supabase
 
@@ -20,8 +20,8 @@ Last updated: 2026-05-20
 
 - Set `TELEGRAM_BOT_TOKEN`.
 - Set `TELEGRAM_WEBHOOK_SECRET`.
-- Set `TAPTRACK_OWNER_USER_ID` to the Supabase `auth.users.id` for the owner account.
-- Optional: set `TAPTRACK_OWNER_TELEGRAM_CHAT_ID` to restrict bot usage to one Telegram chat.
+- Set `RAVEL_OWNER_USER_ID` to the Supabase `auth.users.id` for the owner account.
+- Optional: set `RAVEL_OWNER_TELEGRAM_CHAT_ID` to restrict bot usage to one Telegram chat.
 - Register the webhook once after the deployment URL is stable:
 
 ```powershell

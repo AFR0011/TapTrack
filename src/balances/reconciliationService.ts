@@ -1,4 +1,4 @@
-import { db, ensureDatabaseSeeded, type TapTrackDatabase } from '@/database';
+import { db, ensureDatabaseSeeded, type RavelDatabase } from '@/database';
 import { DEFAULT_SETTINGS_ID } from '@/defaultData';
 import { formatLocalDate, getCurrentMonth } from '@/dates';
 import { rebuildDerivedBalances } from '@/balances/ledgerService';
@@ -26,7 +26,7 @@ export class InvalidReconciliationError extends Error {
 
 async function getMonthCompletionCheckpoints(
   month: string,
-  database: TapTrackDatabase
+  database: RavelDatabase
 ): Promise<BalanceCheckpoint[]> {
   return database.balanceCheckpoints
     .filter(
@@ -49,7 +49,7 @@ function getActiveBalances(settings: Settings, balances: Balance[]): Balance[] {
  */
 export async function getMonthlyReconciliationState(
   month = getCurrentMonth(),
-  database: TapTrackDatabase = db
+  database: RavelDatabase = db
 ): Promise<MonthlyReconciliationState> {
   const settings = await database.settings.get(DEFAULT_SETTINGS_ID);
   const allBalances = await database.balances.toArray();
@@ -85,7 +85,7 @@ export async function getMonthlyReconciliationState(
  */
 export async function reconcileCurrentMonth(
   observedAmounts: ReconciliationObservedAmounts,
-  database: TapTrackDatabase = db,
+  database: RavelDatabase = db,
   nowDate = new Date()
 ): Promise<BalanceCheckpoint[]> {
   await ensureDatabaseSeeded(database);
@@ -166,7 +166,7 @@ export async function reconcileCurrentMonth(
 }
 
 export async function getAdjustmentHistory(
-  database: TapTrackDatabase = db
+  database: RavelDatabase = db
 ): Promise<BalanceCheckpoint[]> {
   const checkpoints = await database.balanceCheckpoints
     .filter((checkpoint) => checkpoint.kind === 'reconciliation')
@@ -183,7 +183,7 @@ export async function getAdjustmentHistory(
 export async function findSameDayOrderingCheckpoint(
   date: string,
   balanceIds: string[],
-  database: TapTrackDatabase = db
+  database: RavelDatabase = db
 ): Promise<BalanceCheckpoint | null> {
   if (balanceIds.length === 0) return null;
 

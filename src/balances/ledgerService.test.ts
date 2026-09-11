@@ -1,13 +1,13 @@
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
-import { TapTrackDatabase, ensureDatabaseSeeded } from '@/database';
+import { RavelDatabase, ensureDatabaseSeeded } from '@/database';
 import { getBalanceId } from '@/defaultData';
 import type { BalanceCheckpoint, Conversion, Transaction } from '@/types';
 import { AmbiguousLedgerOrderingError, rebuildDerivedBalances } from './ledgerService';
 
-let database: TapTrackDatabase;
+let database: RavelDatabase;
 
 beforeEach(async () => {
-  database = new TapTrackDatabase(`TapTrackLedgerTest-${crypto.randomUUID()}`);
+  database = new RavelDatabase(`RavelLedgerTest-${crypto.randomUUID()}`);
   await ensureDatabaseSeeded(database);
 });
 

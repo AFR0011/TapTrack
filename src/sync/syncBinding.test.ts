@@ -1,5 +1,5 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
-import { TapTrackDatabase, ensureDatabaseSeeded } from '@/database';
+import { RavelDatabase, ensureDatabaseSeeded } from '@/database';
 
 vi.mock('@/lib/supabase', () => ({
   createSupabaseBrowserClient: vi.fn(),
@@ -69,7 +69,7 @@ function createClient(options?: {
   };
 }
 
-async function addUserBalance(database: TapTrackDatabase, currency: string, method: 'card' | 'cash', amount: number) {
+async function addUserBalance(database: RavelDatabase, currency: string, method: 'card' | 'cash', amount: number) {
   await database.balances.put({
     id: `${currency}-${method}`,
     currency,
@@ -80,10 +80,10 @@ async function addUserBalance(database: TapTrackDatabase, currency: string, meth
 }
 
 describe('device ledger sync binding', () => {
-  let database: TapTrackDatabase;
+  let database: RavelDatabase;
 
   beforeEach(() => {
-    database = new TapTrackDatabase(`taptrack-binding-${crypto.randomUUID()}`);
+    database = new RavelDatabase(`taptrack-binding-${crypto.randomUUID()}`);
   });
 
   afterEach(async () => {

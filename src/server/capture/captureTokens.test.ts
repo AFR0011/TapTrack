@@ -7,14 +7,18 @@ import {
 } from './captureTokens';
 
 describe('captureTokens', () => {
-  it('creates a high-entropy token with the TapTrack capture prefix', () => {
+  it('creates a high-entropy token with the Ravel capture prefix', () => {
     const first = createCaptureToken();
     const second = createCaptureToken();
 
-    expect(first).toMatch(/^taptrack_capture_[A-Za-z0-9_-]{40,60}$/);
-    expect(second).toMatch(/^taptrack_capture_[A-Za-z0-9_-]{40,60}$/);
+    expect(first).toMatch(/^ravel_capture_[A-Za-z0-9_-]{40,60}$/);
+    expect(second).toMatch(/^ravel_capture_[A-Za-z0-9_-]{40,60}$/);
     expect(first).not.toBe(second);
     expect(isCaptureToken(first)).toBe(true);
+  });
+
+  it('accepts capture tokens issued before the Ravel rename', () => {
+    expect(isCaptureToken(`taptrack_capture_${'a'.repeat(43)}`)).toBe(true);
   });
 
   it('rejects malformed or unrelated bearer values', () => {

@@ -1,4 +1,4 @@
-import { db, ensureDatabaseSeeded, type TapTrackDatabase } from '@/database';
+import { db, ensureDatabaseSeeded, type RavelDatabase } from '@/database';
 import { DEFAULT_SETTINGS_ID, getBalanceId } from '@/defaultData';
 import { formatLocalDate } from '@/dates';
 import { rebuildDerivedBalances } from '@/balances/ledgerService';
@@ -19,8 +19,8 @@ import {
   type Transaction,
 } from '@/types';
 
-export const TAPTRACK_BACKUP_FORMAT = 'taptrack-backup';
-export const TAPTRACK_BACKUP_VERSION = 2 as const;
+export const RAVEL_BACKUP_FORMAT = 'taptrack-backup';
+export const RAVEL_BACKUP_VERSION = 2 as const;
 
 const DEVICE_LEDGER_BINDING_ID = 'ledger-binding';
 const MAX_BACKUP_BYTES = 20 * 1024 * 1024;
@@ -44,9 +44,9 @@ type CanonicalBackupData = {
   settings: Settings[];
 };
 
-export type TapTrackBackupV2 = CanonicalBackupData & {
-  format: typeof TAPTRACK_BACKUP_FORMAT;
-  version: typeof TAPTRACK_BACKUP_VERSION;
+export type RavelBackupV2 = CanonicalBackupData & {
+  format: typeof RAVEL_BACKUP_FORMAT;
+  version: typeof RAVEL_BACKUP_VERSION;
   exportedAt: string;
 };
 
@@ -69,7 +69,7 @@ export type PreparedBackupRestore = {
   legacyMigrated: boolean;
   safetyBackup: string;
   restoredRecordCount: number;
-  backup: TapTrackBackupV2;
+  backup: RavelBackupV2;
 };
 
 export type ApplyPreparedRestoreOptions = {
@@ -85,7 +85,7 @@ export class BackupValidationError extends Error {
 }
 
 export async function exportBackupJSON(
-  database: TapTrackDatabase = db,
+  database: RavelDatabase = db,
   now = new Date()
 ): Promise<string> {
   const backup = await createBackup(database, now);
@@ -93,9 +93,9 @@ export async function exportBackupJSON(
 }
 
 export async function createBackup(
-  database: TapTrackDatabase = db,
+  database: RavelDatabase = db,
   now = new Date()
-): Promise<TapTrackBackupV2> {
+): Promise<RavelBackupV2> {
   await ensureDatabaseSeeded(database);
 
   const [
@@ -119,8 +119,8 @@ export async function createBackup(
   ]);
 
   return {
-    format: TAPTRACK_BACKUP_FORMAT,
-    version: TAPTRACK_BACKUP_VERSION,
+    format: RAVEL_BACKUP_FORMAT,
+    version: RAVEL_BACKUP_VERSION,
     exportedAt: now.toISOString(),
     transactions: sortById(transactions),
     balanceCheckpoints: sortById(balanceCheckpoints),
@@ -136,7 +136,7 @@ export async function createBackup(
 export function normalizeBackupJSON(
   jsonData: string,
   now = new Date()
-): { source: BackupSource; backup: TapTrackBackupV2 } {
+): { source: BackupSource; backup: RavelBackupV2 } {
   if (new TextEncoder().encode(jsonData).byteLength > MAX_BACKUP_BYTES) {
     throw new BackupValidationError('Backup is too large to restore safely.');
   }
@@ -145,8 +145,8 @@ export function normalizeBackupJSON(
   return {
     source: normalized.source,
     backup: {
-      format: TAPTRACK_BACKUP_FORMAT,
-      version: TAPTRACK_BACKUP_VERSION,
+      format: RAVEL_BACKUP_FORMAT,
+      version: RAVEL_BACKUP_VERSION,
       exportedAt: now.toISOString(),
       ...normalized.data,
     },
@@ -155,7 +155,7 @@ export function normalizeBackupJSON(
 
 export async function prepareBackupRestoreJSON(
   jsonData: string,
-  database: TapTrackDatabase = db,
+  database: RavelDatabase = db,
   now = new Date()
 ): Promise<PreparedBackupRestore> {
   const normalized = normalizeBackupJSON(jsonData, now);
@@ -171,7 +171,7 @@ export async function prepareBackupRestoreJSON(
 
 export async function applyPreparedBackupRestore(
   prepared: PreparedBackupRestore,
-  database: TapTrackDatabase = db,
+  database: RavelDatabase = db,
   options: ApplyPreparedRestoreOptions = {}
 ): Promise<RestoreBackupResult> {
   const linkedMode = options.linkedMode ?? 'reject';
@@ -255,7 +255,7 @@ export async function applyPreparedBackupRestore(
 
 export async function restoreBackupJSON(
   jsonData: string,
-  database: TapTrackDatabase = db,
+  database: RavelDatabase = db,
   options: RestoreBackupOptions = {}
 ): Promise<RestoreBackupResult> {
   const prepared = await prepareBackupRestoreJSON(jsonData, database, options.now ?? new Date());
@@ -276,12 +276,12 @@ function parseAndValidateBackup(
 
   const root = requireObject(parsed, 'backup');
   if ('format' in root || 'version' in root) {
-    if (root.format !== TAPTRACK_BACKUP_FORMAT) {
-      throw new BackupValidationError('This file is not a TapTrack backup.');
+    if (root.format !== RAVEL_BACKUP_FORMAT) {
+      throw new BackupValidationError('This file is not a Ravel backup.');
     }
-    if (root.version !== TAPTRACK_BACKUP_VERSION) {
+    if (root.version !== RAVEL_BACKUP_VERSION) {
       throw new BackupValidationError(
-        `Unsupported TapTrack backup version: ${String(root.version)}.`
+        `Unsupported Ravel backup version: ${String(root.version)}.`
       );
     }
     requireTimestamp(root.exportedAt, 'backup.exportedAt');

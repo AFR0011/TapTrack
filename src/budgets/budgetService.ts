@@ -1,4 +1,4 @@
-import { db, ensureDatabaseSeeded, type TapTrackDatabase } from '@/database';
+import { db, ensureDatabaseSeeded, type RavelDatabase } from '@/database';
 import { getPreviousMonth } from '@/dates';
 import { DEFAULT_SETTINGS_ID } from '@/defaultData';
 import type { Category, CategoryBudget, Currency, MonthlyBudget, TransactionType } from '@/types';
@@ -20,7 +20,7 @@ export function getCategoryBudgetId(month: string, categoryId: string, currency:
 
 async function resolveBudgetCurrency(
   currency: Currency | undefined,
-  database: TapTrackDatabase
+  database: RavelDatabase
 ): Promise<Currency> {
   if (currency) return currency;
   const settings = await database.settings.get(DEFAULT_SETTINGS_ID);
@@ -30,7 +30,7 @@ async function resolveBudgetCurrency(
 export async function getMonthlyBudget(
   month: string,
   currency?: Currency,
-  database: TapTrackDatabase = db
+  database: RavelDatabase = db
 ): Promise<MonthlyBudget | null> {
   await ensureDatabaseSeeded(database);
   const resolvedCurrency = await resolveBudgetCurrency(currency, database);
@@ -45,7 +45,7 @@ export async function getMonthlyBudget(
 
 export async function upsertMonthlyBudget(
   input: MonthlyBudgetInput,
-  database: TapTrackDatabase = db
+  database: RavelDatabase = db
 ): Promise<MonthlyBudget> {
   await ensureDatabaseSeeded(database);
   const currency = await resolveBudgetCurrency(input.currency, database);
@@ -91,7 +91,7 @@ export async function getCategoryBudget(
   month: string,
   categoryId: string,
   currency?: Currency,
-  database: TapTrackDatabase = db
+  database: RavelDatabase = db
 ): Promise<CategoryBudget | null> {
   await ensureDatabaseSeeded(database);
   const resolvedCurrency = await resolveBudgetCurrency(currency, database);
@@ -108,7 +108,7 @@ export async function getCategoryBudget(
 
 export async function upsertCategoryBudget(
   input: CategoryBudgetInput,
-  database: TapTrackDatabase = db
+  database: RavelDatabase = db
 ): Promise<CategoryBudget> {
   await ensureDatabaseSeeded(database);
   const currency = await resolveBudgetCurrency(input.currency, database);
@@ -139,7 +139,7 @@ export async function deleteCategoryBudget(
   month: string,
   categoryId: string,
   currency: Currency,
-  database: TapTrackDatabase = db
+  database: RavelDatabase = db
 ): Promise<void> {
   await ensureDatabaseSeeded(database);
   const existing = await getCategoryBudget(month, categoryId, currency, database);
@@ -158,7 +158,7 @@ export function calculateRollover(totalBudget: number, totalSpent: number) {
 export async function getMonthlyBudgetStatus(
   month: string,
   currency?: Currency,
-  database: TapTrackDatabase = db
+  database: RavelDatabase = db
 ): Promise<MonthlyBudgetStatus> {
   await ensureDatabaseSeeded(database);
   const resolvedCurrency = await resolveBudgetCurrency(currency, database);
@@ -181,7 +181,7 @@ export async function getCategoryBudgetStatus(
   month: string,
   categoryId: string,
   currency?: Currency,
-  database: TapTrackDatabase = db
+  database: RavelDatabase = db
 ): Promise<CategoryBudgetStatus> {
   await ensureDatabaseSeeded(database);
   const resolvedCurrency = await resolveBudgetCurrency(currency, database);
@@ -205,7 +205,7 @@ export async function getCategoryBudgetStatus(
 export async function prepareMonthlyRollover(
   month: string,
   totalBudget: number,
-  database: TapTrackDatabase = db
+  database: RavelDatabase = db
 ) {
   await ensureDatabaseSeeded(database);
   const settings = await database.settings.get(DEFAULT_SETTINGS_ID);
@@ -228,7 +228,7 @@ export async function prepareMonthlyRollover(
 async function getTotalSpentForMonth(
   month: string,
   currency: Currency,
-  database: TapTrackDatabase
+  database: RavelDatabase
 ) {
   const transactions = await database.transactions.where('date').startsWith(month).toArray();
   return transactions
@@ -242,7 +242,7 @@ async function getCategorySpentForMonth(
   month: string,
   categoryId: string,
   currency: Currency,
-  database: TapTrackDatabase
+  database: RavelDatabase
 ) {
   const transactions = await database.transactions.where('date').startsWith(month).toArray();
   return transactions
@@ -257,7 +257,7 @@ async function getCategorySpentForMonth(
 
 export async function deleteCategory(
   categoryId: string,
-  database: TapTrackDatabase = db
+  database: RavelDatabase = db
 ): Promise<void> {
   await ensureDatabaseSeeded(database);
   const now = new Date().toISOString();
@@ -335,7 +335,7 @@ export async function deleteCategory(
 
 export async function updateCategory(
   input: CategoryUpdateInput,
-  database: TapTrackDatabase = db
+  database: RavelDatabase = db
 ): Promise<Category> {
   await ensureDatabaseSeeded(database);
   const now = new Date().toISOString();
@@ -439,7 +439,7 @@ export async function updateCategory(
 
 async function getFallbackCategoryId(
   type: TransactionType,
-  database: TapTrackDatabase,
+  database: RavelDatabase,
   excludedCategoryId?: string
 ): Promise<string> {
   const preferredId = type === 'income' ? 'cat-income' : 'cat-other';

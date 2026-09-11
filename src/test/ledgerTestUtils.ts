@@ -1,10 +1,10 @@
 import { rebuildDerivedBalances } from '@/balances/ledgerService';
-import type { TapTrackDatabase } from '@/database';
+import type { RavelDatabase } from '@/database';
 import type { BalanceCheckpoint, Currency, Method } from '@/types';
 
 /** Test-only helper: establishes an authoritative opening balance before fixture activity. */
 export async function seedOpeningBalance(
-  database: TapTrackDatabase,
+  database: RavelDatabase,
   balanceId: string,
   amount: number,
   effectiveAt = '2025-12-31T00:00:00.000Z'

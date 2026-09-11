@@ -1,6 +1,6 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { rebuildDerivedBalances } from '@/balances/ledgerService';
-import { TapTrackDatabase, ensureDatabaseSeeded } from '@/database';
+import { RavelDatabase, ensureDatabaseSeeded } from '@/database';
 import { getBalanceId } from '@/defaultData';
 import type { BalanceCheckpoint, Transaction } from '@/types';
 
@@ -181,7 +181,7 @@ function createSharedRemoteClient() {
 }
 
 function authorize(client: ReturnType<typeof createSharedRemoteClient>['client']) {
-  vi.mocked(requireLinkedSyncAccess).mockImplementation(async (database?: TapTrackDatabase) => {
+  vi.mocked(requireLinkedSyncAccess).mockImplementation(async (database?: RavelDatabase) => {
     if (!database) return null;
     const binding = await database.deviceMetadata.get('ledger-binding');
     if (!binding) return null;
@@ -198,13 +198,13 @@ function goOfflineForSync() {
 }
 
 describe('two-device canonical ledger convergence', () => {
-  let deviceA: TapTrackDatabase;
-  let deviceB: TapTrackDatabase;
+  let deviceA: RavelDatabase;
+  let deviceB: RavelDatabase;
   let remote: ReturnType<typeof createSharedRemoteClient>;
 
   beforeEach(async () => {
-    deviceA = new TapTrackDatabase(`TapTrackDeviceA-${crypto.randomUUID()}`);
-    deviceB = new TapTrackDatabase(`TapTrackDeviceB-${crypto.randomUUID()}`);
+    deviceA = new RavelDatabase(`RavelDeviceA-${crypto.randomUUID()}`);
+    deviceB = new RavelDatabase(`RavelDeviceB-${crypto.randomUUID()}`);
     await ensureDatabaseSeeded(deviceA);
     await ensureDatabaseSeeded(deviceB);
     const initialBinding = {
