@@ -2,12 +2,18 @@ const baseUrl = process.env.TAPTRACK_SMOKE_BASE_URL ?? 'http://127.0.0.1:3000';
 
 const checks = [
   {
-    name: 'root redirects to the local app',
+    name: 'public Ravel landing page is reachable',
     path: '/',
-    init: { redirect: 'manual' },
-    expect: (response) =>
-      [307, 308].includes(response.status) &&
-      (response.headers.get('location') ?? '').includes('/app'),
+    expect: async (response) => {
+      const contentType = response.headers.get('content-type') ?? '';
+      const body = await response.clone().text();
+      return (
+        response.status === 200 &&
+        contentType.includes('text/html') &&
+        body.includes('Ravel') &&
+        body.includes('Your money doesn’t live in one place. Your ledger can.')
+      );
+    },
   },
   {
     name: 'login is reachable',
@@ -51,7 +57,7 @@ const checks = [
     },
   },
   {
-    name: 'manifest is public JSON',
+    name: 'Ravel manifest is public JSON',
     path: '/manifest.webmanifest',
     expect: async (response) => {
       const contentType = response.headers.get('content-type') ?? '';
@@ -59,7 +65,7 @@ const checks = [
       return (
         response.status === 200 &&
         contentType.includes('application/manifest+json') &&
-        body?.name === 'TapTrack'
+        body?.name === 'Ravel'
       );
     },
   },
