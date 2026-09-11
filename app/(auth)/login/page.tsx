@@ -5,6 +5,8 @@ import { useRouter } from 'next/navigation';
 import { Button } from '@/components/ui/Button';
 import { Card } from '@/components/ui/Card';
 import { Field } from '@/components/ui/Field';
+import { RavelMark } from '@/components/brand/RavelMark';
+import { BRAND } from '@/brand';
 import { cn, focusVisibleRing } from '@/lib/cn';
 import { createSupabaseBrowserClient, isSupabaseConfigured } from '@/lib/supabase';
 
@@ -135,21 +137,23 @@ export default function LoginPage() {
           : 'Welcome back.';
   const description =
     mode === 'register'
-      ? 'Sync, Smart Categories, and Quick Capture.'
+      ? 'Optional sync and Smart Categories, with your local ledger still in charge.'
       : mode === 'forgot'
         ? 'We’ll send a secure reset link to your email.'
         : mode === 'reset'
-          ? 'Set a new password for your TapTrack account.'
+          ? `Set a new password for your ${BRAND.name} account.`
           : 'Pick up where you left off.';
 
   return (
     <div className="flex min-h-dvh items-center justify-center bg-background p-4 sm:p-6">
       <div className="w-full max-w-md">
         <div className="mb-6 text-center">
-          <div className="mx-auto grid h-12 w-12 place-items-center rounded-2xl bg-action-primary text-lg font-black text-white shadow-sm">
-            T
+          <RavelMark className="mx-auto h-12 w-12 shadow-sm" />
+          <div className="mt-4 flex items-baseline justify-center gap-2">
+            <span className="font-display text-2xl font-semibold text-primary">{BRAND.name}</span>
+            <span className="text-[10px] font-semibold uppercase tracking-[0.18em] text-muted">{BRAND.parent}</span>
           </div>
-          <h1 className="mt-4 text-3xl font-semibold tracking-tight text-primary">{heading}</h1>
+          <h1 className="font-display mt-5 text-3xl font-medium tracking-tight text-primary">{heading}</h1>
           <p className="mt-2 text-sm text-muted">{description}</p>
         </div>
 
@@ -183,8 +187,8 @@ export default function LoginPage() {
           ) : passwordUpdated ? (
             <SuccessPanel
               title="Password updated."
-              description="Your new password is ready. You can continue to TapTrack now."
-              actionLabel="Continue to TapTrack"
+              description={`Your new password is ready. You can continue to ${BRAND.name} now.`}
+              actionLabel={`Continue to ${BRAND.name}`}
               onAction={() => {
                 router.replace('/app');
                 router.refresh();
@@ -361,7 +365,7 @@ function SuccessPanel({
       <div className="mx-auto grid h-12 w-12 place-items-center rounded-full bg-success-muted text-xl text-success">
         ✓
       </div>
-      <h2 className="mt-4 text-xl font-semibold text-primary">{title}</h2>
+      <h2 className="font-display mt-4 text-xl font-semibold text-primary">{title}</h2>
       <p className="mt-2 text-sm text-muted">{description}</p>
       <Button type="button" fullWidth className="mt-6" onClick={onAction}>
         {actionLabel}

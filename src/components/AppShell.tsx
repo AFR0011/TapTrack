@@ -6,6 +6,8 @@ import { useEffect, useRef, useState, type MouseEvent, type ReactNode } from 're
 import { motion, useReducedMotion } from 'framer-motion';
 import { cn, focusVisibleRing } from '@/lib/cn';
 import MonthlyReconciliationPrompt from '@/components/MonthlyReconciliationPrompt';
+import { BRAND } from '@/brand';
+import { RavelMark } from '@/components/brand/RavelMark';
 
 const HOME_ICON = 'M3 12l2-2m0 0l7-7 7 7M5 10v10a1 1 0 001 1h3m10-11l2 2m-2-2v10a1 1 0 01-1 1h-3m-6 0a1 1 0 001-1v-4a1 1 0 011-1h2a1 1 0 011 1v4a1 1 0 001 1m-6 0h6';
 const TRANSACTIONS_ICON = 'M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2';
@@ -126,9 +128,13 @@ export default function AppShell({ children }: { children: ReactNode }) {
             href="/app"
             prefetch={false}
             onClick={(event) => forceDocumentNavigationOffline(event, '/app')}
-            className={cn('rounded-lg text-xl font-bold tracking-tight text-accent', focusVisibleRing)}
+            className={cn('flex items-center gap-2 rounded-xl', focusVisibleRing)}
           >
-            TapTrack
+            <RavelMark className="h-8 w-8" />
+            <span className="flex items-baseline gap-2">
+              <span className="font-display text-2xl font-semibold leading-none tracking-tight text-primary">{BRAND.name}</span>
+              <span className="text-[10px] font-semibold uppercase tracking-[0.18em] text-muted">{BRAND.parent}</span>
+            </span>
           </Link>
 
           <div className="flex items-center gap-2">
